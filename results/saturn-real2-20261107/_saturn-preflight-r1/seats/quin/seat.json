@@ -1,0 +1,30 @@
+{
+ "id": "quin",
+ "kind": "soul",
+ "adapter": "claude-headless",
+ "model": "sonnet",
+ "effort": "medium",
+ "soulName": "Quin",
+ "worldBase": "http://127.0.0.1:4993/w/pt-eden-basics",
+ "folder": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/quin/folder",
+ "createdAt": "2026-11-07T06:09:31.733Z",
+ "sessionId": "7dc0e2b3-81b9-4b6e-98ce-dd63c2f486dc",
+ "soulId": "s_46d43d3d1a",
+ "ownerIdentity": "agent-a3198ea9dbd43b1a7cc329d2",
+ "assisted": false,
+ "wake": false,
+ "sessionCostUsd": {
+  "7dc0e2b3-81b9-4b6e-98ce-dd63c2f486dc": 0.1498785
+ },
+ "sessionContextTokens": 31760,
+ "effortApplied": true,
+ "onboard": {
+  "ok": true,
+  "pairedWithinSec": 9,
+  "timeoutSec": 540,
+  "onboardTurnWallMs": 22759,
+  "attempts": 1,
+  "cliFile": "eden.mjs",
+  "lastStatus": null
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "step": "preflight",
+ "t": "2026-11-07T06:09:00.541Z",
+ "mono": 1851,
+ "ok": true,
+ "allow": {
+  "allowed": true,
+  "note": "quota check skipped: /nonexistent not present on this machine"
+ }
+}

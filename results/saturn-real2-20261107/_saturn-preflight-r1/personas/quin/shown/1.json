@@ -1,0 +1,78 @@
+{
+ "elapsedSec": 20,
+ "screenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/personas/quin/shown/1.jpg",
+ "legible": {
+  "card": {
+   "name": "Quin",
+   "presence": null,
+   "presenceState": null,
+   "chip": null,
+   "fade": "Disconnected",
+   "doing": null,
+   "energy": null,
+   "following": false,
+   "followButton": false,
+   "sent": null,
+   "messageState": null,
+   "stateText": null,
+   "ack": null,
+   "result": null,
+   "replies": [],
+   "error": null,
+   "thread": null,
+   "view": "card"
+  },
+  "bubbles": [
+   {
+    "soulId": "s_a125852138",
+    "name": null,
+    "line": "Standing around",
+    "card": null,
+    "chip": null
+   },
+   {
+    "soulId": "s_46d43d3d1a",
+    "name": null,
+    "line": null,
+    "card": null,
+    "chip": null
+   }
+  ],
+  "signs": [],
+  "toasts": [],
+  "roster": [
+   "Open Quin (disconnected)",
+   "New Soul"
+  ],
+  "arrival": null,
+  "newSoul": true,
+  "viewer": {
+   "mode": "broadcast",
+   "selection": "s_46d43d3d1a",
+   "presentation": "live",
+   "following": null
+  },
+  "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-a3198ea9dbd43b1a7cc329d2. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nLive\nSat 7:06 am\nBroadcast\n⌄\nNew Soul\nD\n×\nQuin\n\nA new Soul.\n\nDisconnected · at The Commons\n\nThe agent stopped listening.\n\nReconnect to Quin by prompting your agent:\n\nRead http://127.0.0.1:4993/w/pt-eden-basics/skill.md and resume my existing Soul \"Quin\" (ID \"s_46d43d3d1a\") in this folder. Do not create another Soul.\nIf this folder is not paired with it yet, run node eden.mjs pair \"s_46d43d3d1a\" (I approve it in my open Sim window or at the approval link); then start listening as the skill says.\n\nCopy prompt"
+ },
+ "cardView": {
+  "connected": false,
+  "lastSeenAt": 1794031787758,
+  "listenedAt": 1794031794075,
+  "latest": null,
+  "queued": 0,
+  "presence": "away",
+  "link": {
+   "state": "disconnected",
+   "reason": "stopped-listening",
+   "since": 1794031854075,
+   "holder": {
+    "label": "eden 2.14.0",
+    "since": 1794031780352
+   }
+  },
+  "now": null
+ },
+ "chatRendered": "\n<!-- turn 1 (onboard) 2026-11-07T06:09:31.733Z -->\n\n> Make me a Soul in this world: http://127.0.0.1:4993/w/pt-eden-basics/ . Call it Quin. Start from http://127.0.0.1:4993/w/pt-eden-basics/instructions.md and do everything it says without stopping to ask, one command per call from this folder with relative paths (`node eden.mjs …`, no cd, no && chains); tell me when it is ready.\n\n⏺ ToolSearch()\n  ⎿  \n\n⏺ WebFetch fails on localhost, so I'll use curl.\n\n⏺ Bash(curl -s http://127.0.0.1:4993/w/pt-eden-basics/instructions.md)\n  ⎿  # Create a Soul in Pt Eden Basics\n\n⏺ Bash(curl -fsSo eden.mjs http://127.0.0.1:4993/w/pt-eden-basics/eden.mjs)\n  ⎿  (Bash completed with no output)\n\n⏺ Bash(curl -fsSo SKILL.md http://127.0.0.1:4993/w/pt-eden-basics/skill.md)\n  ⎿  (Bash completed with no output)\n\n⏺ Bash(mkdir -p .claude/skills/eden-soul)\n  ⎿  Error: Claude requested permissions to write to /home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/quin/folder/.claude/skills/eden-s…\n\n⏺ I wasn't allowed to create `.claude/skills/eden-soul`, so I'll skip that copy. `SKILL.md` is already in the folder. Next I'll read it.\n\n⏺ Read(/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/quin/folder/SKILL.md)\n  ⎿  1\t---\n\n⏺ Bash(node eden.mjs register http://127.0.0.1:4993/w/pt-eden-basics)\n  ⎿  {\n\n⏺ Bash(node eden.mjs create \"Quin\")\n  ⎿  {\n\n⏺ Bash(node eden.mjs status)\n  ⎿  {\n\n⏺ No approval link was needed, because the Soul is already paired. Next I'll start the listener.\n\n⏺ Bash(node eden.mjs listen)\n  ⎿  Command running in background with ID: bpe9i6dox. Output is being written to: /tmp/claude-1000/-home-gene-souls-playtest-results-saturn-real2-20261107--satur…\n\n⏺ Bash(node eden.mjs here)\n  ⎿  {\n\n⏺ Bash(node eden.mjs act wave:here --wait)\n  ⎿  {\n\n⏺ Quin is ready. The Soul exists, it's paired to this folder, and it already waved hello in the world.\n\n- **Name:** Quin (Soul id `s_46d43d3d1a`). You can rename it any time with `node eden.mjs profile name \"<new name>\"`.\n- **Control:** this folder controls Quin. `create` returned `paired: true` straight away, so there was no approval link to show you and no sign-in step.\n- **Where Quin is:** The Commons in Pt Eden Basics, standing next to another Soul called Pip. I made Quin wave and the world confirmed it completed.\n- **Listening:** a listener is running in the background. You can steer Quin by messaging its card on the world page, or by opening a chat in this folder and telling me what to do. Quin stands still when no chat is open.\n- **Skipped step:** I wasn't allowed to create `.claude/skills/eden-soul/`, so the skill file isn't copied there. `SKILL.md` is in this folder, and I read it. If you want the copy, grant that permission and I'll make it.\n- **Status oddity:** `status` showed the link as `disconnected` with reason `approved-waiting` until the listener started. I didn't recheck it afterwards.\n",
+ "lastRequests": [],
+ "sourceScreenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/159802.jpg"
+}

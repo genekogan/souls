@@ -1,0 +1,2047 @@
+{
+ "requestId": "pip-002",
+ "seat": "pip",
+ "soulId": "s_a125852138",
+ "text": "sit down",
+ "channel": "chat",
+ "sentAt": "2026-11-07T06:14:36.886Z",
+ "budgetSec": 60,
+ "queuedSec": 0,
+ "budgetStartAt": "2026-11-07T06:14:36.886Z",
+ "ackAt": null,
+ "ackText": null,
+ "resultAt": null,
+ "resultText": null,
+ "resultState": null,
+ "resultBy": null,
+ "firstResultAt": null,
+ "firstResultText": null,
+ "cardResults": [],
+ "cutoffAt": "2026-11-07T06:15:57.553Z",
+ "cutoffReason": "budget",
+ "samples": [
+  {
+   "t": "2026-11-07T06:14:37.480Z",
+   "mono": 338790,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 6700,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "standing",
+   "activity": "idle",
+   "doing": "standing around",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.09159722219863,
+    "hunger": 26.20375000000947,
+    "company": 41.646874999993955,
+    "restlessness": 27.255625000000013
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794031914711,
+   "lastReceipt": {
+    "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+    "soulId": "s_a125852138",
+    "capability": "walk:commons-pavilion",
+    "phase": "completed",
+    "acceptedTick": 3445,
+    "startedTick": 3445,
+    "endedTick": 3619,
+    "code": null,
+    "reason": null,
+    "chosen": {
+     "capability": "walk:commons-pavilion",
+     "target": "g-commons-pavilion",
+     "kind": "place",
+     "place": "g-commons-pavilion"
+    },
+    "endedAt": {
+     "place": "g-commons-pavilion.pavilion",
+     "placePath": [
+      "Sheltered deck",
+      "Commons Pavilion",
+      "The Commons",
+      "Green field",
+      "World"
+     ],
+     "pos": [
+      9,
+      -5
+     ],
+     "heading": 85,
+     "posture": "standing"
+    }
+   },
+   "receipts": [
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032072240
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 6700,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "standing around",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 7
+   }
+  },
+  {
+   "t": "2026-11-07T06:14:40.402Z",
+   "mono": 341711,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 6759,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.06708333330965,
+    "hunger": 26.26111111112067,
+    "company": 41.70833333332723,
+    "restlessness": 27.25472222222224
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032072240
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 6759,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 9
+   }
+  },
+  {
+   "t": "2026-11-07T06:14:50.200Z",
+   "mono": 351509,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 6956,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.20388888886602,
+    "hunger": 26.45263888889874,
+    "company": 41.91354166666038,
+    "restlessness": 26.652777777777878
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032072240
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 6956,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 6
+   }
+  },
+  {
+   "t": "2026-11-07T06:14:59.823Z",
+   "mono": 361133,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 7148,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.33722222220014,
+    "hunger": 26.63930555556569,
+    "company": 42.1135416666602,
+    "restlessness": 26.06611111111129
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032072240
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 7148,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 9
+   }
+  },
+  {
+   "t": "2026-11-07T06:15:13.321Z",
+   "mono": 374631,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 7417,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.5240277777568,
+    "hunger": 26.90083333334387,
+    "company": 42.393749999993275,
+    "restlessness": 25.244166666666956
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032072240
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 7417,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 8
+   }
+  },
+  {
+   "t": "2026-11-07T06:15:23.744Z",
+   "mono": 385054,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 7626,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.66916666664655,
+    "hunger": 27.104027777788623,
+    "company": 42.61145833332641,
+    "restlessness": 24.60555555555593
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "sit-ground"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032122328
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 7626,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 9
+   }
+  },
+  {
+   "t": "2026-11-07T06:15:36.401Z",
+   "mono": 397710,
+   "soulId": "s_a125852138",
+   "name": "Pip",
+   "tick": 7879,
+   "place": "g-commons-pavilion.pavilion",
+   "placePath": [
+    "Sheltered deck",
+    "Commons Pavilion",
+    "The Commons",
+    "Green field",
+    "World"
+   ],
+   "pos": {
+    "x": 10.2,
+    "z": -5.0415478515625,
+    "region": "field",
+    "src": "owner"
+   },
+   "posture": "seated",
+   "activity": "sit-ground",
+   "doing": "Sit on the ground",
+   "mood": "curious",
+   "needs": {
+    "energy": 74.84486111109203,
+    "hunger": 27.35000000001122,
+    "company": 42.87499999999284,
+    "restlessness": 23.83250000000048
+   },
+   "near": [
+    {
+     "id": "h_46d43d3d1a",
+     "who": "Quin",
+     "distance": "here",
+     "doing": "idle"
+    },
+    {
+     "id": "e_238d3969",
+     "who": "Commons Pavilion",
+     "distance": "here",
+     "doing": null
+    },
+    {
+     "id": "e_0962d20b",
+     "who": "oak 1",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "festival-balloon",
+     "who": "festival balloon",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_0a5602c0",
+     "who": "bedroom lamp",
+     "distance": "near",
+     "doing": null
+    },
+    {
+     "id": "e_4efe3be8",
+     "who": "bedroom wardrobe",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_a052ee86",
+     "who": "bedroom rug",
+     "distance": "far",
+     "doing": null
+    },
+    {
+     "id": "e_3ba7f2fd",
+     "who": "kitchen counter",
+     "distance": "far",
+     "doing": null
+    }
+   ],
+   "holding": null,
+   "following": null,
+   "riding": null,
+   "fade": {
+    "colour": "green",
+    "idleSeconds": 0
+   },
+   "lastAcceptedAt": 1794032079486,
+   "lastReceipt": {
+    "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+    "soulId": "s_a125852138",
+    "capability": "sit:here",
+    "phase": "started",
+    "acceptedTick": 6740,
+    "startedTick": 6740,
+    "endedTick": null,
+    "code": null,
+    "reason": null,
+    "body": {
+     "posture": "seated",
+     "activity": "sit-ground",
+     "on": null,
+     "inWater": false
+    },
+    "now": "sitting; not finished yet"
+   },
+   "receipts": [
+    {
+     "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+     "soulId": "s_a125852138",
+     "capability": "sit:here",
+     "phase": "started",
+     "acceptedTick": 6740,
+     "startedTick": 6740,
+     "endedTick": null,
+     "code": null,
+     "reason": null,
+     "body": {
+      "posture": "seated",
+      "activity": "sit-ground",
+      "on": null,
+      "inWater": false
+     },
+     "now": "sitting; not finished yet"
+    },
+    {
+     "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+     "soulId": "s_a125852138",
+     "capability": "walk:commons-pavilion",
+     "phase": "completed",
+     "acceptedTick": 3445,
+     "startedTick": 3445,
+     "endedTick": 3619,
+     "code": null,
+     "reason": null,
+     "chosen": {
+      "capability": "walk:commons-pavilion",
+      "target": "g-commons-pavilion",
+      "kind": "place",
+      "place": "g-commons-pavilion"
+     },
+     "endedAt": {
+      "place": "g-commons-pavilion.pavilion",
+      "placePath": [
+       "Sheltered deck",
+       "Commons Pavilion",
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       9,
+       -5
+      ],
+      "heading": 85,
+      "posture": "standing"
+     }
+    },
+    {
+     "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+     "soulId": "s_a125852138",
+     "capability": "wave:here",
+     "phase": "completed",
+     "acceptedTick": 399,
+     "startedTick": 399,
+     "endedTick": 460,
+     "code": null,
+     "reason": null,
+     "endedAt": {
+      "place": "g-commons",
+      "placePath": [
+       "The Commons",
+       "Green field",
+       "World"
+      ],
+      "pos": [
+       0,
+       0
+      ],
+      "heading": 90,
+      "posture": "standing"
+     }
+    }
+   ],
+   "agent": {
+    "attached": true,
+    "label": "eden 2.14.0",
+    "lastUsed": 1794032122328
+   },
+   "inbox": {
+    "presence": "listening",
+    "connected": true,
+    "queued": 0,
+    "latest": null
+   },
+   "world": {
+    "tick": 7879,
+    "souls": [
+     {
+      "id": "h_a125852138",
+      "name": "Pip",
+      "doing": "Sit on the ground",
+      "region": "grounds"
+     },
+     {
+      "id": "h_46d43d3d1a",
+      "name": "Quin",
+      "doing": "standing around",
+      "region": "grounds"
+     }
+    ]
+   },
+   "http": {
+    "public": 200,
+    "owner": 200,
+    "inbox": 200,
+    "world": 200,
+    "ms": 9
+   }
+  }
+ ],
+ "receipts": [
+  {
+   "id": "r_38285a5d-4d97-4d11-b59b-905049448008",
+   "soulId": "s_a125852138",
+   "capability": "walk:commons-pavilion",
+   "phase": "completed",
+   "acceptedTick": 3445,
+   "startedTick": 3445,
+   "endedTick": 3619,
+   "code": null,
+   "reason": null,
+   "chosen": {
+    "capability": "walk:commons-pavilion",
+    "target": "g-commons-pavilion",
+    "kind": "place",
+    "place": "g-commons-pavilion"
+   },
+   "endedAt": {
+    "place": "g-commons-pavilion.pavilion",
+    "placePath": [
+     "Sheltered deck",
+     "Commons Pavilion",
+     "The Commons",
+     "Green field",
+     "World"
+    ],
+    "pos": [
+     9,
+     -5
+    ],
+    "heading": 85,
+    "posture": "standing"
+   }
+  },
+  {
+   "id": "r_f8014730-f202-4545-bed3-0fed422f5bbe",
+   "soulId": "s_a125852138",
+   "capability": "wave:here",
+   "phase": "completed",
+   "acceptedTick": 399,
+   "startedTick": 399,
+   "endedTick": 460,
+   "code": null,
+   "reason": null,
+   "endedAt": {
+    "place": "g-commons",
+    "placePath": [
+     "The Commons",
+     "Green field",
+     "World"
+    ],
+    "pos": [
+     0,
+     0
+    ],
+    "heading": 90,
+    "posture": "standing"
+   }
+  },
+  {
+   "id": "r_8f46646c-b143-4155-aa13-d5c2bc23982e",
+   "soulId": "s_a125852138",
+   "capability": "sit:here",
+   "phase": "started",
+   "acceptedTick": 6740,
+   "startedTick": 6740,
+   "endedTick": null,
+   "code": null,
+   "reason": null,
+   "body": {
+    "posture": "seated",
+    "activity": "sit-ground",
+    "on": null,
+    "inWater": false
+   },
+   "now": "sitting; not finished yet"
+  }
+ ],
+ "shots": [
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/198992.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/201918.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/211712.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/221335.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/234833.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/245256.jpg",
+  "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/257913.jpg"
+ ],
+ "chatTurns": [
+  3
+ ],
+ "legible": [
+  {
+   "t": "2026-11-07T06:14:48.190Z",
+   "mono": 349499,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Standing around",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nStanding around\nQuin\nLive\nSat 8:13 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:14:59.314Z",
+   "mono": 360623,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:13 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:15:11.310Z",
+   "mono": 372620,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:17 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:15:23.235Z",
+   "mono": 384544,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:21 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:15:34.388Z",
+   "mono": 395697,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:27 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:15:46.440Z",
+   "mono": 407749,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:30 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  },
+  {
+   "t": "2026-11-07T06:15:57.553Z",
+   "mono": 418862,
+   "card": {
+    "name": "Pip",
+    "presence": null,
+    "presenceState": null,
+    "chip": null,
+    "fade": "Connected",
+    "doing": null,
+    "energy": null,
+    "following": true,
+    "followButton": true,
+    "sent": null,
+    "messageState": null,
+    "stateText": null,
+    "ack": null,
+    "result": null,
+    "replies": [],
+    "error": null,
+    "thread": null,
+    "view": "card"
+   },
+   "bubbles": [
+    {
+     "soulId": "s_a125852138",
+     "name": "Pip",
+     "line": "Sit on the ground",
+     "card": null,
+     "chip": null
+    },
+    {
+     "soulId": "s_46d43d3d1a",
+     "name": "Quin",
+     "line": "Standing around",
+     "card": null,
+     "chip": null
+    }
+   ],
+   "signs": [],
+   "toasts": [],
+   "roster": [
+    "Open Pip (connected)",
+    "New Soul"
+   ],
+   "arrival": null,
+   "newSoul": true,
+   "viewer": {
+    "mode": "follow",
+    "selection": "s_a125852138",
+    "presentation": "live",
+    "following": "Following Pip"
+   },
+   "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nSit on the ground\nQuin\nLive\nSat 8:36 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+  }
+ ],
+ "firstBodyChangeAt": "2026-11-07T06:14:40.402Z",
+ "firstBodyChangeMono": 341711,
+ "serverErrors": 0,
+ "cost": {},
+ "cardSeen": {
+  "ackAt": null,
+  "resultAt": null
+ },
+ "omitted": []
+}

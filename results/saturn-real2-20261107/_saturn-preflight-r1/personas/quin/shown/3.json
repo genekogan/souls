@@ -1,0 +1,89 @@
+{
+ "elapsedSec": 232,
+ "screenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/personas/quin/shown/3.jpg",
+ "legible": {
+  "card": {
+   "name": "Quin",
+   "presence": null,
+   "presenceState": null,
+   "chip": null,
+   "fade": "Disconnected",
+   "doing": null,
+   "energy": null,
+   "following": false,
+   "followButton": false,
+   "sent": null,
+   "messageState": null,
+   "stateText": null,
+   "ack": null,
+   "result": null,
+   "replies": [],
+   "error": null,
+   "thread": null,
+   "view": "card"
+  },
+  "bubbles": [
+   {
+    "soulId": "s_a125852138",
+    "name": "Pip",
+    "line": "Sit on the ground",
+    "card": null,
+    "chip": null
+   },
+   {
+    "soulId": "s_46d43d3d1a",
+    "name": "Quin",
+    "line": "Sit on the ground",
+    "card": null,
+    "chip": null
+   }
+  ],
+  "signs": [],
+  "toasts": [],
+  "roster": [
+   "Open Quin (disconnected)",
+   "New Soul"
+  ],
+  "arrival": null,
+  "newSoul": true,
+  "viewer": {
+   "mode": "manual",
+   "selection": "s_46d43d3d1a",
+   "presentation": "live",
+   "following": null
+  },
+  "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-a3198ea9dbd43b1a7cc329d2. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nQuin\nSit on the ground\nLive\nSat 8:33 am\nFree\n⌄\nNew Soul\nD\n×\nQuin\n\nA new Soul.\n\nDisconnected · at Sheltered deck\n\nThe agent stopped listening.\n\nReconnect to Quin by prompting your agent:\n\nRead http://127.0.0.1:4993/w/pt-eden-basics/skill.md and resume my existing Soul \"Quin\" (ID \"s_46d43d3d1a\") in this folder. Do not create another Soul.\nIf this folder is not paired with it yet, run node eden.mjs pair \"s_46d43d3d1a\" (I approve it in my open Sim window or at the approval link); then start listening as the skill says.\n\nCopy prompt"
+ },
+ "cardView": {
+  "connected": false,
+  "lastSeenAt": 1794032051342,
+  "listenedAt": 1794032055726,
+  "latest": null,
+  "queued": 0,
+  "presence": "away",
+  "link": {
+   "state": "disconnected",
+   "reason": "stopped-listening",
+   "since": 1794032115726,
+   "holder": {
+    "label": "eden 2.14.0",
+    "since": 1794031780352
+   }
+  },
+  "now": null
+ },
+ "chatRendered": "\n<!-- turn 3 (chat) 2026-11-07T06:14:07.130Z -->\n\n> sit down\n\n⏺ Bash(node eden.mjs listen)\n  ⎿  Command running in background with ID: bst4vida2. Output is being written to: /tmp/claude-1000/-home-gene-souls-playtest-results-saturn-real2-20261107--satur…\n\n⏺ Bash(node eden.mjs resolve \"sit down\")\n  ⎿  {\n\n⏺ Bash(node eden.mjs act sit:here --wait)\n  ⎿  {\n\n⏺ Quin is sitting on the ground on the pavilion's sheltered deck. The world reports the posture as seated, and the sit is still running. It will hold for the default 120 seconds. There was no free seat nearby, so it isn't on a bench or chair.\n\nThe earlier background listener had stopped again, so I restarted it.\n",
+ "lastRequests": [
+  {
+   "atSec": 34.7,
+   "channel": "chat",
+   "text": "walk over to the pavilion on the commons"
+  },
+  {
+   "atSec": 168.6,
+   "channel": "chat",
+   "text": "sit down"
+  }
+ ],
+ "sourceScreenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/371801.jpg"
+}

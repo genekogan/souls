@@ -1,0 +1,11 @@
+{
+ "identity": "agent-a3198ea9dbd43b1a7cc329d2",
+ "world": "http://127.0.0.1:4993/w/pt-eden-basics",
+ "accountAuth": false,
+ "token": "sim_s_46d43d3d1a_0W255KAsf-6aItRW9PwsVOgrNo9rwRxl",
+ "soul": "s_46d43d3d1a",
+ "lastReceipt": "r_b73fe888-8b20-47ca-9f48-03b07997fea9",
+ "lastActAt": "2026-11-07T06:15:33.123Z",
+ "cursor": "c_13",
+ "ownerMark": 1794032051338
+}

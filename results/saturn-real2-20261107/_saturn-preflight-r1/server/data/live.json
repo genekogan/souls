@@ -1,0 +1,1 @@
+{"v":1,"pid":1011781,"at":1794032209717,"phase":"stopping","loop":{"lastTurnAgeMs":0,"delayP99Ms":11},"heap":{"usedMb":98,"limitMb":4144,"gcPct10s":0.1},"level":"green","shed":{"reads":0,"acts":0},"tick":{"world":9341,"service5s":1,"p99Ms":5,"quietAvgMs":0.7},"queue":{"depth":0,"oldestMs":0},"souls":{"awake":2,"waiting":0,"connected":2}}

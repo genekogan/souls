@@ -1,0 +1,3 @@
+{"t":"2026-11-07T06:11:51.795Z","mono":173104,"elapsedSec":33.304,"seat":"pip","mode":"scripted","step":1,"scripted":{"atSec":20,"channel":"chat","text":"walk over to the pavilion on the commons","budgetSec":120},"delivered":{"requestId":"pip-001","channel":"chat","messageId":null}}
+{"t":"2026-11-07T06:14:36.886Z","mono":338195,"elapsedSec":198.395,"seat":"pip","mode":"scripted","step":2,"scripted":{"atSec":155,"channel":"chat","text":"sit down","budgetSec":60},"delivered":{"requestId":"pip-002","channel":"chat","messageId":null}}
+{"t":"2026-11-07T06:16:20.036Z","mono":441345,"elapsedSec":301.545,"seat":"pip","mode":"scripted","step":3,"scripted":{"atSec":230,"channel":"chat","text":"stand up","budgetSec":60},"delivered":{"skipped":"stopped"}}

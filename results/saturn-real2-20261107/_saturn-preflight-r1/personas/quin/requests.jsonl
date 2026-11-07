@@ -1,0 +1,3 @@
+{"t":"2026-11-07T06:13:54.766Z","mono":296075,"requestId":"quin-001","cutoffReason":"budget","openSec":121.535}
+{"t":"2026-11-07T06:15:08.801Z","mono":370110,"requestId":"quin-002","cutoffReason":"budget","openSec":61.671}
+{"t":"2026-11-07T06:16:39.240Z","mono":460549,"requestId":"quin-003","cutoffReason":"run-end","openSec":69.665}

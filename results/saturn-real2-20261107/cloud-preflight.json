@@ -1,0 +1,53 @@
+{
+ "ok": true,
+ "allow": {
+  "allowed": true,
+  "note": "quota check skipped: /nonexistent not present on this machine"
+ },
+ "checks": {
+  "quota": {
+   "ok": false,
+   "skipped": true,
+   "fiveH": null,
+   "week": null,
+   "fable": null,
+   "note": "quota check skipped: /nonexistent not present on this machine"
+  },
+  "serverRoot": true,
+  "webDist": true,
+  "controllerCli": true,
+  "playwright": "server root mars/viewer",
+  "claude": "2.1.319 (Claude Code)",
+  "codex": null,
+  "providersOk": true,
+  "live": {
+   "eden-2026": {
+    "ok": true,
+    "build": "we-5b38c31921c6",
+    "tickMs": {
+     "avg": 5.6,
+     "max": 50.6,
+     "n": 263
+    },
+    "clients": 0
+   },
+   "godmode-lab": {
+    "ok": true,
+    "build": "we-5b38c31921c6",
+    "tickMs": {
+     "avg": 55.1,
+     "max": 55.1,
+     "n": 1
+    },
+    "clients": 0
+   }
+  },
+  "laptopLoad": [
+   0.4,
+   0.5,
+   0.3
+  ],
+  "freeGb": 119.1,
+  "machineOk": true
+ }
+}

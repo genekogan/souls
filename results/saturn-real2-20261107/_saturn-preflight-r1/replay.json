@@ -1,0 +1,382 @@
+{
+ "version": 1,
+ "kind": "playtest-replay",
+ "run": "_saturn-preflight-r1",
+ "seed": 77,
+ "scenario": {
+  "name": "basics-walk-act-1",
+  "version": 1,
+  "seed": 77,
+  "world": {
+   "kind": "dev",
+   "genesis": "worlds/templates/eden-district.json",
+   "slug": "pt-eden-basics",
+   "port": 4993
+  },
+  "durationSec": 300,
+  "seats": [
+   {
+    "id": "pip",
+    "adapter": "claude-headless",
+    "model": "sonnet",
+    "effort": "medium",
+    "persona": "expert",
+    "personaModel": "opus",
+    "startOffsetSec": 0,
+    "soulName": "Pip",
+    "channelMix": {
+     "chat": 1,
+     "card": 0
+    }
+   },
+   {
+    "id": "quin",
+    "adapter": "claude-headless",
+    "model": "sonnet",
+    "effort": "medium",
+    "persona": "expert",
+    "personaModel": "opus",
+    "startOffsetSec": 0,
+    "soulName": "Quin",
+    "channelMix": {
+     "chat": 1,
+     "card": 0
+    },
+    "wake": false
+   }
+  ],
+  "god": null,
+  "director": {
+   "mode": "scripted",
+   "requestsTarget": 12,
+   "glanceSec": [
+    10,
+    30
+   ],
+   "goal": "basics: walking and acting reliability",
+   "script": [
+    {
+     "seat": "pip",
+     "atSec": 20,
+     "channel": "chat",
+     "text": "walk over to the pavilion on the commons",
+     "budgetSec": 120
+    },
+    {
+     "seat": "pip",
+     "atSec": 155,
+     "channel": "chat",
+     "text": "sit down",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 230,
+     "channel": "chat",
+     "text": "stand up",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 305,
+     "channel": "chat",
+     "text": "wave",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 380,
+     "channel": "chat",
+     "text": "go to the library",
+     "budgetSec": 150
+    },
+    {
+     "seat": "pip",
+     "atSec": 545,
+     "channel": "chat",
+     "text": "lie down",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 620,
+     "channel": "chat",
+     "text": "stand up",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 695,
+     "channel": "chat",
+     "text": "dance for twenty seconds",
+     "budgetSec": 60
+    },
+    {
+     "seat": "pip",
+     "atSec": 770,
+     "channel": "chat",
+     "text": "go to the pond",
+     "budgetSec": 150
+    },
+    {
+     "seat": "pip",
+     "atSec": 935,
+     "channel": "chat",
+     "text": "go inside house 2, into the kitchen",
+     "budgetSec": 150
+    },
+    {
+     "seat": "pip",
+     "atSec": 1100,
+     "channel": "chat",
+     "text": "come back to the commons",
+     "budgetSec": 150
+    },
+    {
+     "seat": "pip",
+     "atSec": 1265,
+     "channel": "chat",
+     "text": "go stand under oak 1",
+     "budgetSec": 150
+    },
+    {
+     "seat": "quin",
+     "atSec": 20,
+     "channel": "chat",
+     "text": "walk over to the pavilion on the commons",
+     "budgetSec": 120
+    },
+    {
+     "seat": "quin",
+     "atSec": 155,
+     "channel": "chat",
+     "text": "sit down",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 230,
+     "channel": "chat",
+     "text": "stand up",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 305,
+     "channel": "chat",
+     "text": "wave",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 380,
+     "channel": "chat",
+     "text": "go to the library",
+     "budgetSec": 150
+    },
+    {
+     "seat": "quin",
+     "atSec": 545,
+     "channel": "chat",
+     "text": "lie down",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 620,
+     "channel": "chat",
+     "text": "stand up",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 695,
+     "channel": "chat",
+     "text": "dance for twenty seconds",
+     "budgetSec": 60
+    },
+    {
+     "seat": "quin",
+     "atSec": 770,
+     "channel": "chat",
+     "text": "go to the pond",
+     "budgetSec": 150
+    },
+    {
+     "seat": "quin",
+     "atSec": 935,
+     "channel": "chat",
+     "text": "go inside house 2, into the kitchen",
+     "budgetSec": 150
+    },
+    {
+     "seat": "quin",
+     "atSec": 1100,
+     "channel": "chat",
+     "text": "come back to the commons",
+     "budgetSec": 150
+    },
+    {
+     "seat": "quin",
+     "atSec": 1265,
+     "channel": "chat",
+     "text": "go stand under oak 1",
+     "budgetSec": 150
+    }
+   ],
+   "budgetSec": {
+    "quick": 60,
+    "default": 150
+   }
+  },
+  "observer": {
+   "sampleSec": 5,
+   "cameras": [
+    "follow"
+   ],
+   "viewport": [
+    1024,
+    640
+   ],
+   "dpr": 1,
+   "gpu": "metal"
+  },
+  "review": {
+   "reviewerModel": "sonnet",
+   "developerModel": "opus",
+   "rubric": "accept3",
+   "developerMaxIssues": 4,
+   "developerMaxFeatureRequests": 2,
+   "developer": false
+  },
+  "rails": {
+   "maxTurnsPerRequest": 6,
+   "maxTurnWallSec": 480,
+   "quotaStopPct": 90,
+   "onboardWallSec": 600,
+   "onboardTimeoutSec": 540
+  },
+  "notes": "Frozen basics battery (Gene 2026-10-25: basic walking and acting must be reliable above all). Same 12 requests to a Claude seat and a Codex seat, chat channel, oracle-scored; reported first in every REPORT as the basics scorecard.",
+  "maxWallSec": 420,
+  "serverRoot": "/home/gene/souls-playtest/server",
+  "scenarioPath": "/home/gene/souls-playtest/playtest/tools/playtest/scenarios/_saturn-preflight.json",
+  "scenarioSha256": "ade4b303b7fefc51e9094518240cff19e76674f88a7a3723d8f484c3b1c51fc6"
+ },
+ "personas": {
+  "pip": {
+   "sheet": "expert",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "quin": {
+   "sheet": "expert",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+ },
+ "world": {
+  "kind": "dev",
+  "slug": "pt-eden-basics",
+  "genesis": "worlds/templates/eden-district.json",
+  "fork": null,
+  "build": "dev",
+  "skill": {
+   "version": "2.9.3",
+   "sha256": "4a55c9b51442917ac2164942d0ec38aa67326da66c1203947d7804ada53c74e4"
+  },
+  "cli": {
+   "eden.mjs": "359c1225a551faa0fabfa175f93a936f3ad9dc40d1e04a37389ad82536559328",
+   "eden.mjs.version": "2.14.0",
+   "eden-agent.mjs": "5a09e2f5885698acac4a9834fe65ea962f724423cabcd061e452af782cc17058",
+   "eden-god.mjs": "8d50a5186e8d1542c268f7d6ff18e97e513eb01d07eb44dbe4253a682085364b"
+  }
+ },
+ "build": "dev",
+ "adapters": [
+  {
+   "seat": "pip",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "personaModel": "opus",
+   "soulId": "s_a125852138"
+  },
+  {
+   "seat": "quin",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "personaModel": "opus",
+   "soulId": "s_46d43d3d1a"
+  }
+ ],
+ "review": {
+  "reviewerModel": "sonnet",
+  "developerModel": "opus",
+  "rubric": {
+   "file": "tools/playtest/review/RUBRIC.md",
+   "sha256": "aede404f03529fa4107e48f0edfdeebdfd168b17deb2e39366ed4db38a3b8be2"
+  },
+  "oracles": [
+   "ack-latency",
+   "result-sent",
+   "listen-open",
+   "arrival",
+   "posture",
+   "duration-held",
+   "inside-solid",
+   "no-progress",
+   "oscillation",
+   "stuck-receipt",
+   "truthfulness-basic",
+   "vocabulary",
+   "duplicate-acts",
+   "server-errors",
+   "first-body-change"
+  ]
+ },
+ "requests": [
+  {
+   "requestId": "pip-001",
+   "seat": "pip",
+   "channel": "chat",
+   "text": "walk over to the pavilion on the commons",
+   "sendOffsetSec": 117.297,
+   "budgetSec": 120
+  },
+  {
+   "requestId": "quin-001",
+   "seat": "quin",
+   "channel": "chat",
+   "text": "walk over to the pavilion on the commons",
+   "sendOffsetSec": 118.734,
+   "budgetSec": 120
+  },
+  {
+   "requestId": "quin-002",
+   "seat": "quin",
+   "channel": "chat",
+   "text": "sit down",
+   "sendOffsetSec": 252.633,
+   "budgetSec": 60
+  },
+  {
+   "requestId": "pip-002",
+   "seat": "pip",
+   "channel": "chat",
+   "text": "sit down",
+   "sendOffsetSec": 282.389,
+   "budgetSec": 60
+  },
+  {
+   "requestId": "quin-003",
+   "seat": "quin",
+   "channel": "chat",
+   "text": "stand up",
+   "sendOffsetSec": 335.078,
+   "budgetSec": 60
+  }
+ ],
+ "decisionLog": {
+  "pip": [],
+  "quin": []
+ }
+}

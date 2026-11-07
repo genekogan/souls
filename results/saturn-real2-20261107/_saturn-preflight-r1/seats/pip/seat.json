@@ -1,0 +1,30 @@
+{
+ "id": "pip",
+ "kind": "soul",
+ "adapter": "claude-headless",
+ "model": "sonnet",
+ "effort": "medium",
+ "soulName": "Pip",
+ "worldBase": "http://127.0.0.1:4993/w/pt-eden-basics",
+ "folder": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/pip/folder",
+ "createdAt": "2026-11-07T06:09:03.383Z",
+ "sessionId": "4a2fc801-c617-4a4a-8ecf-523fffe31de1",
+ "soulId": "s_a125852138",
+ "ownerIdentity": "agent-6536bef4bf45ea22399194ad",
+ "assisted": false,
+ "wake": true,
+ "sessionCostUsd": {
+  "4a2fc801-c617-4a4a-8ecf-523fffe31de1": 0.13506780000000002
+ },
+ "sessionContextTokens": 30240,
+ "effortApplied": true,
+ "onboard": {
+  "ok": true,
+  "pairedWithinSec": 18,
+  "timeoutSec": 540,
+  "onboardTurnWallMs": 28230,
+  "attempts": 1,
+  "cliFile": "eden.mjs",
+  "lastStatus": null
+ }
+}

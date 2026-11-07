@@ -1,0 +1,201 @@
+[
+ {
+  "id": "I-1",
+  "title": "Asked to sit down: Soul sat on the ground but its label and reply lagged or were missing",
+  "asked": "sit down",
+  "happened": "The Soul sat on the ground about 4 seconds after the request and stayed seated for the rest of the minute. The chat showed only the player's message and no reply from the agent. The Soul's label above its head still said 'Standing around' for roughly 30 seconds, then changed to 'Sit on the ground'. The other Soul's label also changed to 'Sit on the ground' near the end.",
+  "expected": "The Soul sits down, and the label and chat agree with what the Soul is doing. A short confirmation appears in the chat.",
+  "whereWhen": "Commons Pavilion, within the first minute after the request, in chat",
+  "frequency": "Once, in this request",
+  "requestIds": [
+   "quin-002"
+  ],
+  "seat": "quin",
+  "fidelity": "P",
+  "class": "O3",
+  "inputDepth": "realistic",
+  "noticedByPlayer": true,
+  "sessionCount": 1,
+  "earlierSessions": [],
+  "evidence": [
+   "samples at 4.4 s, 27.1 s and 48.7 s: seated, sit-ground",
+   "legible bubbles at 26.6 s: Quin 'Standing around'; at 37.6 s: 'Sit on the ground'",
+   "chat transcript: no reply shown to the player",
+   "screenshots shots/quin/172309.jpg, 173046.jpg, 186161.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/172309.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/173046.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/186161.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/195724.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/217386.jpg"
+  ],
+  "repro": {
+   "name": "repro-basics-walk-act-1-quin-002",
+   "version": 1,
+   "world": {
+    "kind": "dev",
+    "genesis": "worlds/templates/eden-district.json",
+    "slug": "pt-eden-basics",
+    "port": 4993
+   },
+   "durationSec": 90,
+   "seats": [
+    {
+     "id": "quin",
+     "adapter": "claude-headless",
+     "model": "sonnet",
+     "effort": "medium",
+     "persona": "expert",
+     "personaModel": "opus",
+     "startOffsetSec": 0,
+     "soulName": "Quin",
+     "channelMix": {
+      "chat": 1,
+      "card": 0
+     },
+     "wake": false
+    }
+   ],
+   "god": null,
+   "director": {
+    "mode": "scripted",
+    "script": [
+     {
+      "seat": "quin",
+      "atSec": 5,
+      "channel": "chat",
+      "text": "sit down",
+      "budgetSec": 60
+     }
+    ]
+   },
+   "observer": {
+    "sampleSec": 5,
+    "cameras": [
+     "follow"
+    ],
+    "viewport": [
+     1024,
+     640
+    ],
+    "dpr": 1,
+    "gpu": "metal"
+   },
+   "review": {
+    "reviewerModel": "sonnet",
+    "developerModel": "opus",
+    "rubric": "accept3",
+    "developerMaxIssues": 4,
+    "developerMaxFeatureRequests": 2,
+    "developer": false
+   },
+   "rails": {
+    "maxTurnsPerRequest": 6,
+    "maxTurnWallSec": 480,
+    "quotaStopPct": 90,
+    "onboardWallSec": 600,
+    "onboardTimeoutSec": 540
+   }
+  },
+  "leaked": false
+ },
+ {
+  "id": "I-2",
+  "title": "Pip sat on the bare ground instead of a seat",
+  "asked": "sit down",
+  "happened": "Pip sat on the ground of the pavilion's sheltered deck. The chat reply said Pip was seated 'on the ground rather than on a seat'. The sit receipt stayed 'started' and the speech bubble read 'Sit on the ground'.",
+  "expected": "Pip sits down on a seat or bench at the pavilion, or otherwise sits in a way that makes sense for the spot.",
+  "whereWhen": "Commons Pavilion, sheltered deck, from about 3.5 s after the request until the end of the observation window (about 80 s).",
+  "frequency": "Once in this session.",
+  "requestIds": [
+   "pip-002"
+  ],
+  "seat": "pip",
+  "fidelity": "P",
+  "class": "O2",
+  "inputDepth": "realistic",
+  "noticedByPlayer": true,
+  "sessionCount": 1,
+  "earlierSessions": [],
+  "evidence": [
+   "chat reply: 'seated, on the ground rather than on a seat'",
+   "samples at 13.3 s, 36.4 s and 59.5 s: posture seated, activity sit-ground, on: null",
+   "bubble 'Sit on the ground' at 46.3 s to 80.7 s",
+   "screenshots shots/pip/198992.jpg, 201918.jpg and 211712.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/198992.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/201918.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/211712.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/221335.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/234833.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/245256.jpg",
+   "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/257913.jpg"
+  ],
+  "repro": {
+   "name": "repro-basics-walk-act-1-pip-002",
+   "version": 1,
+   "world": {
+    "kind": "dev",
+    "genesis": "worlds/templates/eden-district.json",
+    "slug": "pt-eden-basics",
+    "port": 4993
+   },
+   "durationSec": 90,
+   "seats": [
+    {
+     "id": "pip",
+     "adapter": "claude-headless",
+     "model": "sonnet",
+     "effort": "medium",
+     "persona": "expert",
+     "personaModel": "opus",
+     "startOffsetSec": 0,
+     "soulName": "Pip",
+     "channelMix": {
+      "chat": 1,
+      "card": 0
+     }
+    }
+   ],
+   "god": null,
+   "director": {
+    "mode": "scripted",
+    "script": [
+     {
+      "seat": "pip",
+      "atSec": 5,
+      "channel": "chat",
+      "text": "sit down",
+      "budgetSec": 60
+     }
+    ]
+   },
+   "observer": {
+    "sampleSec": 5,
+    "cameras": [
+     "follow"
+    ],
+    "viewport": [
+     1024,
+     640
+    ],
+    "dpr": 1,
+    "gpu": "metal"
+   },
+   "review": {
+    "reviewerModel": "sonnet",
+    "developerModel": "opus",
+    "rubric": "accept3",
+    "developerMaxIssues": 4,
+    "developerMaxFeatureRequests": 2,
+    "developer": false
+   },
+   "rails": {
+    "maxTurnsPerRequest": 6,
+    "maxTurnWallSec": 480,
+    "quotaStopPct": 90,
+    "onboardWallSec": 600,
+    "onboardTimeoutSec": 540
+   }
+  },
+  "leaked": false
+ }
+]

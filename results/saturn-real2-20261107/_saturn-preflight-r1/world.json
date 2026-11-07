@@ -1,0 +1,27 @@
+{
+ "fixture": null,
+ "base": "http://127.0.0.1:4993/w/pt-eden-basics",
+ "pid": 1011781,
+ "build": "dev",
+ "bootMs": 2576,
+ "dataDir": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/server/data",
+ "marsWebDir": "/home/gene/souls-playtest/mars-web",
+ "kind": "dev",
+ "slug": "pt-eden-basics",
+ "port": 4993,
+ "skill": {
+  "version": "2.9.3",
+  "sha256": "4a55c9b51442917ac2164942d0ec38aa67326da66c1203947d7804ada53c74e4"
+ },
+ "cli": {
+  "eden.mjs": "359c1225a551faa0fabfa175f93a936f3ad9dc40d1e04a37389ad82536559328",
+  "eden.mjs.version": "2.14.0",
+  "eden-agent.mjs": "5a09e2f5885698acac4a9834fe65ea962f724423cabcd061e452af782cc17058",
+  "eden-god.mjs": "8d50a5186e8d1542c268f7d6ff18e97e513eb01d07eb44dbe4253a682085364b"
+ },
+ "instructions": {
+  "sha256": "77f45e168d5161755889e2687c36482e8b85093d8c180bb66dcc254216a3b3e1",
+  "mentionsEdenMjs": true
+ },
+ "startedAt": "2026-11-07T06:09:03.124Z"
+}

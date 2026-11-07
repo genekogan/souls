@@ -1,0 +1,21 @@
+{
+ "step": "play",
+ "t": "2026-11-07T06:16:39.241Z",
+ "mono": 460550,
+ "ok": true,
+ "stoppedBy": "duration",
+ "elapsedSec": 320.75,
+ "mode": "scripted",
+ "seats": {
+  "pip": {
+   "steps": 3,
+   "requests": 2,
+   "pendingChatTurns": 0
+  },
+  "quin": {
+   "steps": 3,
+   "requests": 3,
+   "pendingChatTurns": 0
+  }
+ }
+}

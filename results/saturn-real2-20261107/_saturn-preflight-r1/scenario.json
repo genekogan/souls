@@ -1,0 +1,259 @@
+{
+ "name": "basics-walk-act-1",
+ "version": 1,
+ "seed": 77,
+ "world": {
+  "kind": "dev",
+  "genesis": "worlds/templates/eden-district.json",
+  "slug": "pt-eden-basics",
+  "port": 4993
+ },
+ "durationSec": 300,
+ "seats": [
+  {
+   "id": "pip",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "persona": "expert",
+   "personaModel": "opus",
+   "startOffsetSec": 0,
+   "soulName": "Pip",
+   "channelMix": {
+    "chat": 1,
+    "card": 0
+   }
+  },
+  {
+   "id": "quin",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "persona": "expert",
+   "personaModel": "opus",
+   "startOffsetSec": 0,
+   "soulName": "Quin",
+   "channelMix": {
+    "chat": 1,
+    "card": 0
+   },
+   "wake": false
+  }
+ ],
+ "god": null,
+ "director": {
+  "mode": "scripted",
+  "requestsTarget": 12,
+  "glanceSec": [
+   10,
+   30
+  ],
+  "goal": "basics: walking and acting reliability",
+  "script": [
+   {
+    "seat": "pip",
+    "atSec": 20,
+    "channel": "chat",
+    "text": "walk over to the pavilion on the commons",
+    "budgetSec": 120
+   },
+   {
+    "seat": "pip",
+    "atSec": 155,
+    "channel": "chat",
+    "text": "sit down",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 230,
+    "channel": "chat",
+    "text": "stand up",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 305,
+    "channel": "chat",
+    "text": "wave",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 380,
+    "channel": "chat",
+    "text": "go to the library",
+    "budgetSec": 150
+   },
+   {
+    "seat": "pip",
+    "atSec": 545,
+    "channel": "chat",
+    "text": "lie down",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 620,
+    "channel": "chat",
+    "text": "stand up",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 695,
+    "channel": "chat",
+    "text": "dance for twenty seconds",
+    "budgetSec": 60
+   },
+   {
+    "seat": "pip",
+    "atSec": 770,
+    "channel": "chat",
+    "text": "go to the pond",
+    "budgetSec": 150
+   },
+   {
+    "seat": "pip",
+    "atSec": 935,
+    "channel": "chat",
+    "text": "go inside house 2, into the kitchen",
+    "budgetSec": 150
+   },
+   {
+    "seat": "pip",
+    "atSec": 1100,
+    "channel": "chat",
+    "text": "come back to the commons",
+    "budgetSec": 150
+   },
+   {
+    "seat": "pip",
+    "atSec": 1265,
+    "channel": "chat",
+    "text": "go stand under oak 1",
+    "budgetSec": 150
+   },
+   {
+    "seat": "quin",
+    "atSec": 20,
+    "channel": "chat",
+    "text": "walk over to the pavilion on the commons",
+    "budgetSec": 120
+   },
+   {
+    "seat": "quin",
+    "atSec": 155,
+    "channel": "chat",
+    "text": "sit down",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 230,
+    "channel": "chat",
+    "text": "stand up",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 305,
+    "channel": "chat",
+    "text": "wave",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 380,
+    "channel": "chat",
+    "text": "go to the library",
+    "budgetSec": 150
+   },
+   {
+    "seat": "quin",
+    "atSec": 545,
+    "channel": "chat",
+    "text": "lie down",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 620,
+    "channel": "chat",
+    "text": "stand up",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 695,
+    "channel": "chat",
+    "text": "dance for twenty seconds",
+    "budgetSec": 60
+   },
+   {
+    "seat": "quin",
+    "atSec": 770,
+    "channel": "chat",
+    "text": "go to the pond",
+    "budgetSec": 150
+   },
+   {
+    "seat": "quin",
+    "atSec": 935,
+    "channel": "chat",
+    "text": "go inside house 2, into the kitchen",
+    "budgetSec": 150
+   },
+   {
+    "seat": "quin",
+    "atSec": 1100,
+    "channel": "chat",
+    "text": "come back to the commons",
+    "budgetSec": 150
+   },
+   {
+    "seat": "quin",
+    "atSec": 1265,
+    "channel": "chat",
+    "text": "go stand under oak 1",
+    "budgetSec": 150
+   }
+  ],
+  "budgetSec": {
+   "quick": 60,
+   "default": 150
+  }
+ },
+ "observer": {
+  "sampleSec": 5,
+  "cameras": [
+   "follow"
+  ],
+  "viewport": [
+   1024,
+   640
+  ],
+  "dpr": 1,
+  "gpu": "metal"
+ },
+ "review": {
+  "reviewerModel": "sonnet",
+  "developerModel": "opus",
+  "rubric": "accept3",
+  "developerMaxIssues": 4,
+  "developerMaxFeatureRequests": 2,
+  "developer": false
+ },
+ "rails": {
+  "maxTurnsPerRequest": 6,
+  "maxTurnWallSec": 480,
+  "quotaStopPct": 90,
+  "onboardWallSec": 600,
+  "onboardTimeoutSec": 540
+ },
+ "notes": "Frozen basics battery (Gene 2026-10-25: basic walking and acting must be reliable above all). Same 12 requests to a Claude seat and a Codex seat, chat channel, oracle-scored; reported first in every REPORT as the basics scorecard.",
+ "maxWallSec": 420,
+ "serverRoot": "/home/gene/souls-playtest/server",
+ "scenarioPath": "/home/gene/souls-playtest/playtest/tools/playtest/scenarios/_saturn-preflight.json",
+ "scenarioSha256": "ade4b303b7fefc51e9094518240cff19e76674f88a7a3723d8f484c3b1c51fc6"
+}

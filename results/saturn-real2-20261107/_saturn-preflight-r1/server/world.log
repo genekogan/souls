@@ -1,0 +1,25 @@
+[db] applied migrations 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+[boot] restore 13 ms from genesis tick 0 (snapshot read+decode 0 ms, 0 minds)
+[boot] replay 0 ms 0 ticks 0 events to tick 0 (0 ms/tick; recovery baseline 3 ms)
+[world] pt-eden-basics-1 booted from genesis, tick 0, replayed 0 events, 0 souls, rules sim-mars/1+mars-engine/1+mars-assembly/3+activities/31+bodies/1
+[auth] Privy not configured; logins disabled
+[god] entity world ready: 151 entities, 39 own defs + library core@d14d25c8edad1ab0 (869), owner (unclaimed)
+(node:1011781) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[bridge] boot: world-edit seq 0, 141 entities, 42.5 ms
+[boot] projection 479 ms initial physics coherent at tick 2
+[boot] prepare 3 ms serving caches at tick 2
+[http] listening on http://127.0.0.1:4993 (public http://127.0.0.1:4993), build dev, brain fake, budget $0.5/day, invites open
+[boot] listening 2.33 s after start: code 1.28, engine 0.02, the rest 0.94
+[boot] edge capability caches warm after listen: 0 ms: 0 slices (longest 0 ms) and the listing 0 ms, over 34 ms for 0 Souls from tick 2
+[bridge] built objects: 95 made, 0 changed (95 in all)
+[bridge] activity spots: 37 spots, 3 shelves in 6 ms
+[bridge] balloon ride installed: region-seaside-resort.ferris-wheel (ferris-wheel-once)
+[bridge] balloon ride installed: festival-balloon (ring-150)
+[activities] rowing punt installed: punt-e_4cfd1cac-c18204
+[activities] edge capability caches warm after listen: 0 ms: 0 slices (longest 0 ms) and the listing 0 ms, over 0 ms for 0 Souls from tick 243
+[portrait] render failed s_a125852138 ENOENT: no such file or directory, open '/home/gene/souls-playtest/server/mars/viewer/public/modular/humanoid/rig-masc.glb'
+[portrait] render failed s_46d43d3d1a ENOENT: no such file or directory, open '/home/gene/souls-playtest/server/mars/viewer/public/modular/humanoid/rig-fem.glb'
+[snapshot] SIGTERM: before draining: tick 9345 in 16 ms
+[world] SIGTERM: saving snapshot at tick 9345
+[world] SIGTERM: snapshot saved in 9 ms (capture 7, write 2)

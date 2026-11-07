@@ -1,0 +1,63 @@
+{
+ "version": 1,
+ "metric": {
+  "souls": 2,
+  "coLocation": {
+   "observed": 1,
+   "baseline": 0.8869126984126982,
+   "ratio": 1.127506688978175,
+   "radiusM": 5,
+   "binSec": 5,
+   "shuffles": 50,
+   "seed": 77
+  },
+  "conversations": {
+   "started": 0,
+   "accepted": 0,
+   "declined": 0,
+   "turns": 0,
+   "initiators": {}
+  },
+  "sharedActivities": {
+   "unprompted": 0,
+   "prompted": 0
+  },
+  "imitationWithin2min": 0,
+  "individuality": {
+   "perSoul": {
+    "s_a125852138": {
+     "places": 2,
+     "activityEntropyBits": 0.881
+    },
+    "s_46d43d3d1a": {
+     "places": 2,
+     "activityEntropyBits": 1.116
+    }
+   },
+   "meanActivityEntropyBits": 0.999
+  },
+  "chainsGe2": 0,
+  "chains": [],
+  "basis": {
+   "coLocation": "pairs within 5 m per 5s bin vs 50 seeded circular time shuffles",
+   "conversations": "receipts whose verb is talk/chat/converse/greet/say/speak",
+   "shared": "receipts with `with`, one per pair+verb+10 s; prompted when inside an owner request window whose text says together/with/join or names a partner",
+   "imitation": "another Soul started the same verb ≤ 120 s earlier and was within 10 m (or position unknown)",
+   "individuality": "distinct places and Shannon entropy of sampled activity labels",
+   "chains": "receipt B uses the object receipt A produced (produces/object/target.object/uses), length ≥ 2, object not named in any request"
+  }
+ },
+ "narrative": {
+  "storyRating": 2,
+  "strangerReading": "Two players, Pip and Quin, each give their own agent a few plain commands: walk to the pavilion on the commons, sit down, and (Quin only) stand up. In every case the character on screen does what was asked: both walk from the commons to the pavilion, both sit on the ground there, and Quin stands back up. The sequence is coherent and mirrors itself across the two seats. But the journal records no reply at all to any of the five requests, so the players only have the screen to confirm anything. Nothing surprising happens, there are no stakes, the two players never interact, there are no conversations or shared activities, and neither player leaves a rating or a wish. It reads as a small, tidy smoke test of basic movement and posture rather than a story: it is orderly but flat, and the silence in chat makes it feel unresponsive.",
+  "o5Count": 0,
+  "o5Examples": [],
+  "surprises": [],
+  "wantedMore": [],
+  "leaked": false,
+  "leakedHits": [],
+  "model": "sonnet",
+  "mode": "model",
+  "wallMs": 4657
+ }
+}

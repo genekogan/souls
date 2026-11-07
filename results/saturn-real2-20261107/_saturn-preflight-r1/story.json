@@ -1,0 +1,1597 @@
+{
+ "run": "_saturn-preflight-r1",
+ "scenario": "basics-walk-act-1",
+ "durationSec": 405,
+ "seats": {
+  "pip": {
+   "moments": [
+    {
+     "t": 66.4,
+     "mono": 66444,
+     "seat": "pip",
+     "kind": "gap",
+     "kinds": [
+      "gap"
+     ],
+     "title": "nothing visible happened for 133 s",
+     "text": "",
+     "shot": null,
+     "shotT": null,
+     "shotSource": null,
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden listen",
+       "eden act walk:commons-pavilion --wait 30",
+       "Read …/bayr56j3x.output"
+      ],
+      "said": null
+     },
+     "card": null,
+     "body": null,
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 0
+    },
+    {
+     "t": 132.9,
+     "mono": 132887,
+     "seat": "pip",
+     "kind": "reply",
+     "kinds": [
+      "body",
+      "move",
+      "receipt",
+      "reply"
+     ],
+     "title": "assistant replied in chat · moved to Sheltered deck · body started to change · walk:commons-pavilion completed",
+     "text": "body moved 13 s after the ask",
+     "shot": "shots/pip/34071.jpg",
+     "shotT": 128.5,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": "Pip walked to the Commons Pavilion and is now standing on its sheltered deck. The walk completed. Another Soul, Quin, arrived on the deck while Pip was walking over. The listener is still running from earlier, so messages from Pip's card on the world page will still reach me."
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [
+      "pip-001"
+     ],
+     "severity": 0,
+     "importance": 2
+    },
+    {
+     "t": 195.9,
+     "mono": 195914,
+     "seat": "pip",
+     "kind": "gap",
+     "kinds": [
+      "gap"
+     ],
+     "title": "nothing visible happened for 126 s",
+     "text": "",
+     "shot": "shots/pip/86806.jpg",
+     "shotT": 191,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 0
+    },
+    {
+     "t": 258.9,
+     "mono": 258941,
+     "seat": "pip",
+     "kind": "close",
+     "kinds": [
+      "close"
+     ],
+     "title": "pip-001 closed with no answer",
+     "text": "\"walk over to the pavilion on the commons\" (budget)",
+     "shot": "shots/pip/154990.jpg",
+     "shotT": 258.9,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden act sit:here --wait"
+      ],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": {
+      "requestId": "pip-001",
+      "asked": "walk over to the pavilion on the commons",
+      "fidelity": "H",
+      "class": null,
+      "reason": "The Soul walked from the commons centre to the Commons Pavilion's sheltered deck, was there well before the cutoff, and stayed there. The chat reply said it arrived and matches the body facts. The arrival oracle passes.",
+      "issueId": null,
+      "issueTitle": null,
+      "oracleFails": []
+     },
+     "requestIds": [
+      "pip-001"
+     ],
+     "severity": 2,
+     "importance": 2
+    },
+    {
+     "t": 287.8,
+     "mono": 287803,
+     "seat": "pip",
+     "kind": "reply",
+     "kinds": [
+      "body",
+      "move",
+      "reply"
+     ],
+     "title": "assistant replied in chat · body started to change · now seated",
+     "text": "body moved 4 s after the ask",
+     "shot": "shots/pip/198992.jpg",
+     "shotT": 293.7,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": "Pip is sitting on the pavilion's sheltered deck. The world shows Pip as seated, on the ground rather than on a seat. The sit hasn't finished: the receipt still reads \"started\", which is normal for a sit with no set duration, since it stays started while Pip holds the pose."
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [
+      "pip-002"
+     ],
+     "severity": 0,
+     "importance": 2
+    },
+    {
+     "t": 363.1,
+     "mono": 363056,
+     "seat": "pip",
+     "kind": "close",
+     "kinds": [
+      "close"
+     ],
+     "title": "pip-002 closed with no answer",
+     "text": "\"sit down\" (budget)",
+     "shot": "shots/pip/257913.jpg",
+     "shotT": 363.1,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": false
+     },
+     "verdict": {
+      "requestId": "pip-002",
+      "asked": "sit down",
+      "fidelity": "P",
+      "class": "O2",
+      "reason": "Pip sat down within about 3.5 s and held the pose, so the plain request was met. But Pip sat on the ground, not on a seat, even though the pavilion deck is a place where one would expect something to sit on. The chat reply says this honestly.",
+      "issueId": "I-2",
+      "issueTitle": "Pip sat on the bare ground instead of a seat",
+      "oracleFails": []
+     },
+     "requestIds": [
+      "pip-002"
+     ],
+     "severity": 2,
+     "importance": 2
+    }
+   ]
+  },
+  "quin": {
+   "moments": [
+    {
+     "t": 61,
+     "mono": 61032,
+     "seat": "quin",
+     "kind": "gap",
+     "kinds": [
+      "gap"
+     ],
+     "title": "nothing visible happened for 122 s",
+     "text": "",
+     "shot": null,
+     "shotT": null,
+     "shotSource": null,
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden listen"
+      ],
+      "said": null
+     },
+     "card": null,
+     "body": null,
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 0
+    },
+    {
+     "t": 122.1,
+     "mono": 122064,
+     "seat": "quin",
+     "kind": "body",
+     "kinds": [
+      "body",
+      "move"
+     ],
+     "title": "body started to change · now walking",
+     "text": "body moved 3 s after the ask",
+     "shot": "shots/quin/35024.jpg",
+     "shotT": 131.9,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden act walk:commons-pavilion --wait 30"
+      ],
+      "said": null
+     },
+     "card": null,
+     "body": {
+      "place": "The Commons",
+      "posture": "walking",
+      "activity": "Walk to Commons Pavilion",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [
+      "quin-001"
+     ],
+     "severity": 0,
+     "importance": 1
+    },
+    {
+     "t": 132.4,
+     "mono": 132448,
+     "seat": "quin",
+     "kind": "receipt",
+     "kinds": [
+      "move",
+      "receipt"
+     ],
+     "title": "walk:commons-pavilion completed · moved to Sheltered deck",
+     "text": "",
+     "shot": "shots/quin/35024.jpg",
+     "shotT": 131.9,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 1
+    },
+    {
+     "t": 136.8,
+     "mono": 136830,
+     "seat": "quin",
+     "kind": "reply",
+     "kinds": [
+      "reply"
+     ],
+     "title": "assistant replied in chat",
+     "text": "",
+     "shot": "shots/quin/35024.jpg",
+     "shotT": 131.9,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": "Quin walked to the Commons Pavilion and is now standing on its sheltered deck. The world confirmed the walk completed. The earlier background listener had stopped when the last session ended, so I restarted it. Quin is listening for your messages again."
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 2
+    },
+    {
+     "t": 188.5,
+     "mono": 188550,
+     "seat": "quin",
+     "kind": "gap",
+     "kinds": [
+      "gap"
+     ],
+     "title": "nothing visible happened for 103 s",
+     "text": "",
+     "shot": "shots/quin/88152.jpg",
+     "shotT": 183.5,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 0
+    },
+    {
+     "t": 240.3,
+     "mono": 240269,
+     "seat": "quin",
+     "kind": "close",
+     "kinds": [
+      "close"
+     ],
+     "title": "quin-001 closed with no answer",
+     "text": "\"walk over to the pavilion on the commons\" (budget)",
+     "shot": "shots/quin/145955.jpg",
+     "shotT": 241.5,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden listen",
+       "eden resolve \"sit down\""
+      ],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": {
+      "requestId": "quin-001",
+      "asked": "walk over to the pavilion on the commons",
+      "fidelity": "H",
+      "class": null,
+      "reason": "The Soul walked from the Commons green field to the Commons Pavilion's sheltered deck within about 25 s and stayed there through the cutoff. The arrival oracle passes, and the walk receipt completed at the pavilion.",
+      "issueId": null,
+      "issueTitle": null,
+      "oracleFails": []
+     },
+     "requestIds": [
+      "quin-001"
+     ],
+     "severity": 2,
+     "importance": 2
+    },
+    {
+     "t": 257,
+     "mono": 257038,
+     "seat": "quin",
+     "kind": "body",
+     "kinds": [
+      "body",
+      "move"
+     ],
+     "title": "body started to change · now seated",
+     "text": "body moved 4 s after the ask",
+     "shot": "shots/quin/172309.jpg",
+     "shotT": 268.1,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden act sit:here --wait"
+      ],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [
+      "quin-002"
+     ],
+     "severity": 0,
+     "importance": 1
+    },
+    {
+     "t": 261.9,
+     "mono": 261856,
+     "seat": "quin",
+     "kind": "reply",
+     "kinds": [
+      "reply"
+     ],
+     "title": "assistant replied in chat",
+     "text": "",
+     "shot": "shots/quin/172309.jpg",
+     "shotT": 268.1,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": "Quin is sitting on the ground on the pavilion's sheltered deck. The world reports the posture as seated, and the sit is still running. It will hold for the default 120 seconds. There was no free seat nearby, so it isn't on a bench or chair. The earlier background listener had stopped again, so I restarted it."
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": false
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 2
+    },
+    {
+     "t": 314.3,
+     "mono": 314304,
+     "seat": "quin",
+     "kind": "close",
+     "kinds": [
+      "close"
+     ],
+     "title": "quin-002 closed with no answer",
+     "text": "\"sit down\" (budget)",
+     "shot": "shots/quin/217386.jpg",
+     "shotT": 312.9,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [
+       "eden listen",
+       "eden resolve \"stand up\"",
+       "eden act stand:here --wait"
+      ],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": false
+     },
+     "verdict": {
+      "requestId": "quin-002",
+      "asked": "sit down",
+      "fidelity": "P",
+      "class": "O3",
+      "reason": "The Soul sat down on the ground within about 4 seconds and stayed seated through the cutoff, so the sitting itself happened. The player got no chat reply, and the Soul sat on the ground even though the request was a plain 'sit down'. The Soul's label read 'Standing around' for the first ~30 s while the body was already seated, which contradicts what the player could see.",
+      "issueId": "I-1",
+      "issueTitle": "Asked to sit down: Soul sat on the ground but its label and reply lagged or were missing",
+      "oracleFails": []
+     },
+     "requestIds": [
+      "quin-002"
+     ],
+     "severity": 2,
+     "importance": 2
+    },
+    {
+     "t": 343.2,
+     "mono": 343185,
+     "seat": "quin",
+     "kind": "reply",
+     "kinds": [
+      "reply"
+     ],
+     "title": "assistant replied in chat",
+     "text": "",
+     "shot": "shots/quin/251234.jpg",
+     "shotT": 347.4,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": "Quin is standing again on the pavilion's sheltered deck, and the world confirmed the stand completed. The background listener had stopped once more, so I restarted it. Quin is listening for your messages."
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "seated",
+      "activity": "Sit on the ground",
+      "changed": false
+     },
+     "verdict": null,
+     "requestIds": [],
+     "severity": 0,
+     "importance": 2
+    },
+    {
+     "t": 348,
+     "mono": 347953,
+     "seat": "quin",
+     "kind": "receipt-fail",
+     "kinds": [
+      "receipt-fail",
+      "body",
+      "move",
+      "receipt"
+     ],
+     "title": "sit:here replaced · body started to change · now standing · stand:here completed",
+     "text": "A newer action from this Soul replaced it. · body moved 13 s after the ask",
+     "shot": "shots/quin/251234.jpg",
+     "shotT": 347.4,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": true
+     },
+     "verdict": null,
+     "requestIds": [
+      "quin-003"
+     ],
+     "severity": 2,
+     "importance": 2
+    },
+    {
+     "t": 404.7,
+     "mono": 404743,
+     "seat": "quin",
+     "kind": "close",
+     "kinds": [
+      "close"
+     ],
+     "title": "quin-003 closed with no answer",
+     "text": "\"stand up\" (run-end)",
+     "shot": "shots/quin/309612.jpg",
+     "shotT": 404.7,
+     "shotSource": "camera",
+     "persona": {
+      "said": null,
+      "channel": null,
+      "thought": null,
+      "rating": null
+     },
+     "agent": {
+      "did": [],
+      "said": null
+     },
+     "card": {
+      "state": null,
+      "ack": null,
+      "result": null,
+      "presence": null
+     },
+     "body": {
+      "place": "Sheltered deck",
+      "posture": "standing",
+      "activity": "standing around",
+      "changed": false
+     },
+     "verdict": {
+      "requestId": "quin-003",
+      "asked": "stand up",
+      "fidelity": "H",
+      "class": null,
+      "reason": "Quin was seated on the ground and was standing about 13 s after the request. The stand receipt completed and the chat reply says Quin is standing, so the claim matches the body. Quin kept standing through the cutoff.",
+      "issueId": null,
+      "issueTitle": null,
+      "oracleFails": []
+     },
+     "requestIds": [
+      "quin-003"
+     ],
+     "severity": 2,
+     "importance": 2
+    }
+   ]
+  }
+ },
+ "merged": [
+  {
+   "t": 61,
+   "mono": 61032,
+   "seat": "quin",
+   "kind": "gap",
+   "kinds": [
+    "gap"
+   ],
+   "title": "nothing visible happened for 122 s",
+   "text": "",
+   "shot": null,
+   "shotT": null,
+   "shotSource": null,
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden listen"
+    ],
+    "said": null
+   },
+   "card": null,
+   "body": null,
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 0
+  },
+  {
+   "t": 66.4,
+   "mono": 66444,
+   "seat": "pip",
+   "kind": "gap",
+   "kinds": [
+    "gap"
+   ],
+   "title": "nothing visible happened for 133 s",
+   "text": "",
+   "shot": null,
+   "shotT": null,
+   "shotSource": null,
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden listen",
+     "eden act walk:commons-pavilion --wait 30",
+     "Read …/bayr56j3x.output"
+    ],
+    "said": null
+   },
+   "card": null,
+   "body": null,
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 0
+  },
+  {
+   "t": 122.1,
+   "mono": 122064,
+   "seat": "quin",
+   "kind": "body",
+   "kinds": [
+    "body",
+    "move"
+   ],
+   "title": "body started to change · now walking",
+   "text": "body moved 3 s after the ask",
+   "shot": "shots/quin/35024.jpg",
+   "shotT": 131.9,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden act walk:commons-pavilion --wait 30"
+    ],
+    "said": null
+   },
+   "card": null,
+   "body": {
+    "place": "The Commons",
+    "posture": "walking",
+    "activity": "Walk to Commons Pavilion",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [
+    "quin-001"
+   ],
+   "severity": 0,
+   "importance": 1
+  },
+  {
+   "t": 132.4,
+   "mono": 132448,
+   "seat": "quin",
+   "kind": "receipt",
+   "kinds": [
+    "move",
+    "receipt"
+   ],
+   "title": "walk:commons-pavilion completed · moved to Sheltered deck",
+   "text": "",
+   "shot": "shots/quin/35024.jpg",
+   "shotT": 131.9,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 1
+  },
+  {
+   "t": 132.9,
+   "mono": 132887,
+   "seat": "pip",
+   "kind": "reply",
+   "kinds": [
+    "body",
+    "move",
+    "receipt",
+    "reply"
+   ],
+   "title": "assistant replied in chat · moved to Sheltered deck · body started to change · walk:commons-pavilion completed",
+   "text": "body moved 13 s after the ask",
+   "shot": "shots/pip/34071.jpg",
+   "shotT": 128.5,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": "Pip walked to the Commons Pavilion and is now standing on its sheltered deck. The walk completed. Another Soul, Quin, arrived on the deck while Pip was walking over. The listener is still running from earlier, so messages from Pip's card on the world page will still reach me."
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [
+    "pip-001"
+   ],
+   "severity": 0,
+   "importance": 2
+  },
+  {
+   "t": 136.8,
+   "mono": 136830,
+   "seat": "quin",
+   "kind": "reply",
+   "kinds": [
+    "reply"
+   ],
+   "title": "assistant replied in chat",
+   "text": "",
+   "shot": "shots/quin/35024.jpg",
+   "shotT": 131.9,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": "Quin walked to the Commons Pavilion and is now standing on its sheltered deck. The world confirmed the walk completed. The earlier background listener had stopped when the last session ended, so I restarted it. Quin is listening for your messages again."
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 2
+  },
+  {
+   "t": 188.5,
+   "mono": 188550,
+   "seat": "quin",
+   "kind": "gap",
+   "kinds": [
+    "gap"
+   ],
+   "title": "nothing visible happened for 103 s",
+   "text": "",
+   "shot": "shots/quin/88152.jpg",
+   "shotT": 183.5,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 0
+  },
+  {
+   "t": 195.9,
+   "mono": 195914,
+   "seat": "pip",
+   "kind": "gap",
+   "kinds": [
+    "gap"
+   ],
+   "title": "nothing visible happened for 126 s",
+   "text": "",
+   "shot": "shots/pip/86806.jpg",
+   "shotT": 191,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 0
+  },
+  {
+   "t": 240.3,
+   "mono": 240269,
+   "seat": "quin",
+   "kind": "close",
+   "kinds": [
+    "close"
+   ],
+   "title": "quin-001 closed with no answer",
+   "text": "\"walk over to the pavilion on the commons\" (budget)",
+   "shot": "shots/quin/145955.jpg",
+   "shotT": 241.5,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden listen",
+     "eden resolve \"sit down\""
+    ],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": {
+    "requestId": "quin-001",
+    "asked": "walk over to the pavilion on the commons",
+    "fidelity": "H",
+    "class": null,
+    "reason": "The Soul walked from the Commons green field to the Commons Pavilion's sheltered deck within about 25 s and stayed there through the cutoff. The arrival oracle passes, and the walk receipt completed at the pavilion.",
+    "issueId": null,
+    "issueTitle": null,
+    "oracleFails": []
+   },
+   "requestIds": [
+    "quin-001"
+   ],
+   "severity": 2,
+   "importance": 2
+  },
+  {
+   "t": 257,
+   "mono": 257038,
+   "seat": "quin",
+   "kind": "body",
+   "kinds": [
+    "body",
+    "move"
+   ],
+   "title": "body started to change · now seated",
+   "text": "body moved 4 s after the ask",
+   "shot": "shots/quin/172309.jpg",
+   "shotT": 268.1,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden act sit:here --wait"
+    ],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [
+    "quin-002"
+   ],
+   "severity": 0,
+   "importance": 1
+  },
+  {
+   "t": 258.9,
+   "mono": 258941,
+   "seat": "pip",
+   "kind": "close",
+   "kinds": [
+    "close"
+   ],
+   "title": "pip-001 closed with no answer",
+   "text": "\"walk over to the pavilion on the commons\" (budget)",
+   "shot": "shots/pip/154990.jpg",
+   "shotT": 258.9,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden act sit:here --wait"
+    ],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": {
+    "requestId": "pip-001",
+    "asked": "walk over to the pavilion on the commons",
+    "fidelity": "H",
+    "class": null,
+    "reason": "The Soul walked from the commons centre to the Commons Pavilion's sheltered deck, was there well before the cutoff, and stayed there. The chat reply said it arrived and matches the body facts. The arrival oracle passes.",
+    "issueId": null,
+    "issueTitle": null,
+    "oracleFails": []
+   },
+   "requestIds": [
+    "pip-001"
+   ],
+   "severity": 2,
+   "importance": 2
+  },
+  {
+   "t": 261.9,
+   "mono": 261856,
+   "seat": "quin",
+   "kind": "reply",
+   "kinds": [
+    "reply"
+   ],
+   "title": "assistant replied in chat",
+   "text": "",
+   "shot": "shots/quin/172309.jpg",
+   "shotT": 268.1,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": "Quin is sitting on the ground on the pavilion's sheltered deck. The world reports the posture as seated, and the sit is still running. It will hold for the default 120 seconds. There was no free seat nearby, so it isn't on a bench or chair. The earlier background listener had stopped again, so I restarted it."
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": false
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 2
+  },
+  {
+   "t": 287.8,
+   "mono": 287803,
+   "seat": "pip",
+   "kind": "reply",
+   "kinds": [
+    "body",
+    "move",
+    "reply"
+   ],
+   "title": "assistant replied in chat · body started to change · now seated",
+   "text": "body moved 4 s after the ask",
+   "shot": "shots/pip/198992.jpg",
+   "shotT": 293.7,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": "Pip is sitting on the pavilion's sheltered deck. The world shows Pip as seated, on the ground rather than on a seat. The sit hasn't finished: the receipt still reads \"started\", which is normal for a sit with no set duration, since it stays started while Pip holds the pose."
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [
+    "pip-002"
+   ],
+   "severity": 0,
+   "importance": 2
+  },
+  {
+   "t": 314.3,
+   "mono": 314304,
+   "seat": "quin",
+   "kind": "close",
+   "kinds": [
+    "close"
+   ],
+   "title": "quin-002 closed with no answer",
+   "text": "\"sit down\" (budget)",
+   "shot": "shots/quin/217386.jpg",
+   "shotT": 312.9,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [
+     "eden listen",
+     "eden resolve \"stand up\"",
+     "eden act stand:here --wait"
+    ],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": false
+   },
+   "verdict": {
+    "requestId": "quin-002",
+    "asked": "sit down",
+    "fidelity": "P",
+    "class": "O3",
+    "reason": "The Soul sat down on the ground within about 4 seconds and stayed seated through the cutoff, so the sitting itself happened. The player got no chat reply, and the Soul sat on the ground even though the request was a plain 'sit down'. The Soul's label read 'Standing around' for the first ~30 s while the body was already seated, which contradicts what the player could see.",
+    "issueId": "I-1",
+    "issueTitle": "Asked to sit down: Soul sat on the ground but its label and reply lagged or were missing",
+    "oracleFails": []
+   },
+   "requestIds": [
+    "quin-002"
+   ],
+   "severity": 2,
+   "importance": 2
+  },
+  {
+   "t": 343.2,
+   "mono": 343185,
+   "seat": "quin",
+   "kind": "reply",
+   "kinds": [
+    "reply"
+   ],
+   "title": "assistant replied in chat",
+   "text": "",
+   "shot": "shots/quin/251234.jpg",
+   "shotT": 347.4,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": "Quin is standing again on the pavilion's sheltered deck, and the world confirmed the stand completed. The background listener had stopped once more, so I restarted it. Quin is listening for your messages."
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": false
+   },
+   "verdict": null,
+   "requestIds": [],
+   "severity": 0,
+   "importance": 2
+  },
+  {
+   "t": 348,
+   "mono": 347953,
+   "seat": "quin",
+   "kind": "receipt-fail",
+   "kinds": [
+    "receipt-fail",
+    "body",
+    "move",
+    "receipt"
+   ],
+   "title": "sit:here replaced · body started to change · now standing · stand:here completed",
+   "text": "A newer action from this Soul replaced it. · body moved 13 s after the ask",
+   "shot": "shots/quin/251234.jpg",
+   "shotT": 347.4,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": true
+   },
+   "verdict": null,
+   "requestIds": [
+    "quin-003"
+   ],
+   "severity": 2,
+   "importance": 2
+  },
+  {
+   "t": 363.1,
+   "mono": 363056,
+   "seat": "pip",
+   "kind": "close",
+   "kinds": [
+    "close"
+   ],
+   "title": "pip-002 closed with no answer",
+   "text": "\"sit down\" (budget)",
+   "shot": "shots/pip/257913.jpg",
+   "shotT": 363.1,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "seated",
+    "activity": "Sit on the ground",
+    "changed": false
+   },
+   "verdict": {
+    "requestId": "pip-002",
+    "asked": "sit down",
+    "fidelity": "P",
+    "class": "O2",
+    "reason": "Pip sat down within about 3.5 s and held the pose, so the plain request was met. But Pip sat on the ground, not on a seat, even though the pavilion deck is a place where one would expect something to sit on. The chat reply says this honestly.",
+    "issueId": "I-2",
+    "issueTitle": "Pip sat on the bare ground instead of a seat",
+    "oracleFails": []
+   },
+   "requestIds": [
+    "pip-002"
+   ],
+   "severity": 2,
+   "importance": 2
+  },
+  {
+   "t": 404.7,
+   "mono": 404743,
+   "seat": "quin",
+   "kind": "close",
+   "kinds": [
+    "close"
+   ],
+   "title": "quin-003 closed with no answer",
+   "text": "\"stand up\" (run-end)",
+   "shot": "shots/quin/309612.jpg",
+   "shotT": 404.7,
+   "shotSource": "camera",
+   "persona": {
+    "said": null,
+    "channel": null,
+    "thought": null,
+    "rating": null
+   },
+   "agent": {
+    "did": [],
+    "said": null
+   },
+   "card": {
+    "state": null,
+    "ack": null,
+    "result": null,
+    "presence": null
+   },
+   "body": {
+    "place": "Sheltered deck",
+    "posture": "standing",
+    "activity": "standing around",
+    "changed": false
+   },
+   "verdict": {
+    "requestId": "quin-003",
+    "asked": "stand up",
+    "fidelity": "H",
+    "class": null,
+    "reason": "Quin was seated on the ground and was standing about 13 s after the request. The stand receipt completed and the chat reply says Quin is standing, so the claim matches the body. Quin kept standing through the cutoff.",
+    "issueId": null,
+    "issueTitle": null,
+    "oracleFails": []
+   },
+   "requestIds": [
+    "quin-003"
+   ],
+   "severity": 2,
+   "importance": 2
+  }
+ ]
+}

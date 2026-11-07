@@ -1,0 +1,69 @@
+{
+ "step": "seats",
+ "t": "2026-11-07T06:09:54.497Z",
+ "mono": 55807,
+ "ok": true,
+ "seats": [
+  {
+   "id": "pip",
+   "kind": "soul",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "soulName": "Pip",
+   "worldBase": "http://127.0.0.1:4993/w/pt-eden-basics",
+   "folder": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/pip/folder",
+   "createdAt": "2026-11-07T06:09:03.383Z",
+   "sessionId": "4a2fc801-c617-4a4a-8ecf-523fffe31de1",
+   "soulId": "s_a125852138",
+   "ownerIdentity": "agent-6536bef4bf45ea22399194ad",
+   "assisted": false,
+   "wake": true,
+   "sessionCostUsd": {
+    "4a2fc801-c617-4a4a-8ecf-523fffe31de1": 0.0967905
+   },
+   "sessionContextTokens": 26072,
+   "effortApplied": true,
+   "onboard": {
+    "ok": true,
+    "pairedWithinSec": 18,
+    "timeoutSec": 540,
+    "onboardTurnWallMs": 28230,
+    "attempts": 1,
+    "cliFile": "eden.mjs",
+    "lastStatus": null
+   }
+  },
+  {
+   "id": "quin",
+   "kind": "soul",
+   "adapter": "claude-headless",
+   "model": "sonnet",
+   "effort": "medium",
+   "soulName": "Quin",
+   "worldBase": "http://127.0.0.1:4993/w/pt-eden-basics",
+   "folder": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/seats/quin/folder",
+   "createdAt": "2026-11-07T06:09:31.733Z",
+   "sessionId": "7dc0e2b3-81b9-4b6e-98ce-dd63c2f486dc",
+   "soulId": "s_46d43d3d1a",
+   "ownerIdentity": "agent-a3198ea9dbd43b1a7cc329d2",
+   "assisted": false,
+   "wake": false,
+   "sessionCostUsd": {
+    "7dc0e2b3-81b9-4b6e-98ce-dd63c2f486dc": 0.0911278
+   },
+   "sessionContextTokens": 25901,
+   "effortApplied": true,
+   "onboard": {
+    "ok": true,
+    "pairedWithinSec": 9,
+    "timeoutSec": 540,
+    "onboardTurnWallMs": 22759,
+    "attempts": 1,
+    "cliFile": "eden.mjs",
+    "lastStatus": null
+   }
+  }
+ ],
+ "god": null
+}

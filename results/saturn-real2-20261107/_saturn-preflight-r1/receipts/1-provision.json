@@ -1,0 +1,8 @@
+{
+ "step": "provision",
+ "t": "2026-11-07T06:09:03.381Z",
+ "mono": 4690,
+ "ok": true,
+ "base": "http://127.0.0.1:4993/w/pt-eden-basics",
+ "build": "dev"
+}

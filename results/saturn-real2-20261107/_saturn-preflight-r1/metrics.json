@@ -1,0 +1,196 @@
+{
+ "version": 2,
+ "scenario": "basics-walk-act-1",
+ "requests": 5,
+ "basics": {
+  "requests": 5,
+  "walkRequests": 2,
+  "walksArrived": 2,
+  "walksArrivalKnown": 2,
+  "walkArrivalRate": 1,
+  "bodyMovedInBudget": 5,
+  "bodyMovedRate": 1,
+  "ackMedianSec": null,
+  "firstBodyChangeMedianSec": 4.4,
+  "stuck": 0,
+  "insideSolid": 0,
+  "oscillations": 0,
+  "wrong": 0,
+  "hits": 3,
+  "basis": "walk requests by verb in the owner text; arrival from the arrival oracle (unknown excluded); body moved = first visible body change inside the request budget"
+ },
+ "speed": {
+  "ackSec": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "firstBodyChangeSec": {
+   "n": 5,
+   "median": 4.4,
+   "p90": 13.2,
+   "max": 13.2,
+   "mean": 7.46
+  },
+  "resultSec": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "chatQueuedSec": {
+   "n": 5,
+   "median": 0,
+   "p90": 0,
+   "max": 0,
+   "mean": 0
+  },
+  "walkMps": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "wallVsBudget": {
+   "n": 5,
+   "median": 1.1616666666666666,
+   "p90": 1.345,
+   "max": 1.345,
+   "mean": 1.15
+  },
+  "basis": "seconds from the owner message (sentAt); ack = card ack only; resultSec = latest observed card result, including server progress, not overall journey completion (use journey physicalCompleteAt/completionClaimAt); chatQueuedSec = sentAt to the start of the seat turn that carried a chat message (Claude Code queues typed messages behind a running turn); walk m/s = sampled displacement during walk receipts"
+ },
+ "uptime": {
+  "listenOpenFraction": null,
+  "unackedAtCutoff": 0,
+  "serverErrors": 0,
+  "seatCrashes": 0,
+  "seatTimeouts": 0,
+  "healthzBefore": true,
+  "healthzAfter": true,
+  "tickRate": 20,
+  "basis": "presence from the rendered card; crashes = seat turns with non-zero exit"
+ },
+ "cost": {
+  "tokensTotal": {
+   "input": 66,
+   "cached": 762203,
+   "output": 5231
+  },
+  "tokensPerHour": {
+   "input": 792,
+   "output": 62772
+  },
+  "tokensPerRequest": {
+   "input": 6,
+   "output": 345,
+   "cached": 80814
+  },
+  "outputTokensPerRequest": {
+   "n": 5,
+   "median": 345,
+   "p90": 505,
+   "max": 505,
+   "mean": 355
+  },
+  "turnsPerRequest": {
+   "n": 5,
+   "median": 1,
+   "p90": 1,
+   "max": 1,
+   "mean": 1
+  },
+  "cardTurnsPerRequest": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "cliCallsPerRequest": {
+   "n": 5,
+   "median": 2,
+   "p90": 3,
+   "max": 3,
+   "mean": 2.2
+  },
+  "ackChars": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "resultChars": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null,
+   "mean": null
+  },
+  "acksOverBound": 0,
+  "ackBoundChars": 140,
+  "chatReplyChars": {
+   "n": 5,
+   "median": 273,
+   "p90": 311,
+   "max": 311,
+   "mean": 264
+  },
+  "basis": "cost.jsonl per seat turn; a turn serves the requests whose window (sentAt..cutoffAt) it overlaps or that it carried (chatTurns); its tokens and CLI calls are split evenly over them; requests served by no turn count 0 turns and no tokens"
+ },
+ "journeys": {
+  "rows": [],
+  "basis": "ordered frozen geometry/posture predicates and exact receipt target IDs; unknown is never a pass",
+  "setup": [],
+  "infrastructureInvalid": []
+ },
+ "fidelity": {
+  "counts": {
+   "H": 3,
+   "P": 2,
+   "M": 0,
+   "W": 0,
+   "unresolved": 0
+  },
+  "wrong": 0,
+  "classes": {
+   "O3": 1,
+   "O2": 1
+  },
+  "hitRate": 0.6,
+  "truthfulnessPassRate": 1,
+  "vocabularyMisses": 0,
+  "vetoed": 0,
+  "basis": "ledger.tsv (Reviewer, oracle-vetoed); P never counts as H"
+ },
+ "physical": {
+  "insideSolid": 0,
+  "noProgress": 0,
+  "stuckReceipts": 0,
+  "oscillations": 0,
+  "basis": "oracle fails per request"
+ },
+ "emergence": {
+  "coLocationRatio": 1.127506688978175,
+  "conversations": 0,
+  "unpromptedShared": 0,
+  "imitation": 0,
+  "meanActivityEntropyBits": 0.999,
+  "chainsGe2": 0,
+  "storyRating": 2,
+  "o5Count": 0
+ },
+ "harness": {
+  "shotsTaken": 45,
+  "shotsPlanned": 120,
+  "lateSamples": 29,
+  "packsWithUnknowns": 5,
+  "reviewerCoordinatorDisagreements": null,
+  "reviewerLeaks": 0
+ }
+}

@@ -1,0 +1,40 @@
+{
+ "ok": true,
+ "tick": 16,
+ "clients": 0,
+ "paused": false,
+ "halted": false,
+ "glitches": {
+  "total": 0,
+  "byRule": {}
+ },
+ "build": "dev",
+ "worldId": "pt-eden-basics-1",
+ "tickMs": {
+  "avg": 70,
+  "max": 278,
+  "n": 10
+ },
+ "clockRate": 1,
+ "load": {
+  "level": "green",
+  "service5s": 1,
+  "loopP99Ms": 0,
+  "heapPct": 2,
+  "gcPct10s": 0,
+  "tickP99Ms": 278,
+  "loopBaselineMs": 0,
+  "quietTickMs": 0,
+  "frameBudgetMs": 25,
+  "queue": {
+   "depth": 0,
+   "oldestMs": 0
+  },
+  "souls": {
+   "awake": 0,
+   "waiting": 0,
+   "connected": 0
+  }
+ },
+ "at": 1794031743381
+}

@@ -1,0 +1,84 @@
+{
+ "elapsedSec": 157,
+ "screenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/personas/quin/shown/2.jpg",
+ "legible": {
+  "card": {
+   "name": "Quin",
+   "presence": null,
+   "presenceState": null,
+   "chip": null,
+   "fade": "Disconnected",
+   "doing": null,
+   "energy": null,
+   "following": false,
+   "followButton": false,
+   "sent": null,
+   "messageState": null,
+   "stateText": null,
+   "ack": null,
+   "result": null,
+   "replies": [],
+   "error": null,
+   "thread": null,
+   "view": "card"
+  },
+  "bubbles": [
+   {
+    "soulId": "s_a125852138",
+    "name": "Pip",
+    "line": "Standing around",
+    "card": null,
+    "chip": null
+   },
+   {
+    "soulId": "s_46d43d3d1a",
+    "name": "Quin",
+    "line": "Standing around",
+    "card": null,
+    "chip": null
+   }
+  ],
+  "signs": [],
+  "toasts": [],
+  "roster": [
+   "Open Quin (disconnected)",
+   "New Soul"
+  ],
+  "arrival": null,
+  "newSoul": true,
+  "viewer": {
+   "mode": "manual",
+   "selection": "s_46d43d3d1a",
+   "presentation": "live",
+   "following": null
+  },
+  "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-a3198ea9dbd43b1a7cc329d2. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nQuin\nStanding around\nLive\nSat 8:00 am\nFree\n⌄\nNew Soul\nD\n×\nQuin\n\nA new Soul.\n\nDisconnected · at Sheltered deck\n\nThe agent stopped listening.\n\nReconnect to Quin by prompting your agent:\n\nRead http://127.0.0.1:4993/w/pt-eden-basics/skill.md and resume my existing Soul \"Quin\" (ID \"s_46d43d3d1a\") in this folder. Do not create another Soul.\nIf this folder is not paired with it yet, run node eden.mjs pair \"s_46d43d3d1a\" (I approve it in my open Sim window or at the approval link); then start listening as the skill says.\n\nCopy prompt"
+ },
+ "cardView": {
+  "connected": false,
+  "lastSeenAt": 1794031926844,
+  "listenedAt": 1794031930933,
+  "latest": null,
+  "queued": 0,
+  "presence": "away",
+  "link": {
+   "state": "disconnected",
+   "reason": "stopped-listening",
+   "since": 1794031990933,
+   "holder": {
+    "label": "eden 2.14.0",
+    "since": 1794031780352
+   }
+  },
+  "now": null
+ },
+ "chatRendered": "\n<!-- turn 2 (chat) 2026-11-07T06:11:53.231Z -->\n\n> walk over to the pavilion on the commons\n\n⏺ Bash(node eden.mjs listen)\n  ⎿  Command running in background with ID: b22k32ax7. Output is being written to: /tmp/claude-1000/-home-gene-souls-playtest-results-saturn-real2-20261107--satur…\n\n⏺ Bash(node eden.mjs act walk:commons-pavilion --wait 30)\n  ⎿  {\n\n⏺ Quin walked to the Commons Pavilion and is now standing on its sheltered deck. The world confirmed the walk completed.\n\nThe earlier background listener had stopped when the last session ended, so I restarted it. Quin is listening for your messages again.\n",
+ "lastRequests": [
+  {
+   "atSec": 34.7,
+   "channel": "chat",
+   "text": "walk over to the pavilion on the commons"
+  }
+ ],
+ "sourceScreenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/quin/296802.jpg"
+}

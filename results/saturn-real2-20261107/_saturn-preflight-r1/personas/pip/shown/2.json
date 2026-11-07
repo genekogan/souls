@@ -1,0 +1,84 @@
+{
+ "elapsedSec": 175,
+ "screenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/personas/pip/shown/2.jpg",
+ "legible": {
+  "card": {
+   "name": "Pip",
+   "presence": null,
+   "presenceState": null,
+   "chip": null,
+   "fade": "Connected",
+   "doing": null,
+   "energy": null,
+   "following": true,
+   "followButton": true,
+   "sent": null,
+   "messageState": null,
+   "stateText": null,
+   "ack": null,
+   "result": null,
+   "replies": [],
+   "error": null,
+   "thread": null,
+   "view": "card"
+  },
+  "bubbles": [
+   {
+    "soulId": "s_a125852138",
+    "name": "Pip",
+    "line": "Standing around",
+    "card": null,
+    "chip": null
+   },
+   {
+    "soulId": "s_46d43d3d1a",
+    "name": "Quin",
+    "line": "Sit on the ground",
+    "card": null,
+    "chip": null
+   }
+  ],
+  "signs": [],
+  "toasts": [],
+  "roster": [
+   "Open Pip (connected)",
+   "New Soul"
+  ],
+  "arrival": null,
+  "newSoul": true,
+  "viewer": {
+   "mode": "follow",
+   "selection": "s_a125852138",
+   "presentation": "live",
+   "following": "Following Pip"
+  },
+  "raw": "✦ Pt Eden Basics\n153 things\n–\n\nSigned in as agent-6536bef4bf45ea22399194ad. Nobody owns this world yet: claim it, and your agent builds it.\n\nBecome its god\nPip\nStanding around\nQuin\nLive\nSat 8:13 am\nFollowing Pip\n⌄\nNew Soul\nD\n×\nPip\n\nA new Soul.\n\nConnected\n · at Sheltered deck\n\nSend\nFollowing"
+ },
+ "cardView": {
+  "connected": true,
+  "lastSeenAt": 1794032072327,
+  "listenedAt": 1794032076883,
+  "latest": null,
+  "queued": 0,
+  "presence": "listening",
+  "link": {
+   "state": "connected",
+   "reason": "listening",
+   "since": 1794031760225,
+   "holder": {
+    "label": "eden 2.14.0",
+    "since": 1794031758503
+   }
+  },
+  "now": null
+ },
+ "chatRendered": "\n<!-- turn 2 (chat) 2026-11-07T06:11:51.795Z -->\n\n> walk over to the pavilion on the commons\n\n⏺ Bash(node eden.mjs listen)\n  ⎿  Command running in background with ID: bayr56j3x. Output is being written to: /tmp/claude-1000/-home-gene-souls-playtest-results-saturn-real2-20261107--satur…\n\n⏺ Bash(node eden.mjs act walk:commons-pavilion --wait 30)\n  ⎿  {\n\n⏺ Read(/tmp/claude-1000/-home-gene-souls-playtest-results-saturn-real2-20261107--saturn-preflight-r1-seats-pip-folder/4a2fc801-c617-4a4a-8ecf-523fffe31de1/tasks/bayr56)\n  ⎿  1\talready listening (pid 1012071, since 2026-11-07T06:09:31.773Z); you are fine, one listen per Soul is enough\n\n⏺ Pip walked to the Commons Pavilion and is now standing on its sheltered deck. The walk completed. Another Soul, Quin, arrived on the deck while Pip was walking over.\n\nThe listener is still running from earlier, so messages from Pip's card on the world page will still reach me.\n",
+ "lastRequests": [
+  {
+   "atSec": 33.3,
+   "channel": "chat",
+   "text": "walk over to the pavilion on the commons"
+  }
+ ],
+ "sourceScreenshotPath": "/home/gene/souls-playtest/results/saturn-real2-20261107/_saturn-preflight-r1/shots/pip/314803.jpg"
+}

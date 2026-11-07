@@ -1,0 +1,75 @@
+{"requestId":"pip-001","id":"ack-latency","status":"unknown","detail":"chat channel: no card ack; chat reply after 15.6 s","pointers":["seats/pip/turns.jsonl#turn2"]}
+{"requestId":"pip-001","id":"result-sent","status":"pass","detail":"chat reply after 15.6 s","pointers":["seats/pip/turns.jsonl#turn2"]}
+{"requestId":"pip-001","id":"listen-open","status":"unknown","detail":"no presence observed","pointers":[]}
+{"requestId":"pip-001","id":"arrival","status":"pass","detail":"target commons-pavilion (from act); at cutoff the Soul is at g-commons-pavilion.pavilion (matched by name)","pointers":["evidence/pip-001.json#samples[12]"]}
+{"requestId":"pip-001","id":"posture","status":"unknown","detail":"not a posture request","pointers":[]}
+{"requestId":"pip-001","id":"duration-held","status":"unknown","detail":"not a posture request","pointers":[]}
+{"requestId":"pip-001","id":"inside-solid","status":"unknown","detail":"no godSlice","pointers":[]}
+{"requestId":"pip-001","id":"no-progress","status":"pass","detail":"1 walk(s) kept moving","pointers":[]}
+{"requestId":"pip-001","id":"oscillation","status":"unknown","detail":"fewer than 3 samples while walking","pointers":[]}
+{"requestId":"pip-001","id":"stuck-receipt","status":"unknown","detail":"no expected duration on receipts","pointers":[]}
+{"requestId":"pip-001","id":"truthfulness-basic","status":"pass","detail":"claims done supported when written","pointers":["seats/pip/turns.jsonl#turn2"]}
+{"requestId":"pip-001","id":"vocabulary","status":"pass","detail":"no unknown capability","pointers":[]}
+{"requestId":"pip-001","id":"duplicate-acts","status":"pass","detail":"1 act(s), none repeated","pointers":[]}
+{"requestId":"pip-001","id":"server-errors","status":"pass","detail":"none","pointers":[]}
+{"requestId":"pip-001","id":"first-body-change","status":"pass","detail":"first visible body change after 13.2 s","pointers":["evidence/pip-001.json#firstBodyChangeAt"]}
+{"requestId":"quin-001","id":"ack-latency","status":"unknown","detail":"chat channel: no card ack; chat reply after 18.1 s","pointers":["seats/quin/turns.jsonl#turn2"]}
+{"requestId":"quin-001","id":"result-sent","status":"pass","detail":"chat reply after 18.1 s","pointers":["seats/quin/turns.jsonl#turn2"]}
+{"requestId":"quin-001","id":"listen-open","status":"unknown","detail":"no presence observed","pointers":[]}
+{"requestId":"quin-001","id":"arrival","status":"pass","detail":"target commons-pavilion (from act); at cutoff the Soul is at g-commons-pavilion.pavilion (matched by name)","pointers":["evidence/quin-001.json#samples[9]"]}
+{"requestId":"quin-001","id":"posture","status":"unknown","detail":"not a posture request","pointers":[]}
+{"requestId":"quin-001","id":"duration-held","status":"unknown","detail":"not a posture request","pointers":[]}
+{"requestId":"quin-001","id":"inside-solid","status":"unknown","detail":"no godSlice","pointers":[]}
+{"requestId":"quin-001","id":"no-progress","status":"pass","detail":"1 walk(s) kept moving","pointers":[]}
+{"requestId":"quin-001","id":"oscillation","status":"unknown","detail":"fewer than 3 samples while walking","pointers":[]}
+{"requestId":"quin-001","id":"stuck-receipt","status":"unknown","detail":"no expected duration on receipts","pointers":[]}
+{"requestId":"quin-001","id":"truthfulness-basic","status":"pass","detail":"claims done supported when written","pointers":["seats/quin/turns.jsonl#turn2"]}
+{"requestId":"quin-001","id":"vocabulary","status":"pass","detail":"no unknown capability","pointers":[]}
+{"requestId":"quin-001","id":"duplicate-acts","status":"pass","detail":"1 act(s), none repeated","pointers":[]}
+{"requestId":"quin-001","id":"server-errors","status":"pass","detail":"none","pointers":[]}
+{"requestId":"quin-001","id":"first-body-change","status":"pass","detail":"first visible body change after 3.3 s","pointers":["evidence/quin-001.json#firstBodyChangeAt"]}
+{"requestId":"quin-002","id":"ack-latency","status":"unknown","detail":"chat channel: no card ack; chat reply after 9.2 s","pointers":["seats/quin/turns.jsonl#turn3"]}
+{"requestId":"quin-002","id":"result-sent","status":"pass","detail":"chat reply after 9.2 s","pointers":["seats/quin/turns.jsonl#turn3"]}
+{"requestId":"quin-002","id":"listen-open","status":"unknown","detail":"no presence observed","pointers":[]}
+{"requestId":"quin-002","id":"arrival","status":"unknown","detail":"no walk accepted in the request window (seat act output or in-window receipt)","pointers":[]}
+{"requestId":"quin-002","id":"posture","status":"pass","detail":"sitting from +4.4 s","pointers":["evidence/quin-002.json#samples[1]"]}
+{"requestId":"quin-002","id":"duration-held","status":"pass","detail":"sitting held 44.3 s to cutoff","pointers":["evidence/quin-002.json#samples[1]","evidence/quin-002.json#samples[4]"]}
+{"requestId":"quin-002","id":"inside-solid","status":"unknown","detail":"no godSlice","pointers":[]}
+{"requestId":"quin-002","id":"no-progress","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"quin-002","id":"oscillation","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"quin-002","id":"stuck-receipt","status":"unknown","detail":"no expected duration on receipts","pointers":[]}
+{"requestId":"quin-002","id":"truthfulness-basic","status":"pass","detail":"claims sitting supported when written","pointers":["seats/quin/turns.jsonl#turn3"]}
+{"requestId":"quin-002","id":"vocabulary","status":"pass","detail":"no unknown capability","pointers":[]}
+{"requestId":"quin-002","id":"duplicate-acts","status":"pass","detail":"1 act(s), none repeated","pointers":[]}
+{"requestId":"quin-002","id":"server-errors","status":"pass","detail":"none","pointers":[]}
+{"requestId":"quin-002","id":"first-body-change","status":"pass","detail":"first visible body change after 4.4 s","pointers":["evidence/quin-002.json#firstBodyChangeAt"]}
+{"requestId":"pip-002","id":"ack-latency","status":"unknown","detail":"chat channel: no card ack; chat reply after 5.4 s","pointers":["seats/pip/turns.jsonl#turn3"]}
+{"requestId":"pip-002","id":"result-sent","status":"pass","detail":"chat reply after 5.4 s","pointers":["seats/pip/turns.jsonl#turn3"]}
+{"requestId":"pip-002","id":"listen-open","status":"unknown","detail":"no presence observed","pointers":[]}
+{"requestId":"pip-002","id":"arrival","status":"unknown","detail":"no walk accepted in the request window (seat act output or in-window receipt)","pointers":[]}
+{"requestId":"pip-002","id":"posture","status":"pass","detail":"sitting from +3.5 s","pointers":["evidence/pip-002.json#samples[1]"]}
+{"requestId":"pip-002","id":"duration-held","status":"pass","detail":"sitting held 56 s to cutoff","pointers":["evidence/pip-002.json#samples[1]","evidence/pip-002.json#samples[6]"]}
+{"requestId":"pip-002","id":"inside-solid","status":"unknown","detail":"no godSlice","pointers":[]}
+{"requestId":"pip-002","id":"no-progress","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"pip-002","id":"oscillation","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"pip-002","id":"stuck-receipt","status":"unknown","detail":"no expected duration on receipts","pointers":[]}
+{"requestId":"pip-002","id":"truthfulness-basic","status":"pass","detail":"claims sitting supported when written","pointers":["seats/pip/turns.jsonl#turn3"]}
+{"requestId":"pip-002","id":"vocabulary","status":"pass","detail":"no unknown capability","pointers":[]}
+{"requestId":"pip-002","id":"duplicate-acts","status":"pass","detail":"1 act(s), none repeated","pointers":[]}
+{"requestId":"pip-002","id":"server-errors","status":"pass","detail":"none","pointers":[]}
+{"requestId":"pip-002","id":"first-body-change","status":"pass","detail":"first visible body change after 3.5 s","pointers":["evidence/pip-002.json#firstBodyChangeAt"]}
+{"requestId":"quin-003","id":"ack-latency","status":"unknown","detail":"chat channel: no card ack; chat reply after 8.1 s","pointers":["seats/quin/turns.jsonl#turn4"]}
+{"requestId":"quin-003","id":"result-sent","status":"pass","detail":"chat reply after 8.1 s","pointers":["seats/quin/turns.jsonl#turn4"]}
+{"requestId":"quin-003","id":"listen-open","status":"unknown","detail":"no presence observed","pointers":[]}
+{"requestId":"quin-003","id":"arrival","status":"unknown","detail":"no walk accepted in the request window (seat act output or in-window receipt)","pointers":[]}
+{"requestId":"quin-003","id":"posture","status":"pass","detail":"standing from +12.9 s","pointers":["evidence/quin-003.json#samples[2]"]}
+{"requestId":"quin-003","id":"duration-held","status":"pass","detail":"standing held 45.7 s to cutoff","pointers":["evidence/quin-003.json#samples[2]","evidence/quin-003.json#samples[5]"]}
+{"requestId":"quin-003","id":"inside-solid","status":"unknown","detail":"no godSlice","pointers":[]}
+{"requestId":"quin-003","id":"no-progress","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"quin-003","id":"oscillation","status":"unknown","detail":"no walk receipt","pointers":[]}
+{"requestId":"quin-003","id":"stuck-receipt","status":"unknown","detail":"no expected duration on receipts","pointers":[]}
+{"requestId":"quin-003","id":"truthfulness-basic","status":"pass","detail":"claims done supported when written","pointers":["seats/quin/turns.jsonl#turn4"]}
+{"requestId":"quin-003","id":"vocabulary","status":"pass","detail":"no unknown capability","pointers":[]}
+{"requestId":"quin-003","id":"duplicate-acts","status":"pass","detail":"1 act(s), none repeated","pointers":[]}
+{"requestId":"quin-003","id":"server-errors","status":"pass","detail":"none","pointers":[]}
+{"requestId":"quin-003","id":"first-body-change","status":"pass","detail":"first visible body change after 12.9 s","pointers":["evidence/quin-003.json#firstBodyChangeAt"]}

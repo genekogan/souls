@@ -1,0 +1,29 @@
+{
+ "t": "2026-11-07T06:11:18.490Z",
+ "mono": 139799,
+ "cameras": [
+  {
+   "name": "pip",
+   "kind": "follow",
+   "ok": true,
+   "arrivedMs": 5877,
+   "follow": {
+    "ok": true,
+    "how": "hash #soul/<id> + click .soul-card .soul-follow"
+   },
+   "free": null
+  },
+  {
+   "name": "quin",
+   "kind": "follow",
+   "ok": true,
+   "arrivedMs": 58941,
+   "follow": {
+    "ok": false,
+    "how": null,
+    "reason": "no Follow button on the card (the owner card hides it while the agent is away)"
+   },
+   "free": null
+  }
+ ]
+}
