@@ -1449,7 +1449,6 @@ export class WorldHost {
     if (this.repairRules && (!baseline || this.rewoundSinceSnapshot)) return this.containInPlace(error);
     if (!baseline) { if (this.edgeRecovery()) return this.haltOnFault(error, 'no resumable recovery baseline'); throw new Error(`No resumable recovery baseline: ${String(error)}`); }
     const untilTick=this.engine.world.tick, originalSeq=this.seq, all=this.db.events(this.worldId,baseline.seq);
-    this.faultTick=untilTick;
     const pending=[...this.minds.values()].filter(m=>m.pending).map(m=>m.pending!.card);
     const latest=[...all].reverse().find(e=>e.kind==='decision' && pending.includes(e.payload.card));
     const excluded=cardHint ? [cardHint] : latest?.payload.card ? [latest.payload.card as string] : [...new Set(pending)];
@@ -1457,7 +1456,7 @@ export class WorldHost {
     // collision's two people), widening once to every edge decision since the baseline; never a process exit.
     const plans = excluded.length ? [{excluded, edge: undefined as RecoveryRecipe['edge']}, {excluded, edge: undefined as RecoveryRecipe['edge']}]
       : this.edgeRecovery() ? this.edgePlans(error, all, edgeHint).map(edge => ({excluded: [] as string[], edge})) : [];
-    if (!plans.length) { if (this.repairRules) return this.lastRung(error, baseline, all); throw new Error(`Engine fault has no attributable card: ${String(error)}`); }
+    if (!plans.length) { if (this.repairRules) return this.lastRung(error, baseline, all, untilTick, originalSeq); throw new Error(`Engine fault has no attributable card: ${String(error)}`); }
     const faults={...this.extra.cardFaults as Record<string,number>};
     for (let attempt=0;attempt<plans.length;attempt++) {
       const plan=plans[attempt];
@@ -1468,7 +1467,7 @@ export class WorldHost {
       const edge=plan.edge?{...plan.edge,...this.rewoundPoses(plan.edge, all)}:undefined;
       const recipe: RecoveryRecipe={baseline:structuredClone(baseline),events,untilTick,faults:{...faults},excluded:[...plan.excluded],reason:String(error).slice(0,800),...(edge?{edge}:{})};
       try { this.restoreRecovery(recipe); }
-      catch (replayError) { if (attempt===plans.length-1) { if (this.repairRules) return this.lastRung(error, baseline, all); if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
+      catch (replayError) { if (attempt===plans.length-1) { if (this.repairRules) return this.lastRung(error, baseline, all, untilTick, originalSeq); if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
       this.seq=originalSeq;
       const e: LogEvent={seq:++this.seq,tick:untilTick,kind:'rules',author:'world:recovery',payload:{recovery:recipe},at:Date.now()};
       this.db.appendEvent(this.worldId,e); this.resetAcc(); this.acc.log.push(e); this.ring=[];
@@ -1486,12 +1485,9 @@ export class WorldHost {
   private get repairRules(): boolean { return this.engine.rulesVersion.includes('+souls-repair/'); }
   /** A rung 3 ran and no new snapshot followed: the baseline is the one that led here, so a second one stays on the head. */
   private rewoundSinceSnapshot = false;
-  /** The tick the fault being repaired happened at: rung 2's replays move the clock. */
-  private faultTick = 0;
   /** #1150 rung 3: rung 2 failed. Back to the last clean state, keeping everything but decisions, and on from there.
    *  If those events won't re-apply, the baseline alone: that takes no step and no input, so it can't fail on a rule. */
-  private lastRung(error: unknown, baseline: SnapshotBody, all: LogEvent[]) {
-    const untilTick = this.faultTick, originalSeq = this.seq;
+  private lastRung(error: unknown, baseline: SnapshotBody, all: LogEvent[], untilTick: number, originalSeq: number) {   // both from before rung 2's replays moved them
     const kept = all.filter(e => !['decision', 'play'].includes(e.kind) && e.author !== 'world:refusal' && !e.payload?.recovery);
     for (const events of [kept, []]) {
       const recipe: RecoveryRecipe = { baseline: structuredClone(baseline), events, untilTick, faults: {...this.extra.cardFaults as Record<string, number>}, excluded: [], reason: String(error).slice(0, 800), lastRung: {} };

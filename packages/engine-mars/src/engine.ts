@@ -476,9 +476,10 @@ export class MarsEngine implements Engine {
   }
   /** #1150 rung 3: the clock moves to the fault's tick without stepping the world, so ticks stay monotonic for the log. */
   setClockV1(tick: number) { this.finishRecorder(); this.world.tick = tick; this.renderBaseKey = ''; this.startRecorder(); this.tableCacheV1 = null; }
-  /** #1150 rung 3: reads the invariants; a body still in the wrong is relocated once, and what still fires is contained. */
+  /** #1150 rung 3: reads the invariants; a body still in the wrong is relocated once, and what still fires is contained. An
+   *  invariant that throws is itself contained: this is the rung that can't fail. */
   containV1(): { contained: { code: string; subjects: string[] }[]; relocated: string[] } {
-    const rt = this.rt, read = () => { const out = new Map<string, { code: string; subjects: string[] }>(); withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) { const subjects = [...(d.subjects ?? [])].sort(); out.set(`${d.code}|${subjects.join()}`, { code: d.code, subjects }); } }, listTable(this.ents)); return [...out.values()].sort((a, b) => (`${a.code}|${a.subjects}` < `${b.code}|${b.subjects}` ? -1 : 1)); };
+    const rt = this.rt, read = () => { const out = new Map<string, { code: string; subjects: string[] }>(); withEntityList(rt.world, () => { for (const inv of rt.invariants) { try { for (const d of inv(rt)) { const subjects = [...(d.subjects ?? [])].sort(); out.set(`${d.code}|${subjects.join()}`, { code: d.code, subjects }); } } catch { out.set('engine.thrown|', { code: 'engine.thrown', subjects: [] }); } } }, listTable(this.ents)); return [...out.values()].sort((a, b) => (`${a.code}|${a.subjects}` < `${b.code}|${b.subjects}` ? -1 : 1)); };
     const relocated: string[] = [];
     for (const id of [...new Set(read().flatMap(v => v.subjects))].sort()) { const e = this.ents[id]; if (e?.human && this.restoreHumanPoseV1(id, { p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, level: e.human.level })) relocated.push(id); }
     const contained = read();
