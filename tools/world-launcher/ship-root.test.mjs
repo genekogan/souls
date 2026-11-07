@@ -24,8 +24,9 @@ function setup() {
   const log = join(t, 'calls.log'), root = join(t, 'host/root'), data = join(t, 'host/data'), conf = join(t, 'host/production.conf'), fakebin = join(t, 'fakebin'), repo = join(t, 'repo');
   writeFileSync(log, '');
   // the release repo: real git, with origin/main
-  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', join(t, 'origin.git')]);
-  mkdirSync(repo); git(repo, 'init', '-q', '-b', 'main'); writeFileSync(join(repo, 'a'), '1'); git(repo, 'add', 'a'); git(repo, 'commit', '-qm', 'one');
+  // git init -b needs git 2.28; the CI hosts include older ones (#1162)
+  execFileSync('git', ['init', '-q', '--bare', join(t, 'origin.git')]); git(join(t, 'origin.git'), 'symbolic-ref', 'HEAD', 'refs/heads/main');
+  mkdirSync(repo); git(repo, 'init', '-q'); git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/main'); writeFileSync(join(repo, 'a'), '1'); git(repo, 'add', 'a'); git(repo, 'commit', '-qm', 'one');
   git(repo, 'remote', 'add', 'origin', join(t, 'origin.git')); git(repo, 'push', '-q', 'origin', 'main'); git(repo, 'fetch', '-q', 'origin');
   const sha = git(repo, 'rev-parse', 'HEAD'), build = `we-${sha.slice(0, 12)}`;
   // receipts
