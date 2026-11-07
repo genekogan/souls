@@ -181,7 +181,8 @@ export class Conversations {
   }
   private retain(b: Body, soulId: string) {
     const m = b.members.find(x => x.soulId === soulId); if (!m) return;
-    (b.past ??= []).push({soulId, fromTurn: m.fromTurn, toTurn: b.turns});   // one range per membership: nothing said while away
+    // One range per membership, so nothing said while away is read later; bounded, because each range is a term of the turn query.
+    if (b.turns > m.fromTurn) b.past = [...(b.past ?? []), {soulId, fromTurn: m.fromTurn, toTurn: b.turns}].slice(-200);
   }
   private leave(b: Body, soul: EdgeSoul): ConverseResult {
     if (b.members.some(m => m.soulId === soul.soulId)) {
