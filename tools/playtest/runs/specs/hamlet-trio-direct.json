@@ -1,0 +1,7 @@
+{
+ "soulRun": 1,
+ "name": "hamlet-trio-direct",
+ "cast": { "file": "../../scenarios/casts/hamlet-trio-scripted.json" },
+ "observer": { "check": false },
+ "limits": { "maxWallSec": 900, "maxControllers": 3 }
+}

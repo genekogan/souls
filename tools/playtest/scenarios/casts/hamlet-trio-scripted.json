@@ -1,0 +1,32 @@
+{
+ "kind": "cast",
+ "name": "hamlet-trio-scripted",
+ "version": 1,
+ "seed": 7830,
+ "world": { "kind": "dev", "genesis": "worlds/templates/hello-hamlet.json", "slug": "sr-hamlet-direct", "port": 4332, "natives": false },
+ "durationSec": 420,
+ "brief": "Three neighbours meet in the pond hall and each gives one short talk, one at a time.",
+ "room": { "label": "the pond hall", "match": ["waterside", "pond-hall", "pond hall"] },
+ "order": ["ada", "bo", "cy"],
+ "seats": [
+  { "id": "ada", "soulName": "Ada", "adapter": "scripted-owner", "economy": "lean", "character": "Ada is cheerful and keeps bees.", "topic": "the apple trees", "script": { "rules": [
+    { "match": "^Your turn", "ack": "My turn", "do": [["say", "Hello everyone, I am Ada, and I love how the apple trees in the orchard catch the morning light."]], "result": "Gave my talk" },
+    { "match": "now and wait there with everyone|Walk there now|Go back there now", "ack": "Walking to the pond hall", "do": [["act", "walk to the pond hall", "--wait", "100"]], "result": "At the pond hall" },
+    { "match": ".", "ack": "Noted", "do": [], "result": "Noted" } ] } },
+  { "id": "bo", "soulName": "Bo", "adapter": "scripted-owner", "economy": "lean", "character": "Bo is shy and plays music.", "topic": "the pond", "script": { "rules": [
+    { "match": "^Your turn.*piano", "ack": "My turn, with the change", "do": [["say", "Change of plan from me: I want to tell you all about the old piano in the pond hall, which still plays every key."]], "result": "Gave the changed talk" },
+    { "match": "^Your turn", "ack": "My turn", "do": [["say", "Hello, I am Bo, and I want to tell you how quiet and still the pond is just before sunset."]], "result": "Gave my talk" },
+    { "match": "now and wait there with everyone|Walk there now|Go back there now", "ack": "Walking to the pond hall", "do": [["act", "walk to the pond hall", "--wait", "100"]], "result": "At the pond hall" },
+    { "match": ".", "ack": "Noted", "do": [], "result": "Noted" } ] } },
+  { "id": "cy", "soulName": "Cy", "adapter": "scripted-owner", "economy": "lean", "character": "Cy is curious and asks many questions.", "topic": "the cottage", "script": { "rules": [
+    { "match": "^Your turn", "ack": "My turn", "do": [["say", "Hi all, I am Cy, and I keep wondering who first built the little cottage at the edge of the hamlet."]], "result": "Gave my talk" },
+    { "match": "now and wait there with everyone|Walk there now|Go back there now", "ack": "Walking to the pond hall", "do": [["act", "walk to the pond hall", "--wait", "100"]], "result": "At the pond hall" },
+    { "match": ".", "ack": "Noted", "do": [], "result": "Noted" } ] } }
+ ],
+ "timing": { "truthPollSec": 2, "gatherMaxSec": 180, "nudgeAfterSec": 60, "maxNudges": 2, "quietSec": 8, "speakTimeoutSec": 60, "maxSpeakNudges": 1, "prepareAhead": true, "presentWaitSec": 30 },
+ "orchestrator": { "planner": null },
+ "success": { "allPresent": true, "minChars": 40, "inOrder": true, "eachOnce": true },
+ "observer": { "sampleSec": 15, "cameras": [], "viewport": [1024, 640], "dpr": 1 },
+ "rails": { "onboardWallSec": 120, "onboardTimeoutSec": 90, "onboardConcurrency": 3, "quotaStopPct": 90, "maxTurnsPerRequest": 4, "maxTurnWallSec": 120 },
+ "console": { "script": [ { "at": "go:ada", "line": "redirect bo: instead, Bo tells everyone about the old piano in the pond hall.", "expect": ["piano"] } ] }
+}

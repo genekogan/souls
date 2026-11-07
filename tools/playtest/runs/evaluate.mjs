@@ -305,7 +305,7 @@ function scenarioAcceptance(sr) {
 export function runIdentity(sr) {
   const sc = sr.scenario ? structuredClone(sr.scenario) : null;
   if (sc) {
-    for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot']) delete sc[k]; if (sc.world) delete sc.world.port;
+    for (const k of ['scenarioPath', 'scenarioSha256', 'serverRoot', 'castPath']) delete sc[k]; if (sc.world) delete sc.world.port;
     // A traced seat is a different condition from an untraced one, but its run-specific trace file and ids are not.
     for (const s of sc.seats ?? []) if (s.diagnostics?.trace) s.diagnostics = { trace: true };
   }

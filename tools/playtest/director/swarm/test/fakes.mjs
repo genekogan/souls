@@ -78,3 +78,23 @@ export function fakeWorld({ clock, cast, behaviour = {} }) {
   const observerTruth = { async snapshotSoul({ soulId }) { const l = inbox[soulId].at(-1); return { t: new Date(wall()).toISOString(), mono: clock.now(), place: souls[soulId].placePath[0], placePath: souls[soulId].placePath, inbox: { latest: l ? { ...l } : null }, receipts: [] }; } };
   return { souls, seats, owner, truth, observerTruth, wall };
 }
+
+/** Fake arena/observer modules recording what was created and stopped. onCard(n) runs on the n-th card sent. */
+export function fakeDirectModules({ onCard = () => {} } = {}) {
+  const made = [], stopped = [];
+  let cards = 0, pid = 900000;
+  const modules = {
+    provision: {
+      startWorld: async ({ onSpawn, port }) => { const child = { pid: ++pid }; made.push(`world:${child.pid}`); onSpawn?.(child); return { base: 'http://127.0.0.1:9', pid: child.pid, port }; },
+      describeWorld: async () => { throw new Error('fake world'); }, healthz: async () => { throw new Error('fake world'); },
+      stopWorld: async ({ pid: p }) => { stopped.push(`world:${p}`); return { stopped: true }; },
+    },
+    seat: { createSeat: ({ seat }) => { made.push(`seat:${seat.id}`); const info = { id: seat.id, soulName: seat.soulName, soulId: null, ownerIdentity: `o-${seat.id}` };
+      return { info, dir: `seats/${seat.id}`, onboard: async () => { info.soulId = `s_${seat.id}`; return { ok: true, soulId: info.soulId, soulName: seat.soulName }; }, wakeLoop: () => true, save() {}, stop: async () => { stopped.push(`seat:${seat.id}`); } }; } },
+    owner: { sendCard: async () => { cards += 1; onCard(cards); return { messageId: `m${cards}` }; }, cardView: async () => ({ latest: null, presence: 'listening' }) },
+    truth: {}, evidence: { openPack() {}, closePack() {} },
+    browser: { openBrowser: async () => { made.push('browser'); return { gpu: 'fake', openCamera: async () => null, close: async () => { stopped.push('browser'); } }; } },
+    swarmTruth: () => ({ soul: async (soulId) => ({ soulId, ok: true, placePath: ['field'], posture: 'standing', speech: [] }) }),
+  };
+  return { modules, made, stopped };
+}

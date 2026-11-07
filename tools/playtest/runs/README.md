@@ -12,6 +12,7 @@ node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/smoke-world.
 node tools/playtest/runs/run.mjs start    --scenario tools/playtest/scenarios/unified-codex-smoke.json --cast none --port 4311 --duration 30
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio.json   # three scripted-owner Souls, one redirection
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/garden-setup.json  # another world, a setup batch, another cast
+node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-direct.json  # a directed cast: swarm director, scripted-owner seats
 node tools/playtest/runs/run.mjs cleanup  .local/soul-runs/<run> --world-data --controller-state
 node tools/playtest/runs/run.mjs evaluate .local/soul-runs/<run> --question tools/playtest/runs/questions/redirect-honoured.mjs
 node tools/playtest/runs/run.mjs start    tools/playtest/runs/specs/hamlet-trio-recorded.json   # the trio, recorded: wide, free and follow cameras
@@ -93,6 +94,27 @@ no provider and no cost, and its transcript renders like a model seat's. Each CL
 transcript up to 1 MiB; past that the tool result ends with a `[scripted-owner: output truncated: …]` line and carries
 `truncated: true`, which the scorer's `seatActs` passes on. Live casts stay on `playtest.mjs direct` and
 the souls-director skill.
+
+## Directed casts
+
+A spec can name a swarm cast (`tools/playtest/scenarios/casts/`, the format `playtest.mjs direct` and the
+souls-director skill use) instead of a scenario: `{"soulRun": 1, "cast": {"file": "<cast.json>"}}`. The run executes
+`cmdDirect` headless through the lifecycle hooks: the cast's world, seats and browser are owned and released, the
+cast's `console.script` supplies the direction (broadcasts, per-seat lines, `redirect`, `pause`, `resume`, `end`), and a
+cancel ends play the way the console's `end` does. A session that ran to its end is `completed` whatever its verdict;
+the verdict is in `evidence.verdict`, and the direction journal (`playtest/director/commands.jsonl`, referenced as
+`references.journal`) feeds the `directions` measure. The effective cast is written to `cast.effective.json`
+(`references.cast`).
+
+A directed spec takes `name`, `world` (`port`, `slug` only), `durationSec`, `observer` (`check`, `required`,
+`timeoutMs`, `cameras` as a subset of `follow` and `wide`), `limits`, `controllers`, `retention` and `evaluation`.
+Validation refuses before anything starts: a spec that names both a cast and a scenario, unknown `cast` fields, a
+missing or invalid cast file, an invalid scripted-owner script, `setup` (not supported with a cast yet),
+`diagnostics`, `observer.record`, `recordSize`, `freeComposition` or an `observer.mode` other than `cameras` (scenario
+specs only for now), and
+(`controllers.live-model`) any seat that is not `scripted-owner` or a `planner`, unless `controllers.allowLiveModels`
+is true. `cmdDirect` refuses the same live minds again inside the runner. `specs/hamlet-trio-direct.json` runs three
+scripted-owner Souls in the hamlet pond hall, with one redirection of Bo delivered while Ada speaks.
 
 ## Setup
 

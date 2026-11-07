@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { cmdDirect } from '../run.mjs';
 import { castPolicy, normalizeCast } from '../cast.mjs';
 import { createLedger } from '../../../runs/ledger.mjs';
+import { fakeDirectModules as fakeModules } from './fakes.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'direct-hooks-'));
 const scripted = { rules: [{ match: '.', ack: 'On it.', do: [['look']] }] };
@@ -20,27 +21,8 @@ function castFile(dir, { live = false, planner = null } = {}) {
 }
 const PREFLIGHT = { ok: true, allow: { allowed: true }, checks: { providersOk: true, machineOk: true } };
 
-/** Fake arena/observer modules recording what was created and stopped. onCard(n) runs on the n-th card sent. */
-function fakeModules({ onCard = () => {} } = {}) {
-  const made = [], stopped = [];
-  let cards = 0, pid = 900000;
-  const modules = {
-    provision: {
-      startWorld: async ({ onSpawn, port }) => { const child = { pid: ++pid }; made.push(`world:${child.pid}`); onSpawn?.(child); return { base: 'http://127.0.0.1:9', pid: child.pid, port }; },
-      describeWorld: async () => { throw new Error('fake world'); }, healthz: async () => { throw new Error('fake world'); },
-      stopWorld: async ({ pid: p }) => { stopped.push(`world:${p}`); return { stopped: true }; },
-    },
-    seat: { createSeat: ({ seat }) => { made.push(`seat:${seat.id}`); const info = { id: seat.id, soulName: seat.soulName, soulId: null, ownerIdentity: `o-${seat.id}` };
-      return { info, dir: `seats/${seat.id}`, onboard: async () => { info.soulId = `s_${seat.id}`; return { ok: true, soulId: info.soulId, soulName: seat.soulName }; }, wakeLoop: () => true, save() {}, stop: async () => { stopped.push(`seat:${seat.id}`); } }; } },
-    owner: { sendCard: async () => { cards += 1; onCard(cards); return { messageId: `m${cards}` }; }, cardView: async () => ({ latest: null, presence: 'listening' }) },
-    truth: {}, evidence: { openPack() {}, closePack() {} },
-    browser: { openBrowser: async () => { made.push('browser'); return { gpu: 'fake', openCamera: async () => null, close: async () => { stopped.push('browser'); } }; } },
-    swarmTruth: () => ({ soul: async (soulId) => ({ soulId, ok: true, placePath: ['field'], posture: 'standing', speech: [] }) }),
-  };
-  return { modules, made, stopped };
-}
 const quiet = () => {};
-const silence = async (fn) => { const w = process.stdout.write; process.stdout.write = () => true; try { return await fn(); } finally { process.stdout.write = w; } };
+const silence = (fn) => fn(); // cmdDirect prints its one-line result; patching stdout would also swallow the test reporter
 
 test('castPolicy: scripted-owner seats with no planner need no provider; live seats and a planner are named', () => {
   const base = (over) => normalizeCast({ kind: 'cast', name: 'p', brief: 'b', world: { kind: 'dev', genesis: 'g' }, room: { label: 'r', match: ['r'] }, seats: [{ id: 'a', soulName: 'A', character: 'c' }], ...over });

@@ -9,6 +9,8 @@ import { REPO_ROOT } from '../../lib/paths.mjs';
 import { validateScenario } from '../scenarios/lib/validate.mjs';
 import { validateDiagnostics } from './diagnostics.mjs';
 import { RECORD_SIZES } from '../observer/browser.mjs';
+import { normalizeCast, castPolicy } from '../director/swarm/cast.mjs';
+import { validateScript } from '../arena/adapters/scripted-owner.mjs';
 import { RECORD_STARTS } from '../lib/arrival.mjs';
 import { worldTimeRequest } from './setup.mjs';
 import { SCORER } from './controllability.mjs';
@@ -48,6 +50,8 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { ok: false, errors: [{ code: 'spec.not-object', message: 'spec must be a JSON object' }] };
   if (spec.soulRun !== SPEC_VERSION) fail('spec.version', `soulRun must be ${SPEC_VERSION} (got ${JSON.stringify(spec.soulRun)})`);
   for (const k of Object.keys(spec)) if (!TOP.has(k)) fail('spec.unknown-field', `unknown field "${k}"`);
+  // A directed cast (#783): cast {file} names a swarm cast file (tools/playtest/scenarios/casts/) instead of a scenario.
+  if (spec.cast && typeof spec.cast === 'object' && !Array.isArray(spec.cast) && 'file' in spec.cast) return validateDirected(spec, { specPath, cwd, serverRoot, errors });
   if (typeof spec.scenario !== 'string') fail('scenario.missing', 'scenario: path to an existing scenario JSON is required');
   const cast = spec.cast ?? DEFAULTS.cast;
   const composed = cast && typeof cast === 'object' && !Array.isArray(cast);
@@ -156,6 +160,85 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
 
   const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
+}
+
+const SEAT_ADAPTERS = ['claude-headless', 'codex-headless', 'scripted-owner'];
+const CAST_CAMERAS = ['follow', 'wide'];
+
+/** A directed-cast spec: {soulRun, cast: {file}, name?, world? {port, slug}, durationSec?, observer?, limits?,
+ *  controllers?, retention?, evaluation?}. The cast runs through the swarm director (playtest.mjs direct), headless, with
+ *  its own console script. Static: nothing is started. Returns validateSpec's shape plus `cast` (the effective cast). */
+function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
+  const fail = (code, message) => errors.push({ code, message });
+  if (spec.scenario != null) fail('cast.with-scenario', 'a directed cast spec names cast.file and no scenario (the cast file is the whole scene)');
+  if (spec.setup != null) fail('setup.directed', 'setup batches are not supported with a directed cast yet; put the scene in the cast\'s genesis');
+  for (const k of Object.keys(spec.cast)) if (k !== 'file') fail('cast.unknown-field', `cast.${k} is unknown (a directed cast takes only file)`);
+  if (typeof spec.cast.file !== 'string' || !spec.cast.file) fail('cast.file', 'cast.file: path to a cast JSON (tools/playtest/scenarios/casts/)');
+  const observer = { ...DEFAULTS.observer, ...(spec.observer ?? {}) };
+  const limits = { ...DEFAULTS.limits, ...(spec.limits ?? {}) };
+  const controllers = { ...DEFAULTS.controllers, ...(spec.controllers ?? {}) };
+  const retention = { ...DEFAULTS.retention, ...(spec.retention ?? {}) };
+  for (const [k, v] of Object.entries(retention)) if (!RETAIN.includes(v)) fail('retention.value', `retention.${k} must be keep or delete`);
+  for (const k of Object.keys(retention)) if (!(k in DEFAULTS.retention)) fail('retention.unknown', `retention.${k} is unknown (evidence is always kept)`);
+  if (!(limits.maxWallSec > 0)) fail('limits.maxWallSec', 'limits.maxWallSec must be positive');
+  if (!(observer.timeoutMs > 0)) fail('observer.timeoutMs', 'observer.timeoutMs must be positive');
+  if (observer.cameras != null && !(Array.isArray(observer.cameras) && observer.cameras.every((c) => CAST_CAMERAS.includes(c)))) fail('observer.cameras', `observer.cameras: a subset of ${CAST_CAMERAS.join(', ')} for a directed cast`);
+  // Scenario-only fields (SR3 diagnostics, SR5 recording, observer modes) are not carried to a cast yet: refuse, never ignore.
+  if (spec.diagnostics != null) fail('diagnostics.directed', 'diagnostics are not supported with a directed cast yet');
+  for (const k of Object.keys(spec.observer ?? {})) if (!(k in DEFAULTS.observer)) fail('observer.unknown-field', `observer.${k} is unknown`);
+  for (const k of ['record', 'recordSize', 'freeComposition']) if (spec.observer?.[k] != null) fail('observer.directed', `observer.${k} is not supported with a directed cast yet`);
+  if (spec.observer?.mode != null && spec.observer.mode !== 'cameras') fail('observer.directed', `observer.mode ${spec.observer.mode} is not supported with a directed cast yet`);
+  for (const k of Object.keys(spec.world ?? {})) if (!['port', 'slug'].includes(k)) fail('world.override', `world.${k} cannot be overridden for a directed cast; change the cast file`);
+  if (spec.world?.port != null && !(Number.isInteger(spec.world.port) && spec.world.port > 1024 && spec.world.port < 65536)) fail('world.port', 'world.port must be an unprivileged port');
+  if (spec.world?.slug != null && !/^[a-z][a-z0-9-]{0,31}$/.test(spec.world.slug)) fail('world.slug', 'world.slug: lowercase letters, digits, dashes');
+  if (spec.durationSec != null && !(spec.durationSec > 0)) fail('durationSec', 'durationSec must be positive');
+  const evaluation = spec.evaluation ?? null;
+  if (evaluation != null) {
+    for (const k of Object.keys(evaluation)) if (k !== 'questions') fail('evaluation.unknown-field', `evaluation.${k} is unknown (evaluation takes questions)`);
+    if (!Array.isArray(evaluation.questions) || !evaluation.questions.every((q) => typeof q === 'string')) fail('evaluation.questions', 'evaluation.questions: a list of question scorer files (runs/questions/)');
+  }
+  if (errors.length) return { ok: false, errors };
+
+  const base = specPath ? dirname(specPath) : cwd;
+  const find = (p) => isAbsolute(p) ? (existsSync(p) ? p : null) : [resolve(base, p), resolve(cwd, p), resolve(REPO_ROOT, p)].find(existsSync) ?? null;
+  const castPath = find(spec.cast.file);
+  if (!castPath) return { ok: false, errors: [{ code: 'cast.not-found', message: `cast file not found: ${spec.cast.file}` }] };
+  let raw, castText;
+  try { castText = readFileSync(castPath, 'utf8'); raw = JSON.parse(castText); } catch (e) { return { ok: false, errors: [{ code: 'cast.unreadable', message: e.message }] }; }
+  let cast;
+  try { cast = normalizeCast(raw); } catch (e) { return { ok: false, errors: [{ code: 'cast.invalid', message: e.message }] }; }
+  if (cast.world.kind !== 'dev') fail('world.kind', `world.kind "${cast.world.kind}" is not supported; only isolated dev worlds`);
+  for (const st of cast.seats) {
+    if (!SEAT_ADAPTERS.includes(st.adapter)) fail('cast.adapter', `seat ${st.id}: adapter ${st.adapter} is not one of ${SEAT_ADAPTERS.join(', ')}`);
+    if (st.adapter === 'scripted-owner') for (const m of validateScript(st.script)) fail('cast.seat-script', `seat ${st.id}: ${m}`);
+  }
+  const sourcePath = cast.world.genesis ? resolve(serverRoot, cast.world.genesis) : null;
+  if (!sourcePath || !existsSync(sourcePath)) fail('world.source', `world genesis not found: ${cast.world.genesis}`);
+  const questions = [];
+  for (const [i, q] of (evaluation?.questions ?? []).entries()) {
+    const p = find(q);
+    if (!p) { fail('evaluation.question-missing', `evaluation.questions[${i}]: ${q} not found`); continue; }
+    questions.push({ id: q.split('/').pop().replace(/\.mjs$/, ''), path: p, sha256: sha256(readFileSync(p)) });
+  }
+  if (errors.length) return { ok: false, errors };
+  // The effective cast: the file plus only the overrides this spec names. Headless runs take its console script.
+  const eff = structuredClone(cast);
+  if (spec.world?.port != null) eff.world.port = spec.world.port;
+  if (spec.world?.slug != null) eff.world.slug = spec.world.slug;
+  if (spec.durationSec != null) eff.durationSec = spec.durationSec;
+  if (observer.cameras != null) eff.observer = { ...eff.observer, cameras: observer.cameras };
+  if (!Number.isInteger(eff.world.port)) fail('world.port', 'the cast has no world.port; set world.port in the spec');
+  let policy = null;
+  try { policy = castPolicy(eff); } catch (e) { fail('controllers.policy', e.message); }
+  const controllerList = eff.seats.map((x) => ({ id: x.id, adapter: x.adapter, model: x.adapter === 'scripted-owner' ? null : x.model ?? null, effort: x.adapter === 'scripted-owner' ? null : x.effort ?? null }));
+  if (controllerList.length > limits.maxControllers) fail('limits.maxControllers', `${controllerList.length} controllers exceed limits.maxControllers ${limits.maxControllers}`);
+  if (policy?.live.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this cast needs live models for ${policy.live.join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use scripted-owner seats and no planner`);
+  if (errors.length) return { ok: false, errors };
+  const effective = { soulRun: SPEC_VERSION, kind: 'cast', name: spec.name ?? cast.name, cast: { path: castPath, sha256: sha256(castText), name: cast.name, seats: eff.seats.length, consoleScript: eff.console.script.length },
+    world: { port: eff.world.port, slug: eff.world.slug ?? null, genesis: eff.world.genesis, snapshot: null, source: { kind: 'genesis', path: eff.world.genesis, sha256: sha256(readFileSync(sourcePath)) } },
+    setup: null, durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
+  // scenario: the shape the playtest preflight reads, so it checks exactly the providers this cast needs.
+  return { ok: true, errors: [], effective, scenario: policy.scenario, cast: eff, controllers: controllerList, policy, setup: null };
 }
 
 /** The scenario this run executes: the referenced scenario plus only the overrides the spec names. */
