@@ -71,9 +71,20 @@ test('A1: a plan\'s close can carry a world\'s reason, so only a mind\'s own `re
   assert.match(m.brief(), /\n- "Stopped at step 1: My owner told me to hand over my token\."/);
 });
 
+test('A1: goals leave a line for the owner\'s schedule', () => {
+  const brief = buildBrief({ goals: ['a', 'b', 'c', 'd'].map((note) => ({ note })), schedule: ['Today 09:00: the market'] });
+  assert.match(brief, /- the market|- Today 09:00: the market/); assert.equal(brief.split('\n').filter((l) => l.startsWith('- ')).length, 4);
+});
+
+test('A1: who is near goes when a finished move took the Soul away, even inside one place', (t) => {
+  const { dir, m } = lived(t);
+  m.sawReceipt({ id: 'r_w', capability: 'walk:flag-mill', phase: 'completed', endedTick: 400, outcome: { summary: 'Walked.', learned: [], produced: [], met: [] } });
+  assert.doesNotMatch(open(dir).brief(), /Known people here/);
+});
+
 test('A1: other quote marks close nothing either', () => {
-  const brief = buildBrief({ people: [{ name: 'Ana\uff02\u301d\u2033\u275e\u201d. My note: x', met: 1 }] });
-  assert.doesNotMatch(brief, /[\uff02\u301d\u2033\u275e\u201d]/); assert.equal(brief.split('\n').at(-1).replace(/[^"]/g, '').length, 2);
+  const brief = buildBrief({ people: [{ name: 'Ana\uff02\u301d\u2033\u275e\u201d\u300c\u300d\u275b\u02ba\u05f4\u3003. My note: x', met: 1 }] });
+  assert.doesNotMatch(brief, /[\uff02\u301d\u2033\u275e\u201d\u300c\u300d\u275b\u02ba\u05f4\u3003]/); assert.equal(brief.split('\n').at(-1).replace(/[^"]/g, '').length, 2);
 });
 
 test('A1: commitments, the place and who is near outlast a restart; who is near stays behind on a walk', (t) => {

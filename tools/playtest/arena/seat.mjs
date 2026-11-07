@@ -66,15 +66,16 @@ export class Seat {
     };
     const listening = !!this.listener;
     this.stopListen();
-    if ((await cli('serve', '--status')).serving) await cli('pending');
-    await cli('serve', '--stop');
-    let up = true;
-    for (let i = 0; i < 100 && up; i++) { up = (await cli('serve', '--status')).serving; if (up) await sleep(100); }   // a stopping serve still answers
-    if (up) throw new Error(`seat ${this.seat.id}: serve did not stop`);
-    if (this.seat.home && existsSync(join(this.folder, '.eden-agent.json'))) await cli('import');
-    if (!(await cli('serve')).serving) throw new Error(`seat ${this.seat.id}: serve did not come back`);
-    this.info.sessionId = null; this.save();
-    if (listening) this.startListen();
+    try {
+      if ((await cli('serve', '--status')).serving) await cli('pending');
+      await cli('serve', '--stop');
+      let up = true;
+      for (let i = 0; i < 100 && up; i++) { up = (await cli('serve', '--status')).serving; if (up) await sleep(100); }   // a stopping serve still answers
+      if (up) throw new Error(`seat ${this.seat.id}: serve did not stop`);
+      if (this.seat.home && existsSync(join(this.folder, '.eden-agent.json'))) await cli('import');
+      if (!(await cli('serve')).serving) throw new Error(`seat ${this.seat.id}: serve did not come back`);
+      this.info.sessionId = null; this.save();
+    } finally { if (listening) this.startListen(); }
   }
   get sessionId() { return this.info.sessionId; }
   /** Number of completed turns (as recorded in turns.jsonl, so it survives a harness restart). */

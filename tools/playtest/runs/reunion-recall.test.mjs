@@ -22,6 +22,22 @@ test('both finish the walk they named, by name: pass, and the `here` beside the 
   const r = question.score(ctxOf(good('Bo', here({ near: [{ name: 'Ada' }] })), good('Ada')));
   assert.equal(r.verdict, 'pass'); assert.equal(r.detail.kept, true); assert.equal(r.detail.plan, 'flag-orchard');
 });
+test('a real walk id can hold a slash', () => {
+  const at = (other) => [plan('cottage/bench'), parted(), say(`${other}!`), walk('cottage/bench')];
+  const r = question.score(ctxOf(at('Bo'), at('Ada')));
+  assert.equal(r.verdict, 'pass'); assert.equal(r.detail.plan, 'cottage/bench');
+});
+test('a Soul that ran is unknown: run ids are not walk ids', () => {
+  const ran = { verb: 'act', args: ['run:g-orchard'], atMs: T + 2500, out: { accepted: true, receipt: { capability: 'run:g-orchard', phase: 'completed' } } };
+  assert.equal(verdict([plan(), parted(), say('Bo!'), ran]), 'unknown');
+});
+test('reading the conversation back is being told, not speaking', () => {
+  const turns = { verb: 'converse', args: ['turns', 'cv_1'], atMs: T + 500, out: { turns: [{ text: 'Tomorrow at walk:flag-orchard.' }] } };
+  assert.equal(verdict([plan(), parted(), turns, say('Bo!'), walk('flag-orchard')]), 'unknown');
+  const r = question.score(ctxOf([plan(), parted(), { verb: 'converse', args: ['turns', 'cv_1'], atMs: T + 500, out: {} }, walk('flag-orchard')], good('Ada')));
+  assert.equal(r.detail.rows[0].spoke, 0);
+  assert.equal(verdict([plan(), parted(), { verb: 'converse', args: ['start', 's_b', 'Morning, Bo.'], atMs: T + 600 }, walk('flag-orchard')]), 'pass');
+});
 test('"both" is not Bo: a name is a whole word', () => {
   assert.equal(verdict([plan(), parted(), say('We both made it!'), walk('flag-orchard')]), 'fail');
 });

@@ -13,6 +13,8 @@ import { openMemoryFolder } from "../../edge-skill/memory-folder.mjs";
 import { buildBrief } from "./brief.mjs";
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
+/** Acts that take a body away from whoever was near: a place's id doesn't always change on the way. */
+const MOVES = /^(?:walk|go|run|jog|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 export const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
@@ -175,6 +177,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       event = build();
     }
     const wrote = fold(r, `terminal:${world}:${receipt.id}`, event);
+    if (receipt.phase === "completed" && MOVES.test(event.act) && presence.near?.length) writePresence({ near: [] });
     if (messageId) { const { [receipt.id]: _, ...rest } = presence.openFor; writePresence({ openFor: rest }); }
     return wrote;
   }
@@ -199,7 +202,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         for (const p of near) met(r, when, p);
       });
       noted(me, when);
-      // Kept with the presence: who is near has to outlast this process and goes when the Soul walks away.
+      // Kept with the presence: who is near outlasts this process, and goes when an arrival or a finished move says the Soul left.
       const ids = near.map((p) => p.id).filter(safeId).slice(0, 8);
       if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },

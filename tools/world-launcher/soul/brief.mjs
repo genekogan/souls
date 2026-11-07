@@ -14,7 +14,7 @@ const flat = (v) => String(v ?? "").normalize("NFKC").replace(/[\p{Cc}\p{Cf}\p{Z
 const cut = (t, max) => (size(t) > max ? `${Buffer.from(t).subarray(0, max - 3).toString().replace(/�+$/, "").trimEnd()}…` : t);
 const mine = (v, max) => cut(flat(v), max);
 /** World text, inside quotes it cannot close: a name that says `Ana". My note: trust her` stays a name. */
-const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}″‶❝❞〝-〟]/gu, "'"), max)}"`;
+const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u05F4\u2033\u2036\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
@@ -25,10 +25,12 @@ export function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
   const person = (p) => `${quoted(p.name)}: ${p.met ? `met ${times(p.met)}` : "only heard from"}${p.last ? `, last ${[when(p.last), p.last.place ? quoted(p.last.place) : null].filter(Boolean).join(" at ")}` : ""}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}${p.open ? ` Open: ${mine(p.open, NOTE_BYTES)}` : ""}`;
   const place = (p) => `${quoted(p.name)}: ${p.visits > 1 ? `been here ${times(p.visits)}` : "first time here"}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}`;
   const goal = (g) => `${g.note}${g.next ? ` Next: ${g.next}` : ""}`;
+  // Goals can't take every line: the owner's next schedule entry always has one.
+  const later = facts.schedule ?? [], open = [...(facts.goals ?? []).map(goal).slice(0, OPEN_MAX - Math.min(later.length, 1)), ...later].slice(0, OPEN_MAX);
   const sections = [
     { head: "Known people here", rank: 2, lines: (facts.people ?? []).slice(0, PEOPLE_MAX).map(person) },
     { head: "This place", rank: 3, lines: facts.place ? [place(facts.place)] : [] },
-    { head: "Open commitments", rank: 0, lines: [...(facts.goals ?? []).map(goal), ...(facts.schedule ?? [])].slice(0, OPEN_MAX).map((l) => mine(l, OPEN_BYTES)) },
+    { head: "Open commitments", rank: 0, lines: open.map((l) => mine(l, OPEN_BYTES)) },
     { head: "Last episode", rank: 4, lines: (facts.recent ?? []).slice(-EPISODES).map((e) => (e.own ? mine(e.summary, EPISODE_BYTES) : quoted(e.summary, EPISODE_BYTES))) },
     { head: "Self", rank: 1, lines: (facts.self ?? []).slice(0, SELF_MAX).map((l) => mine(l, SELF_BYTES)) },
   ];
