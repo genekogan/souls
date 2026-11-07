@@ -9,11 +9,14 @@ import { z } from 'zod';
 import type { ActionDef, Diagnostic } from '../../../mars/viewer/engine/actions/types.ts';
 import type { Runtime } from '../../../mars/viewer/engine/runtime/runtime.ts';
 import type { Entity, Pose, WorldState } from '../../../mars/viewer/engine/world/types.ts';
-import { def, type AssetDef } from '../../../mars/viewer/engine/world/catalog.ts';
+import { def, HUMAN_RADIUS, type AssetDef } from '../../../mars/viewer/engine/world/catalog.ts';
 import { angleDelta, datan2, hypot, rot2, wrapAngle, type Vec2, type Vec3 } from '../../../mars/viewer/engine/core/math.ts';
 import { holdingDiagnostic, STANDING_REACH } from '../../../mars/viewer/engine/construction/rules.ts';
 import { childrenState, walkCrew, type Children } from '../../../mars/viewer/engine/construction/children.ts';
-import { findStations, liftDuration, liftStep, sweptLiftPath } from '../../../mars/viewer/engine/construction/access.ts';
+import { distToObb, findStations, liftDuration, liftStep, sweptLiftPath } from '../../../mars/viewer/engine/construction/access.ts';
+import { type Spatial } from '../../../mars/viewer/engine/spatial/service.ts';
+import { clearanceAt } from '../../../mars/viewer/engine/spatial/grid.ts';
+const STEP_BACK_SPEED = 0.6;
 import { followTarget, handPoint, pickupPlan, roomFor, STATION_SLOT } from '../../../mars/viewer/engine/construction/liftcrew.ts';
 import { frameSupported, isBeamPart, isFrame, worldPoint } from './beam-connect.ts';
 
@@ -70,6 +73,8 @@ export type Place = (part: Entity, qs: Vec3[], hosts: Entity[]) => { pose: Pose;
 /** Where the crew stands to work (PC16): the points they stand near, and the box they stay out of. */
 export type Stand = (part: Entity, target: Pose) => { points: Vec2[]; obb: { c: Vec2; half: Vec2; yaw: number }; y: number; y0: number };
 export type SeatExec = {
+  /** PC17 (#696): the part is in place; the crew is stepping clear of it. */
+  backing?: true;
   p: { crew: string[] }; part: string; kind: Kind; prog: Prog; id: string; phase: 'approach' | 'lift'; children?: Children; t: number; from: Pose; to: Pose; start: Pose;
   path?: Pose[]; duration: number; crew: string[]; item: string; slots?: string[]; stall?: number; lowering?: true;
 };
@@ -154,6 +159,18 @@ function letGo(rt: Runtime, ex: SeatExec) {
   for (const c of ex.crew) if (rt.world.entities[c]?.human) Object.assign(rt.world.entities[c]!.human!, { activity: 'idle', grip: undefined, task: undefined });
 }
 
+/** PC17 (#696): one step of the crew backing clear of where the part now is; false once everyone is clear, or can't go further. */
+function stepClear(rt: Runtime, ex: SeatExec, part: Entity, clear: number, dt: number): boolean {
+  const size = def(part.def).size, obb = { c: [ex.prog.target.p[0], ex.prog.target.p[2]] as Vec2, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: ex.prog.target.yaw }, g = (rt.services.spatial as Spatial).level(0);
+  let moved = false;
+  for (const c of ex.crew) {
+    const h = rt.world.entities[c]!, at: Vec2 = [h.pose.p[0], h.pose.p[2]], gap = distToObb(at, obb); if (gap >= clear) continue;
+    const away: Vec2 = [at[0] - obb.c[0], at[1] - obb.c[1]], n = hypot(away[0], away[1]) || 1, step = Math.min(STEP_BACK_SPEED * dt, clear - gap), q: Vec2 = [at[0] + away[0] / n * step, at[1] + away[1] / n * step];
+    if (g && clearanceAt(g, q) < HUMAN_RADIUS) continue;
+    h.pose = { ...h.pose, p: [q[0], h.pose.p[1], q[1]] }; moved = true;
+  }
+  return moved;
+}
 /** A sheet comes in over the bay's side, so its crew holds the two corners of its long edge toward where it lies (they
  *  stay outside the bay all the way; the native ends would be inside it, by the uprights), each standing beside theirs. */
 function sheetPickup(rt: Runtime, crew: string[], part: Entity, to: Pose): { moves: { actor: string; p: Vec2; yaw: number; level: number }[]; slots: string[] } | Diagnostic {
@@ -174,7 +191,9 @@ function sheetPickup(rt: Runtime, crew: string[], part: Entity, to: Pose): { mov
 
 /** The shared programme of both verbs: walk to it and take hold, check again, lift along the path, set it into its seats. */
 export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind: Kind; description: string; schema: z.ZodType<P>; part: (p: P) => string; hosts: (p: P) => string[];
-  plan: (rt: Runtime, p: P) => { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic }; seats?: (w: WorldState, p: P) => string[] }): ActionDef<P, Prog, SeatExec> {
+  plan: (rt: Runtime, p: P) => { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic }; seats?: (w: WorldState, p: P) => string[];
+  /** PC17 (#696): what stands on the ground when it is set: the crew steps this far clear of it, still holding, before letting go. */
+  stepBack?: number }): ActionDef<P, Prog, SeatExec> {
   return {
     verb: o.verb, description: o.description, schema: o.schema, resumable: true,
     // PC16 (#695): a seat two workers could both be lifting into is reserved too (a tread into its flight)
@@ -209,8 +228,9 @@ export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind
         part.support = { kind: 'held', by: [...ex.crew] }; part.phase = 'carried'; part.reservedBy = ex.id;
         for (const [i, c] of ex.crew.entries()) Object.assign(w.entities[c]!.human!, { activity: 'lift', grip: { entity: part.id, slot: ex.slots?.[i] ?? STATION_SLOT }, task: ex.id });
       }
-      const ls = liftStep(rt, ex, dt);
+      const ls = ex.backing || liftStep(rt, ex, dt);
       if (ls !== true) return ls ? { status: 'blocked', diagnostic: ls } : { status: 'running', phase: ex.lowering ? 'lower' : 'lift' };
+      if (o.stepBack && !ex.lowering && stepClear(rt, ex, part, o.stepBack, dt)) { ex.backing = true; return { status: 'running', phase: 'lift' }; }
       letGo(rt, ex);
       part.reservedBy = undefined;
       if (ex.lowering) {

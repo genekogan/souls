@@ -80,9 +80,9 @@ export function planFlightV1(rt: Runtime, p: FP) {
         return fail('stair.site-occupied', `${h.id} is standing where ${label(part)} goes`, [part.id, h.id]);
     return { pose, ends: [ofKind(part, STAIR_HOOK)[0]!.id] };
   };
-  // one either side of the flight, at its middle, clear of it once it stands: the walk grid reads a turned flight up to 0.28 m wider (PC17)
+  // one either side of the flight, at its middle
   const stand: Stand = (part, t) => {
-    const s = sizeOf(part), n = rot2([0, s[2] / 2 + 0.62], t.yaw), c: Vec2 = [t.p[0], t.p[2]];
+    const s = sizeOf(part), n = rot2([0, s[2] / 2 + 0.45], t.yaw), c: Vec2 = [t.p[0], t.p[2]];
     return { points: [[c[0] - n[0], c[1] - n[1]], [c[0] + n[0], c[1] + n[1]]], obb: flightObb(part, t), y: t.p[1] + s[1], y0: t.p[1] };
   };
   return planSeat(rt, 'flight', p.crew, p.flight, [{ host: p.beam, seat: p.seat }], STAIR_HOOK, JOIST_SEAT, beamProblems, { place, stand });
@@ -92,6 +92,8 @@ export const installFlightV1: ActionDef<FP, Prog, SeatExec> = withParams(seatAct
   description: 'Two people set a loose stair flight standing beside a bay so that its header hangs on a free ledge seat of a seated beam (its foot on the ground); its treads go in separately. Stopping before the lift lets go, during it lowers the flight back where it stood.',
   schema: z.strictObject({ crew: z.array(z.string().max(80)).min(1).max(4), flight: z.string().max(80), beam: z.string().max(80), seat: z.string().max(40) }),
   part: (p) => p.flight, hosts: (p) => [p.beam], plan: planFlightV1, seats: (_w, p) => [`${p.beam}:${p.seat}`],
+  // PC17 (#696): it stands on the ground, and the walk grid reads a turned part up to a cell wider than it is
+  stepBack: 0.62,
 }));
 
 type TP = { crew: string[]; tread: string; flight: string; index: number };
