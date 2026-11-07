@@ -77,7 +77,7 @@ parameters, slots and actions.
 ### Joints
 
 A def may declare typed structural connectors (`components.connectors`: `id`, `kind`, `at` in its own frame, `mates`,
-`bears`; `packages/world-compiler/src/joints.ts`). PC12 ([#691](https://github.com/genekogan/souls/issues/691)).
+`bears`; `packages/world-compiler/src/joints.ts`). PC12 ([#691](https://github.com/soulsimulation/souls/issues/691)).
 - **`connect`.** `{op: 'connect', a: {id, connector}, b: {id, connector}}` joins two parts whose connectors mate (each
   one's `mates` names the other's `kind`) and meet, within 5 cm. Both parts record their half of the joint (`joins`).
   The joint's id is `<a>.<connector>~<b>.<connector>`, with the lesser end first, so it is the same from either end.

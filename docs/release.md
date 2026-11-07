@@ -15,8 +15,8 @@ The canonical site is `https://soul.game`, with production built and launched at
 to it. Internal service/data names stay `sim-*`. There is no second public legacy stage on this host.
 A release is one command, [`ship.sh`](#shipsh), run from a clean checkout of the exact commit. It sets
 `SIM_WORLDS_BASE=/`, so the sealed build and launcher base match. The release workflow is not qualified for this
-topology yet (draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
-[#519](https://github.com/genekogan/souls/issues/519)): it still runs the historical dual-stage command, so **do not
+topology yet (draft [#523](https://github.com/soulsimulation/souls/pull/523), tracked by
+[#519](https://github.com/soulsimulation/souls/issues/519)): it still runs the historical dual-stage command, so **do not
 dispatch it on the root-only host**. Do not start a new gate to compensate for a missing receipt without authorization.
 
 ## Historical dual-stage deployment

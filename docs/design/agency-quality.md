@@ -1,6 +1,6 @@
 # Agency quality: fluid agent–Soul control
 
-Design direction for [tranche #623](https://github.com/genekogan/souls/issues/623), developed from the owner's
+Design direction for [tranche #623](https://github.com/soulsimulation/souls/issues/623), developed from the owner's
 November 2 review and November 3, 2026 controllability reassessment. This is a planning specification, not a claim
 of implemented behavior or authorization to collect telemetry, run live/model experiments, replace a harness,
 relax world rules or deploy. Issues hold
@@ -28,7 +28,7 @@ not the product finish line. The chosen sequence is basic passive telemetry, a b
 core controllability, then advanced demonstrations and physical collaboration. A comprehensive dashboard,
 fleet reporting system or harness replacement must not expand the initial diagnostic phases indefinitely.
 
-The ordered assignments and release journal live in [#623](https://github.com/genekogan/souls/issues/623).
+The ordered assignments and release journal live in [#623](https://github.com/soulsimulation/souls/issues/623).
 Each implementation slice owns one independently useful outcome and its proof, normally within a single-digit
 number of active hours including relevant verification. Split larger work without hiding unfinished acceptance.
 The initial exceptions to visible product benefit are a bounded current-path/contract audit and measurement
@@ -122,8 +122,8 @@ agenda. Independent technical review and a resolved shared contract are still ne
 
 ## What is known, and what is only suspected
 
-The original [continuity plan #22](https://github.com/genekogan/souls/issues/22) and
-[follow-ups #464](https://github.com/genekogan/souls/issues/464) already cover asynchronous intake, durable goals
+The original [continuity plan #22](https://github.com/soulsimulation/souls/issues/22) and
+[follow-ups #464](https://github.com/soulsimulation/souls/issues/464) already cover asynchronous intake, durable goals
 and gatherings. The current managed supervisor receives independently of inference and uses host steering;
 the thin skill also supports direct control, with a managed controller as an option. Source inspection found
 one structured call per managed decision, freshness/replan rules and substantial controller instructions.
@@ -136,8 +136,8 @@ These source leads were inspected at main `9c0862b0621d0cffbb8473f6c5dc9143fb5da
 [request admission](../../apps/server/src/load/admission.ts) and
 [activity offers](../../apps/server/src/edge/ledger/activities.ts). They are audit inputs, not incident traces.
 
-The [responsiveness investigation #344](https://github.com/genekogan/souls/issues/344) repaired event fidelity
-and explored combined acknowledgment/listening; [study #345](https://github.com/genekogan/souls/issues/345)
+The [responsiveness investigation #344](https://github.com/soulsimulation/souls/issues/344) repaired event fidelity
+and explored combined acknowledgment/listening; [study #345](https://github.com/soulsimulation/souls/issues/345)
 did not establish a general speedup. Earlier dance fixes and server capacity work are also inputs to verify,
 not proof that the current failure still exists. Preserve original failed and inconclusive evidence.
 
@@ -157,9 +157,9 @@ causing more reasoning is a hypothesis, not an established model property. Unatt
 
 ## Observe one episode accurately
 
-[Contract #592](https://github.com/genekogan/souls/issues/592) defines the common record used by the
-[local inspector #624](https://github.com/genekogan/souls/issues/624) and
-[experience reports #590](https://github.com/genekogan/souls/issues/590). Reuse current receipts, event cursors,
+[Contract #592](https://github.com/soulsimulation/souls/issues/592) defines the common record used by the
+[local inspector #624](https://github.com/soulsimulation/souls/issues/624) and
+[experience reports #590](https://github.com/soulsimulation/souls/issues/590). Reuse current receipts, event cursors,
 host/tool events and diagnostic hooks before adding fields. A simple walk and a refusal are initial observer
 fixtures, not the program's behavioral benchmark. Extend the schema only when another real episode needs it.
 
@@ -226,7 +226,7 @@ in a separately identified mode, if requested, whose perturbation cannot be hidd
 
 ### Native hosts and fluid control
 
-[Investigation #626](https://github.com/genekogan/souls/issues/626) compares actual direct/managed paths and the
+[Investigation #626](https://github.com/soulsimulation/souls/issues/626) compares actual direct/managed paths and the
 current structured-decision loop with supported persistent host/tool behavior. Prefer the mainstream host's
 session continuity, tool loop and documented steering/background mechanisms where qualified. Revalidate
 [Codex App Server steering](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn),
@@ -243,14 +243,14 @@ cancel the body. Allow compatible activity/conversation overlap only where nativ
 
 Retain necessary Soul-specific durability, action receipts, deduplication and uncertain-write reconciliation.
 Do not rebuild host memory/scheduling without a demonstrated gap. Compare the smallest architectural change;
-disclose unavoidable bundled differences. Coordinate [#476](https://github.com/genekogan/souls/issues/476),
-[#485](https://github.com/genekogan/souls/issues/485) and
-[#481](https://github.com/genekogan/souls/issues/481): prompt replies must preserve the original read, errand,
+disclose unavoidable bundled differences. Coordinate [#476](https://github.com/soulsimulation/souls/issues/476),
+[#485](https://github.com/soulsimulation/souls/issues/485) and
+[#481](https://github.com/soulsimulation/souls/issues/481): prompt replies must preserve the original read, errand,
 constraints and deadlines. A human should not need to choose an internal harness to get understandable control.
 
 ### Relevant information and useful first action
 
-[Investigation #627](https://github.com/genekogan/souls/issues/627) asks when sufficient authoritative facts first
+[Investigation #627](https://github.com/soulsimulation/souls/issues/627) asks when sufficient authoritative facts first
 became available and what happened afterward. Compare missing/ambiguous information, irrelevant volume,
 instruction complexity, repeated snapshots and ritual discovery separately from startup, provider and server
 waits. Include cold/warm and long-session contexts. Preserve identity, freshness, ambiguity and owner constraints.
@@ -263,7 +263,7 @@ and controlled comparisons must explain gains and transfer to unseen requests.
 
 ### Reasonable actions and honest refusals
 
-[Investigation #628](https://github.com/genekogan/souls/issues/628) separates necessary physical/consent
+[Investigation #628](https://github.com/soulsimulation/souls/issues/628) separates necessary physical/consent
 constraints, questionable product rules, false geometric refusals, misleading offers, changed state and bad
 invocation. An old constant or coding precaution is not sufficient product justification. In unchanged valid
 state an advertised available action should execute or expose a specific remaining precondition.
@@ -276,7 +276,7 @@ by hiding invalid actions or suppressing useful feedback. Coordinate body and co
 
 ### Busy is a resource diagnosis
 
-[Investigation #629](https://github.com/genekogan/souls/issues/629) attributes each refusal before changing
+[Investigation #629](https://github.com/soulsimulation/souls/issues/629) attributes each refusal before changing
 limits. The inspected server admits one outstanding heavy request per Soul across reads, acts and speech;
 this is request lifetime, not the lifetime of physical activity. Listener caps and host busy responses also
 need separate attribution. A conversation refusal does not by itself prove the recipient could not listen.
@@ -286,12 +286,12 @@ relaunches. Candidates include duplicate-read coalescing, bounded deadline-aware
 capacity for communication/cancellation and withdrawal of obsolete queued work. No unbounded queue, stale
 intent execution, blind retry of uncertain writes or removal of all capacity protection. Faster control that
 harms unrelated Souls or world tick health is a regression. Coordinate existing capacity/calibration
-[#450](https://github.com/genekogan/souls/issues/450)/[#451](https://github.com/genekogan/souls/issues/451)
-and host recovery [#470](https://github.com/genekogan/souls/issues/470).
+[#450](https://github.com/soulsimulation/souls/issues/450)/[#451](https://github.com/soulsimulation/souls/issues/451)
+and host recovery [#470](https://github.com/soulsimulation/souls/issues/470).
 
 ## Evidence that reflects real play
 
-[Method investigation #625](https://github.com/genekogan/souls/issues/625) defines how evidence earns confidence.
+[Method investigation #625](https://github.com/soulsimulation/souls/issues/625) defines how evidence earns confidence.
 Three kinds of evidence complement each other:
 
 1. Deterministic protocol/invariant and seeded observer tests establish that measurements and mechanics mean
@@ -336,7 +336,7 @@ Recorded after S1–S3 of #623 and the owner's reading of the 5 November primer.
 CLI, fake-mind world, loaded host) put the world at tens of milliseconds per call and the model at about two
 seconds per decision: latency is the number of model turns an intention costs, not world time. The S3 resolver
 defects were all cases of the world executing English it should not have been asked to execute. Nothing yet
-measured the quantities that matter. The direction below is design intent; issues [#1093](https://github.com/genekogan/souls/issues/1093)–[#1100](https://github.com/genekogan/souls/issues/1100) (CTRL-1 to CTRL-8) under #623
+measured the quantities that matter. The direction below is design intent; issues [#1093](https://github.com/soulsimulation/souls/issues/1093)–[#1100](https://github.com/soulsimulation/souls/issues/1100) (CTRL-1 to CTRL-8) under #623
 hold the acceptance and evidence, and the phase is S3b.
 
 **Contract.**
@@ -372,7 +372,7 @@ before the scorecard says so on a real agent.
 
 ## Ownership and implementation handoff
 
-Follow the [development coordinator contract](https://github.com/genekogan/souls/blob/main/docs/process/development-coordinator.md)
+Follow the [development coordinator contract](https://github.com/soulsimulation/souls/blob/main/docs/process/development-coordinator.md)
 and #623's current dated agenda. Start with #592's bounded current-path/evidence inventory, qualify the minimal
 passive trace and #625's small baseline/stress specification, then deliver #624's bounded local inspector.
 Select demonstrated control defects for the first useful core batch. Elaborate viewer/reporting expansion is
@@ -387,9 +387,9 @@ the future coordinator's actual implementation, model/resource, merge and releas
 this design revision itself launches no workers, model runs, collection or deployment.
 
 The existing continuity, scalability, action and reporting owners remain authoritative. Physical collaboration
-[#560](https://github.com/genekogan/souls/issues/560) is a major workstream inside #623, with its full acceptance
-preserved. Expressive actions [#26](https://github.com/genekogan/souls/issues/26)/
-[#426](https://github.com/genekogan/souls/issues/426) retain their unrelated scope; accepted activities are reused.
+[#560](https://github.com/soulsimulation/souls/issues/560) is a major workstream inside #623, with its full acceptance
+preserved. Expressive actions [#26](https://github.com/soulsimulation/souls/issues/26)/
+[#426](https://github.com/soulsimulation/souls/issues/426) retain their unrelated scope; accepted activities are reused.
 Client performance #556, project visibility #581/#583 and operational alerting #461
 are related but do not substitute for this experience-level work.
 

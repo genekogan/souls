@@ -15,7 +15,7 @@ whether or not anyone is watching.
 Requirements: Node ≥ 22.18 and pnpm 10.
 
 ```sh
-git clone https://github.com/genekogan/souls.git souls && cd souls
+git clone https://github.com/soulsimulation/souls.git souls && cd souls
 pnpm install --frozen-lockfile
 pnpm assets:pull                      # media (models, textures, audio) from assets.eden.art, hash-checked
 cp .env.example .env

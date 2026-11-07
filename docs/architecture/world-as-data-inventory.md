@@ -1,6 +1,6 @@
 # World-as-data inventory
 
-Pinned to `origin/main` at `9fa4cbea0` for [#1123](https://github.com/genekogan/souls/issues/1123). Read-only: nothing here
+Pinned to `origin/main` at `9fa4cbea0` for [#1123](https://github.com/soulsimulation/souls/issues/1123). Read-only: nothing here
 moves, renames or deletes anything. Every destination is a **proposal for Gene**. Rows marked **retire** need Gene's OK
 before anything is removed, and nothing is closed or deleted on the strength of this document. It builds on the #381
 dependency map ([mars-import-inventory.md](mars-import-inventory.md)) and the #680 PC01 manifest
@@ -22,7 +22,7 @@ so later steps can cite them. Columns:
 - **Destination**, exactly one of:
   - **Soul action**: general behaviour any world can use. This includes the Soul actions themselves and the engine and
     renderer code they run on or are drawn with (runtime, navigation, bodies, camera). Such substrate rows move with
-    [#382](https://github.com/genekogan/souls/issues/382) into a package named for Souls.
+    [#382](https://github.com/soulsimulation/souls/issues/382) into a package named for Souls.
   - **catalogue object**: a library def in `packages/world-compiler/src/core-kit/` (or the body and asset files a def
     points at).
   - **template data**: world template data, the way `worlds/templates/eden-2026.json` and `worlds/eden/` hold Eden.
@@ -30,7 +30,7 @@ so later steps can cite them. Columns:
 - **Notes / already done by**: the PC or issue that already delivers it, blockers, and "unsure: why" where the
   destination is a best guess.
 
-PC numbers are the [#560](https://github.com/genekogan/souls/issues/560) physical-coordination queue. At the pinned
+PC numbers are the [#560](https://github.com/soulsimulation/souls/issues/560) physical-coordination queue. At the pinned
 commit PC01–PC14 are landed except PC11 (#690, open), PC15 (#694) is in review as PR #1122, and PC16 onwards are planned.
 Since then (statuses only; the rows stay as pinned): PC15 landed (#1122), and PC16 (#695, stairs) is in review as PR #1132.
 Several rows below are behind the `SIM_SHARED_CARRY=1` flag.
@@ -222,7 +222,7 @@ Media is not in git; `tools/assets/manifest.json` lists it. Counts below are man
 
 ## Outside mars/: world-name branches in server and web
 
-The subject of [#579](https://github.com/genekogan/souls/issues/579). Brand uses of "Eden" (the eden.art site mark,
+The subject of [#579](https://github.com/soulsimulation/souls/issues/579). Brand uses of "Eden" (the eden.art site mark,
 the `eden-edge` contract name, `EDEN_GOD_*` variables) and imports of the general engine (#382's subject) are excluded.
 
 | ID | Source | What it does | Consumers | Destination | Notes / already done by |

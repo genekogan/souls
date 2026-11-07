@@ -58,7 +58,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qualify:
-    if: github.repository == 'genekogan/souls'
+    if: github.repository == 'soulsimulation/souls'
     runs-on: ${{ fromJSON(vars.QUALIFY_RUNNER || '["self-hosted"]') }}
     timeout-minutes: 300
     env:
