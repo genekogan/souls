@@ -36,7 +36,9 @@ reports use documentation addresses, neutral placeholders and relative paths. Do
 an actual device value. A successful scan is a backstop, not a privacy certificate: arbitrary usernames, machine
 nicknames, unusual encodings and identifiers cannot all be recognized. Manually inspect the final content.
 
-`upload.mjs` preflights text/JSON files for the entire batch before its first upload. Proof checking rejects leaking
+`upload.mjs` preflights text/JSON files for the entire batch before its first upload, and refuses a clip sidecar and
+any clip whose sidecar records that the recorder saw the page's host or the Reconnect box during the take (the
+`proof` skill). Proof checking rejects leaking
 PR/issue/proof text without echoing it into the bot comment; generated proof comments are checked again before
 output. The privacy check runs before the `proof:waived` and Dependabot paths on purpose: a waiver excuses missing
 proof, never a leak. The automated reviewer also checks its complete assembled comment before posting, so a hygiene finding
