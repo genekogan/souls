@@ -286,6 +286,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     const dir = godSeat(key), { token, identity, ...open } = legacy;
     writeJson(join(dir, GOD_LEGACY), open);
     saveGodSecrets(key, { token, identity });
+    updateConfig((c) => { c.gods[key].importedFrom = real(folder); });
     for (const f of readdirSync(folder)) if (GOD_KEPT.test(f)) copyFileSync(join(folder, f), join(dir, f));
     return { imported: true, world: key, reusedToken: !!token, note: `${GOD_LEGACY} stays where it was and still holds the token: delete it once the seat works.` };
   }

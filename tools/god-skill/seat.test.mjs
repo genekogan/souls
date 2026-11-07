@@ -144,18 +144,21 @@ test('every legacy, helper and child case keeps to its own seat', async (t) => {
   await soul('register', `${base}/a`);
   for (const w of ['a', 'b']) { await godCli('register', `${base}/${w}`, 'dev:owner'); await godCli(w, 'mint'); }
   const beside = (extra) => { const d = join(dir, `f${readdirSync(dir).length}`); mkdirSync(d); return [d, runner(d, god, { HOME: dir, ...extra })]; };
-  // a file whose world's seat is paired sits there, even with two seats and no name
+  // a file here is this folder's god, whatever seats exist, until import moves it
+  const creds = join(dir, '.souls/credentials.json');
   const [paired, inPaired] = beside();
-  writeFileSync(join(paired, '.eden-god.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok' }));
+  writeFileSync(join(paired, '.eden-god.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok', build: { id: 'b_1', n: 2 } }));
   assert.match((await inPaired('status')).out, /\/w\/b/);
-  // a seat that was never paired does not take the file's place
-  await godCli('register', `${base}/a`, 'dev:owner');
-  const creds = join(dir, '.souls/credentials.json'), c = JSON.parse(readFileSync(creds, 'utf8')), kept = c.gods.a.token;
-  delete c.gods.a.token; writeFileSync(creds, JSON.stringify(c));
-  const [unpaired, inUnpaired] = beside();
-  writeFileSync(join(unpaired, '.eden-god.json'), JSON.stringify({ world: `${base}/a`, token: 'god_a_tok' }));
-  assert.equal((await inUnpaired('status')).code, 0, 'the file still works');
-  c.gods.a.token = kept; writeFileSync(creds, JSON.stringify(c));
+  assert.equal(JSON.parse(readFileSync(join(paired, '.eden-god.json'), 'utf8')).build.id, 'b_1');
+  assert.ok(!existsSync(join(dir, '.souls/gods/b/.eden-god.claim-none.json')));
+  // a helper does not leave a lead still on its file
+  writeFileSync(join(paired, 'helper.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok', helper: { claim: 'c_12345678' } }));
+  assert.equal((await runner(paired, god, { HOME: dir, EDEN_GOD_HELPER: 'helper.json' })('status')).code, 0);
+  assert.ok(!existsSync(join(dir, '.souls/gods/b/.eden-god.claim-c_12345678.json')));
+  // an unreadable file says so, as it does anywhere
+  const [broken, inBroken] = beside();
+  writeFileSync(join(broken, '.eden-god.json'), '{not json');
+  assert.notEqual((await inBroken('status')).code, 0);
   // a file with no world is no god: register goes to the home
   const [worldless, inWorldless] = beside();
   writeFileSync(join(worldless, '.eden-god.json'), JSON.stringify({ group: 'g1' }));

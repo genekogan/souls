@@ -293,7 +293,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync as readFileSync4, rmSync as rmSync3 } from "node:fs";
 
 // lib/seat.mjs
-import { readFileSync as readFileSync3 } from "node:fs";
+import { readFileSync as readFileSync3, realpathSync as realpathSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve as resolve3 } from "node:path";
 
@@ -564,6 +564,9 @@ function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) =
     const dir = godSeat(key), { token, identity, ...open } = legacy;
     writeJson(join(dir, GOD_LEGACY), open);
     saveGodSecrets(key, { token, identity });
+    updateConfig((c) => {
+      c.gods[key].importedFrom = real(folder);
+    });
     for (const f of readdirSync(folder)) if (GOD_KEPT.test(f)) copyFileSync(join(folder, f), join(dir, f));
     return { imported: true, world: key, reusedToken: !!token, note: `${GOD_LEGACY} stays where it was and still holds the token: delete it once the seat works.` };
   }
@@ -743,6 +746,23 @@ var readWorld = (file) => {
     return null;
   }
 };
+function fileHolds(h, cfg, cwd) {
+  let raw;
+  try {
+    raw = readFileSync3(join2(cwd, LEGACY), "utf8");
+  } catch {
+    return null;
+  }
+  let world;
+  try {
+    world = JSON.parse(raw).world;
+  } catch {
+    return { key: null };
+  }
+  if (!world) return null;
+  const key = keyOf(cfg.worlds, world);
+  return key && cfg.gods[key]?.importedFrom === realpathSync2(cwd) ? null : { key };
+}
 function seatForRegister(url) {
   if (!registering) return () => {
   };
@@ -768,8 +788,8 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
   if (env2.EDEN_GOD_HELPER) {
     if (["register", "pair", "mint"].includes(cmd)) throw new Error("A helper works under its lead's seat; it does not pair or register.");
     const key = keyOf(cfg.worlds, readWorld(resolve3(cwd, env2.EDEN_GOD_HELPER)));
-    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key}, not ${asked}.`);
-    if (key && cfg.gods[key]) sit(h, key);
+    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key ?? "another world"}, not ${asked}.`);
+    if (key && cfg.gods[key] && h.godSecrets(key).token && !fileHolds(h, cfg, cwd)) sit(h, key);
     return line2;
   }
   if (asked !== null) {
@@ -779,14 +799,11 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
     } else sit(h, asked);
     return line2;
   }
-  const fileWorld = readWorld(join2(cwd, LEGACY));
-  if (fileWorld) {
-    const key = keyOf(cfg.worlds, fileWorld);
-    if (!key || !cfg.gods[key] || !h.godSecrets(key).token) return argv;
-    if (cmd !== "register" && cmd !== "help") {
-      sit(h, key);
-      return line2;
-    }
+  if (fileHolds(h, cfg, cwd)) return argv;
+  const moved = Object.keys(cfg.gods).find((k) => cfg.gods[k].importedFrom === realpathSync2(cwd));
+  if (moved && cmd !== "register" && cmd !== "help") {
+    sit(h, moved);
+    return line2;
   }
   if (cmd === "register") {
     registering = h;

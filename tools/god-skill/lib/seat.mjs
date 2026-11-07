@@ -1,7 +1,7 @@
 // Where a god's files live. A legacy folder keeps them beside the agent, as ever. Inside a Souls home a god holds a seat,
 // `.souls/gods/<world>/`, with its token in the shared credentials.json. The working directory stays the person's, because
 // god commands take relative file arguments: only this CLI's own files move. Never reads anything under souls/.
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { findHome, keyOf, openHome } from '../../world-launcher/soul/home.mjs';
@@ -18,6 +18,14 @@ function sit(home, key) {
 }
 const LEGACY = '.eden-god.json';
 const readWorld = (file) => { try { return JSON.parse(readFileSync(file, 'utf8')).world ?? null; } catch { return null; } };
+/** A state file here that is still this folder's god: it has a world (or cannot be read: the file path says why) and `import` has not moved it. */
+function fileHolds(h, cfg, cwd) {
+  let raw; try { raw = readFileSync(join(cwd, LEGACY), 'utf8'); } catch { return null; }
+  let world; try { world = JSON.parse(raw).world; } catch { return { key: null }; }
+  if (!world) return null;
+  const key = keyOf(cfg.worlds, world);
+  return key && cfg.gods[key]?.importedFrom === realpathSync(cwd) ? null : { key };
+}
 
 /** `register` makes its own seat, once its arguments are parsed. Call the answer if the world does not confirm: a typo leaves no seat. */
 export function seatForRegister(url) {
@@ -32,10 +40,10 @@ export function seatForRegister(url) {
 
 /** Pick the seat for this run, before any command. Returns the command line without its world selector. In this order:
  *  1. A seat is named: by a child's EDEN_GOD_SEAT, `@world`, or a bare world word no command shares. It must exist.
- *  2. A helper sits in the world of its helper file, and never pairs or registers.
+ *  2. A helper sits in the world of its helper file, unless its lead is still on a file here, and never pairs or registers.
  *  3. A named seat is used. A named `register` may only repeat that seat's own world.
- *  4. A file here with a world is this folder's god: its seat if that seat is paired (`node eden.mjs import` did that),
- *     else the file itself, as on any folder without a home. An unnamed `register` of a paired file goes on to 5.
+ *  4. A file here with a world is this folder's god, as on any folder without a home, until `node eden.mjs import` moves
+ *     it: the seat records the folder it came from, and that folder then sits there.
  *  5. `register` makes the seat of its URL, once its arguments are parsed and the world answers.
  *  6. One seat needs no name; several must be named; none leaves this run on the folder. */
 export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = process.env, home = homedir() } = {}) {
@@ -49,20 +57,17 @@ export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = proces
   if (env.EDEN_GOD_HELPER) {
     if (['register', 'pair', 'mint'].includes(cmd)) throw new Error('A helper works under its lead\'s seat; it does not pair or register.');
     const key = keyOf(cfg.worlds, readWorld(resolve(cwd, env.EDEN_GOD_HELPER)));
-    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key}, not ${asked}.`);
-    if (key && cfg.gods[key]) sit(h, key);
+    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key ?? 'another world'}, not ${asked}.`);
+    if (key && cfg.gods[key] && h.godSecrets(key).token && !fileHolds(h, cfg, cwd)) sit(h, key);
     return line;
   }
   if (asked !== null) {
     if (cmd === 'register') { registering = h; registerAs = asked; } else sit(h, asked);
     return line;
   }
-  const fileWorld = readWorld(join(cwd, LEGACY));
-  if (fileWorld) {
-    const key = keyOf(cfg.worlds, fileWorld);
-    if (!key || !cfg.gods[key] || !h.godSecrets(key).token) return argv;
-    if (cmd !== 'register' && cmd !== 'help') { sit(h, key); return line; }
-  }
+  if (fileHolds(h, cfg, cwd)) return argv;
+  const moved = Object.keys(cfg.gods).find((k) => cfg.gods[k].importedFrom === realpathSync(cwd));
+  if (moved && cmd !== 'register' && cmd !== 'help') { sit(h, moved); return line; }
   if (cmd === 'register') { registering = h; return line; }
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== 'help') sit(h, seats[0]);
