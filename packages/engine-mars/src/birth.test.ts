@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 import { probeNativeHumanBirth } from './birth.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 const factory=await marsFactory(GREEN_FIELD_WORLD);
 const request={id:'h_new',label:'New',soul:'s_new'};
 function saved(e:Engine){return {hash:e.stateHash(),world:JSON.stringify(e.world),records:JSON.stringify([...e.runtime.records]),scene:JSON.stringify(e.renderScene?.()),takes:JSON.stringify(e.takeChunks?.(-1))};}

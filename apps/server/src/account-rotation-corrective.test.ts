@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {randomBytes} from 'node:crypto';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';import {buildApp} from './http.ts';import type {Hub} from './hub.ts';import type {AccountIdentity} from './accounts/store.ts';import {SoulProfiles} from './soul-profile.ts';
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 async function setup(t:any){const f=fixture(':memory:',factory);f.brain.quiesce();f.souls.enableLifecycle();t.after(()=>{f.host.stop();f.db.close();});const legacy='agent-'+'e'.repeat(24);await invite(f,legacy);const born:any=await(await accept(f.host,f.request('/v1/souls',{name:'Legacy Rotation'},legacy))).json(),sid=born.soul.id,row=f.db.soul(sid)!;const pair:any=await(await f.request('/v1/souls/'+sid+'/pair',{},legacy)).json();const old:any=await(await f.app.request('/v1/agent/pair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:pair.code})})).json();

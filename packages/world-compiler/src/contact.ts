@@ -11,18 +11,19 @@ export function contactStateKey(def:{tags?:readonly string[];components?:{light?
   // Soul Actions entry 32: a lockable door's key / thumb-turn and a knock on its leaf are hand contact too.
   if(def.components?.opening&&def.tags?.includes('hand-operated')&&def.tags.includes('lockable')&&(action==='lock'||action==='unlock'))return 'locked';
   if(def.components?.opening&&def.tags?.includes('hand-operated')&&def.tags.includes('lockable')&&action==='knock')return 'open';
-  if(def.components?.sign&&def.tags?.includes('hand-writable')&&(!action||['write','erase','pin','unpin','sign','unsign','vote','mark','reply','take-on'].includes(action)))return 'text';
+  if(def.components?.sign&&def.tags?.includes('hand-writable')&&(!action||['write','erase','pin','unpin','sign','unsign','vote','mark','reply','take-on'].includes(action)||action==='move'&&def.tags.includes('checkers')))return 'text';
   // Opted-in drawn coverings without a hinge (curtains, a roller blind): open/close at a pull cord, the same contact.
   if(!def.components?.opening&&def.tags?.includes('hand-operated')&&def.state&&Object.hasOwn(def.state,'open')&&(!action||['open','close'].includes(action)))return 'open';
   // Opted-in hand switches without a light (a tap, a shower valve): the same on/off contact. Entry 37: a radio's
-  // tuning knob (`change-station`) is the same contact; the station it sets is depicted on the same clock.
-  if(!def.components?.opening&&def.tags?.includes('hand-operated')&&(!action||['switch-on','switch-off','change-station'].includes(action)))return 'on';
+  // tuning knob (`change-station`) is the same contact; the station it sets is depicted on the same clock. #431: so is a
+  // record player's tonearm (`put-on-record`), with the record it sets.
+  if(!def.components?.opening&&def.tags?.includes('hand-operated')&&(!action||['switch-on','switch-off','change-station','put-on-record'].includes(action)))return 'on';
   // Opted-in fire (a candle, a campfire): "light" / "put out" are the same on/off contact, under their own words.
   if(def.tags?.includes('hand-operated')&&action!==undefined&&['light','put-out'].includes(action))return 'on';
   return null;
 }
 /** Entry 37: besides `on`/`open`, the other fields a hand contact sets that viewers depict on the same clock. */
-export const CONTACT_EXTRA_FIELDS=['station'] as const;
+export const CONTACT_EXTRA_FIELDS=['station','record'] as const;
 /** Soul Actions entry 42: a hand-operated container's storage (its `shelf` slots, the mouth and what fits), else null.
  *  Shared by the server (offers, refusals, perception), the engine adapter (interior surface slots) and the viewer. */
 export type ContainerInside={lip:number;face:number;stand:[number,number];fit:[number,number,number];word:string;slots:{id:string;p:readonly number[]}[]};
@@ -31,4 +32,24 @@ export function containerInside(def:{tags?:readonly string[];components?:{contai
   if(!c?.inside||!def?.tags?.includes('hand-operated'))return null;
   const slots=(def.slots??[]).filter(s=>s.kind==='shelf').map(s=>({id:s.id,p:s.p}));
   return slots.length?{...c.inside,slots}:null;
+}
+/** #435 (W071): a container with an inside and no `open` state has no door (open shelving: a swap shelf). What is kept
+ *  in it is always seen nearby and taken without an open step; one that declares `open` is open only while it is. */
+export function containerOpen(def:{state?:Record<string,unknown>},state:{open?:unknown}|undefined):boolean{
+  return !(def.state&&Object.hasOwn(def.state,'open'))||state?.open===true;
+}
+/** #435: whether a thing in this slot is kept behind a door (a drawer, a locker) that can hide it and moves it with the
+ *  lid; a doorless container's contents (a swap shelf's) are ordinary things to the viewer. */
+export function keptBehindDoor(def:Parameters<typeof containerInside>[0]&{state?:Record<string,unknown>},slot:string|undefined):boolean{
+  return !!def&&(!containerOpen(def,{})||containerHidden(def))&&!!containerInside(def)?.slots.some(s=>s.id===slot);
+}
+/** #435 (W072): whether a container gives a thing that has an owner of its own back only to that owner (`claim: "owner"`,
+ *  a lost-and-found); things nobody owns are anyone's to take, as on a swap shelf. */
+export function containerClaims(def:{components?:{container?:unknown}}|undefined):boolean{
+  return (def?.components?.container as {claim?:unknown}|undefined)?.claim==='owner';
+}
+/** #435 (W068): whether what a container keeps is out of everyone's sight (`hidden: true`, a hiding place): never named,
+ *  offered or drawn, like a thing behind a shut door but with nothing to open; it is found only by searching the place. */
+export function containerHidden(def:{components?:{container?:unknown}}|undefined):boolean{
+  return (def?.components?.container as {hidden?:unknown}|undefined)?.hidden===true;
 }

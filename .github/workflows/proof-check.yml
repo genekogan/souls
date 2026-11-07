@@ -15,21 +15,26 @@
 # effect once merged. A maintainer can waive the check with the `proof:waived` label (it counts only when the
 # maintainer added it, and counts as their sign-off). Dependabot PRs pass the proof part (CI is their proof) but not the
 # T3-T4 gate. Branch protection requires `proof-ok`.
+# On a merge_group the job reports and checks nothing: the queue requires every ruleset check on the group's commit,
+# and proof belongs to a PR, which had to pass this check at its head to enter. Nothing can be added to a queued PR
+# without leaving the queue, so there is nothing left to prove.
 name: proof
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed]
+  merge_group:
 permissions:
   contents: read
 concurrency:
-  # Drafts get their own group, so a skipped draft run never cancels a real one.
-  group: proof-check-${{ github.event.pull_request.number }}-${{ github.event.pull_request.draft }}
-  cancel-in-progress: true
+  # Drafts get their own group, so a skipped draft run never cancels a real one. Each merge group has its own ref, and
+  # its run is never cancelled: a missing check would stall the queue.
+  group: proof-check-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.draft }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 jobs:
   proof-ok:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'merge_group' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -44,13 +49,16 @@ jobs:
       SIM_MAINTAINER: ${{ vars.MAINTAINER || github.repository_owner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name != 'merge_group'
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name != 'merge_group'
         with: { node-version: 22 }
       - name: Check the PR's acceptance and proof
         id: check
+        if: github.event_name != 'merge_group'
         run: |
           if [ ! -f tools/proof/acceptance.mjs ]; then
             echo "::warning::tools/proof/acceptance.mjs is not on the base branch yet; proof-check starts once it is merged."
@@ -59,7 +67,7 @@ jobs:
           node tools/proof/acceptance.mjs pr --repo "$REPO" --pr "$PR" --head "$HEAD_SHA" \
             --comment "$RUNNER_TEMP/comment.md" --summary "$GITHUB_STEP_SUMMARY" --output "$GITHUB_OUTPUT"
       - name: Post or update the proof comment
-        if: steps.check.outputs.skip != 'true'
+        if: github.event_name != 'merge_group' && steps.check.outputs.skip != 'true'
         # Fork PRs get a read-only token; the job summary still has the report.
         continue-on-error: true
         run: |
@@ -73,7 +81,7 @@ jobs:
           fi
       - name: proof-ok
         env:
-          OK: ${{ steps.check.outputs.ok }}
+          OK: ${{ github.event_name == 'merge_group' || steps.check.outputs.ok }}
           TIER: ${{ steps.check.outputs.tier }}
         run: |
           if [ "$OK" = true ]; then echo "proof-ok (${TIER:-n/a})"; exit 0; fi

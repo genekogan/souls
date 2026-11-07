@@ -3,7 +3,7 @@ import type {SoulRow} from './db.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {edenLectureV1,edenLectureFactoryV1,edenGroundFactoryV1,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {edenLectureV1,edenLectureFactoryV1,edenGroundFactoryV1,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {readFileSync} from 'node:fs';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {WorldHost} from './world.ts';

@@ -3,15 +3,15 @@
 // had arrived (all of React, the Shell, the UI). Phase one is the early entry (early-entry.ts) with only the chunks the
 // world's entity layer needs, beside the snapshot the head script already asked for; the layer then builds the terrain
 // and the near ring while phase two (main.tsx, React, the Shell, the rest of the UI, the socket) downloads. Phase two
-// starts when the snapshot is in (early-entry.ts calls window.__simPhase2), after at most PHASE2_FALLBACK_MS, or at once
-// if the early entry fails to load; its socket opens after at most SOCKET_FALLBACK_MS (PF2). P7d: `__simPhase2(true)` starts only its downloads and the socket; the main entry
+// starts when the snapshot is in (early-entry.ts calls window.__soulsPhase2), after at most PHASE2_FALLBACK_MS, or at once
+// if the early entry fails to load; its socket opens after at most SOCKET_FALLBACK_MS (PF2). P7d: `__soulsPhase2(true)` starts only its downloads and the socket; the main entry
 // itself runs at the next call (early-entry.ts: once the early renderer's poster is up), so it never competes with it. Pages that are not two-phase (the head script's phasedEntryWanted: desktops, old
 // worlds, pictures, ?phased=0) load both at once, main first, as before.
 // No imports: vite.config.ts loads this file in node.
 
 /** The window function that starts phase two (idempotent; `(true)`: its downloads, not yet its entry; `('fill')`: its
  *  downloads, its entry's download and the socket; `()`: everything, the entry run). */
-export const PHASE2_GLOBAL = '__simPhase2';
+export const PHASE2_GLOBAL = '__soulsPhase2';
 /** Phase two starts by itself this long after phase one, whatever happened to the early entry. PF2: was 15 s. */
 export const PHASE2_FALLBACK_MS = 8_000;
 /** PF2 (2026-10-20): the socket opens by itself this long after phase one when the snapshot has not answered by then.
@@ -28,7 +28,7 @@ export const SOCKET_FALLBACK_MS = 2_500;
 // and the poster's nearest models are in (the arrival gate), not at the early renderer's fill: on Eden 2026 the gate is
 // clear seconds before the fill (the phone is building the world, the link idle). Without the gate check it took the link
 // from Mars College's near models (poster +23%).
-/** t4-phone: `__simPhase2(FILL)`: the poster's bytes are in (the early renderer's nearest models too), so phase two's entry
+/** t4-phone: `__soulsPhase2(FILL)`: the poster's bytes are in (the early renderer's nearest models too), so phase two's entry
  *  is fetched (not run) and the socket opens while the phone links and draws the poster; the entry runs at the next plain
  *  call, as before. */
 export const PHASE2_FILL = 'fill';
@@ -40,12 +40,12 @@ export function callPhase2(mode?: true | typeof PHASE2_FILL): void {
   try { (window as unknown as Record<string, ((mode?: true | string) => void) | undefined>)[PHASE2_GLOBAL]?.(mode); } catch { /* the loader's fallbacks */ }
 }
 
-/** The inline loader that replaces Vite's module script and modulepreload tags. Reads window.__simPhased (snapshot-prefetch.ts
- *  head script) and opens the deferred entry socket (window.__simOpenSocket) with phase two. */
+/** The inline loader that replaces Vite's module script and modulepreload tags. Reads window.__soulsPhased (snapshot-prefetch.ts
+ *  head script) and opens the deferred entry socket (window.__soulsOpenSocket) with phase two. */
 export function phasedLoaderScript(early: Phase, main: Phase): string {
   return `(function(){var d=document,W=window,E=${JSON.stringify(early)},M=${JSON.stringify(main)},done=false,pre=false,sock=false,`
     + `add=function(u,entry){var l=d.createElement(entry?'script':'link');if(entry){l.type='module';l.src=u;}else{l.rel='modulepreload';l.href=u;}l.crossOrigin='';d.head.appendChild(l);return l;},`
-    + `so=function(){if(!sock){sock=true;try{var o=W.__simOpenSocket;if(typeof o==='function')o();}catch(e){}}},`
+    + `so=function(){if(!sock){sock=true;try{var o=W.__soulsOpenSocket;if(typeof o==='function')o();}catch(e){}}},`
     // t4-phone3: the entry's download (fe) and its end (ml): the socket opens once it is in, its join after it on the link
     + `si=false,fe=false,ml=false,`
     // t4-phone3: B' = phase two's other downloads in and the poster's nearest models in (window.__arrivalGate): fill
@@ -53,8 +53,8 @@ export function phasedLoaderScript(early: Phase, main: Phase): string {
     + `fill=function(){if(!done&&!fe){fe=true;var l=add(M.entry);l.onload=l.onerror=function(){ml=true;so();};}},`
     + `two=function(hold){if(!pre){pre=true;var left=M.preloads.length,got=function(){if(--left===0&&hold===true)near();};M.preloads.forEach(function(u){var l=add(u);l.onload=l.onerror=got;});if(!left&&hold===true)near();}`
     + `if(hold===${JSON.stringify(PHASE2_FILL)})fill();if(hold!==true&&hold!==${JSON.stringify(PHASE2_FILL)}&&!done){done=true;var e=add(M.entry,true);if(!fe||ml)so();else e.onload=e.onerror=so;}};`
-    + `W[${JSON.stringify(PHASE2_GLOBAL)}]=two;var ph=W.__simPhased===true;if(!ph)two();`
-    + `try{W.__simSnapshotPrefetch.response.then(function(){si=true;},function(){});}catch(e){}`
+    + `W[${JSON.stringify(PHASE2_GLOBAL)}]=two;var ph=W.__soulsPhased===true;if(!ph)two();`
+    + `try{W.__soulsSnapshotPrefetch.response.then(function(){si=true;},function(){});}catch(e){}`
     + `E.preloads.forEach(function(u){add(u);});var ee=add(E.entry,true);ee.onerror=two;if(ph){ee.onload=function(){setTimeout(function(){if(!si)so();},${SOCKET_FALLBACK_MS});};setTimeout(two,${PHASE2_FALLBACK_MS});}})();`;
 }
 

@@ -65,7 +65,10 @@ export class FilePlayer {
   private volume = 0;
   trackS = Infinity;
   fadeS = 4; prefetchS = 20; crossfadeS = CROSSFADE_S;
-  constructor(private env: FileEnv, private index: FileIndex, private on: FileEventHandler = () => {}) {}
+  private env: FileEnv;
+  private index: FileIndex;
+  private on: FileEventHandler;
+  constructor(env: FileEnv, index: FileIndex, on: FileEventHandler = () => {}) { this.env = env; this.index = index; this.on = on; }
 
   has(id: string) { return performancesOf(this.index, id).length > 0; }
   /** How many performances a piece has. */

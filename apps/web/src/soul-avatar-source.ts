@@ -1,5 +1,5 @@
-import type {PublicSoul} from '@sim/protocol';
-import {soulProfilePhotoSchema} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
+import {soulProfilePhotoSchema} from '@souls/protocol';
 
 export type SoulAvatarImage={src:string;kind:'profile-photo'|'generated';key:string;hash?:string};
 /** A published owner photo belongs to this Soul and world; it is not a body capture. */

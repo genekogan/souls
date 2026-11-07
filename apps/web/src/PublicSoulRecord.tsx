@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import {PUBLIC_SOUL_PATH,readPublicRecord,type PublicRecord} from './public-soul-record.ts';
 type Event=PublicRecord['events'][number];
 /** Public per-Soul live record (G4): fade colour, last accepted action, recent receipts, public events. No auth.

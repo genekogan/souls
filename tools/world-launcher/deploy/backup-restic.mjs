@@ -129,7 +129,7 @@ async function runBackup(stage) {
   mkdirSync(out, { recursive: true });
 
   // 1. databases: the live set, by relative path inside the data dir
-  const dbs = ['accounts.sqlite', join('forks', 'accounts.sqlite')].filter((f) => existsSync(join(data, f)));
+  const dbs = ['accounts.sqlite', 'body-collections.sqlite', join('forks', 'accounts.sqlite')].filter((f) => existsSync(join(data, f)));
   const worldsDir = join(data, 'worlds');
   for (const slug of existsSync(worldsDir) ? readdirSync(worldsDir).sort() : []) {
     if (existsSync(join(worldsDir, slug, 'sim.db'))) dbs.push(join('worlds', slug, 'sim.db'));

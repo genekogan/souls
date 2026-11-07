@@ -13,7 +13,7 @@ const ambient={id:'c_11',kind:'speech',at:1000,from:{soulId:'s_other',name:'Othe
 const terminal={id:'c_13',kind:'receipt',receipt:{...receipt,phase:'completed'}};
 
 async function fixture(t,firstEvents){
- const dir=mkdtempSync(join(tmpdir(),'sim-continuity-wait-')),requests=[];let waits=0;
+ const dir=mkdtempSync(join(tmpdir(),'souls-continuity-wait-')),requests=[];let waits=0;
  const server=createServer((req,res)=>{
   const url=new URL(req.url,'http://fixture');requests.push([req.method,req.url]);
   const reply=payload=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(payload));};

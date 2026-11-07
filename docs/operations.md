@@ -17,7 +17,7 @@ in the repository.
 
 Each stage is one systemd unit, `sim-worlds@<stage>`, running as the unprivileged `simworlds` user. The unit runs the
 keeper (`tools/world-launcher/keeper.mjs`), which holds the stage's port and runs the world launcher from the release
-the stage link `/srv/sim-worlds/<stage>` points at. The launcher runs one Sim server process per world on a private
+the stage link `/srv/sim-worlds/<stage>` points at. The launcher runs one Souls server process per world on a private
 loopback port and proxies HTTP, SSE and WebSocket traffic to it, starting worlds on demand and letting idle ones sleep.
 
 | Stage | Public paths | Settings | Data |
@@ -48,6 +48,12 @@ or proxy examples to this host. Internal `sim-*` service and data names remain u
   and short `hostCodes` are public; the numbers behind them are for loopback requests only.
 - `GET /__sim/health`: a health page for site owners (accounts listed in `SIM_SITE_OWNERS`) or loopback; build,
   host, every world, backups, arrivals, new client errors and alerts (`tools/world-launcher/health-dash.mjs`).
+- `GET /w/<slug>/healthz` carries `halted` and `glitches`: `{total, byRule: {rule: {rung: n}}}`, every refusal, recovery and halt
+  the world has had. It is public, so rule names and counts only. Each glitch also writes one `[world] glitch` line to
+  the world's log and one row to its store, with the bodies, the tick and the evidence: `op.mjs glitches --port <port>
+  --base / [--world <slug>]` reads those, for sleeping worlds too. The health page shows the counts. A halted world is the
+  `halted` problem code, so `hostOk` goes false and `host-health.log` gets its ALERT line; a refusal or recovery raises no alert
+  until real numbers set a rate threshold ([#1150](https://github.com/soulsimulation/souls/issues/1150)).
 - `sim-worlds-health@<stage>.timer` runs `deploy/host-health.mjs` every 10 minutes: disk, memory, the unit's working
   set against its `MemoryMax`, OOM kills and the last backup. It writes `<data>/host-health.json` and appends an
   ALERT/RECOVERED line to `<data>/host-health.log`; the launcher folds the result into healthz. An external monitor
@@ -61,7 +67,7 @@ audit log, uploaded assets, old-world fork inputs and the stage's non-secret hos
 restic snapshot. Retention keeps 7 daily, 4 weekly and 6 monthly snapshots (`SIM_BACKUP_KEEP`). An off-host copy to an
 S3-compatible bucket runs when `SIM_BACKUP_OFFSITE` is set. Every release also takes its own compact pre-release copy.
 Commands are in the [runbook](operations/runbook.md#backups). Local backup verification does not prove offsite
-recovery; [offsite setup #557](https://github.com/genekogan/souls/issues/557) is explicitly deferred and must be
+recovery; [offsite setup #557](https://github.com/soulsimulation/souls/issues/557) is explicitly deferred and must be
 qualified separately.
 
 ## Logs

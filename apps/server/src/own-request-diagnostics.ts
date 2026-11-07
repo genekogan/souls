@@ -2,7 +2,7 @@
 // existing owner lookup. No raw model output, reasoning, keys, chain, other
 // owner or other body state. Every object is closed (App refuses unknown keys).
 import {z} from 'zod';
-import {intentAdmissionFactV2,intentControllerFactV2,type IntentReceiptV2} from '@sim/protocol';
+import {intentAdmissionFactV2,intentControllerFactV2,type IntentReceiptV2} from '@souls/protocol';
 import {readHumanCapabilitiesV1} from './human-capabilities.ts';
 import {humanBodyStateV1,humanWaitConditionV1} from './human-wait-condition.ts';
 import type {WorldHost,Mind} from './world.ts';

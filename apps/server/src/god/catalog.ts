@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { Context, Hono } from 'hono';
 import { compress } from 'hono/compress';
-import { vocab, type StoredDef } from '@sim/world-compiler';
+import { vocab, type StoredDef } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import type { GodMode } from './god.ts';
 import { type AssetStore, exampleOp, publicRef, searchDefs } from './assets.ts';

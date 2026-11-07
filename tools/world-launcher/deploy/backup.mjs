@@ -27,6 +27,8 @@ async function copyDb(src, dest) {
 }
 
 await copyDb(join(dataDir, 'accounts.sqlite'), join(out, 'accounts.sqlite'));
+// #717: body-collection membership and attribution shared by the stage's worlds
+await copyDb(join(dataDir, 'body-collections.sqlite'), join(out, 'body-collections.sqlite'));
 // the old worlds' own account registry (forks: /worlds/w/<key>, and the legacy stage's original worlds)
 await copyDb(join(dataDir, 'forks', 'accounts.sqlite'), join(out, 'forks-accounts.sqlite'));
 if (existsSync(join(dataDir, 'worlds.json'))) { copyFileSync(join(dataDir, 'worlds.json'), join(out, 'worlds.json')); ok++; }

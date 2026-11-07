@@ -6,7 +6,7 @@
 // pitch and scale, hold still while a thing eases in or moves, and differ per shape by a seed. `?surfaces=0` turns
 // every god surface off (plain materials and draws exactly as before) for comparison.
 import * as THREE from 'three';
-import type { KitShape, Material } from '@sim/generators';
+import type { KitShape, Material } from '@souls/generators';
 import { GOD_SURFACE_KEY, patchGodSurface, type GodSurface, type RealismClass } from '../WorldEdenRealism.ts';
 
 export type KitSurface = GodSurface;
