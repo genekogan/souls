@@ -1,7 +1,7 @@
 import { test,type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { marsFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture,invite } from '../test/native-owner-fixture.ts';
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 async function local(t:TestContext,candidate=true){

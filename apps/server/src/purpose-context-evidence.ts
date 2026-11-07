@@ -1,4 +1,4 @@
-import type {MidContext} from '@sim/brain';
+import type {MidContext} from '@souls/brain';
 import type {IntentHistoryV2} from './intent-history.ts';
 type Entry=IntentHistoryV2['intents'][string];
 type Purpose=NonNullable<MidContext['purposes']>[number];

@@ -154,8 +154,20 @@ calls continue unchanged, the file gets no `closed` row and the final
 `controller-closed` line reports `evidence: {complete: false, code, dropped}`
 (#733 A4). `--evidence-required` restores fail-closed recording for
 qualification runs: the first failure aborts the run and reads fail with
-`EVIDENCE_IO`. Records are written synchronously, so a slow disk can still
-delay the controller's event loop.
+`EVIDENCE_IO`. By default rows go through soul-trace's bounded asynchronous
+queue (`tools/soul-trace/sink.mjs`: one batch in flight, at most 4 MiB queued,
+flushed every 100 ms), so a slow disk does not delay the controller's event
+loop; an overflow is reported as `EVIDENCE_DROPPED`, a crash can lose the last
+100 ms, and a sink that has not drained 2 s after shutdown is reported
+incomplete. `--evidence-required` keeps synchronous writes.
+
+`SOUL_TRACE_FILE=<local .jsonl>` (opt-in, off by default) records the
+controller's side of an owner episode in the thin CLI's `soul-trace/1` format
+(`tools/soul-trace/README.md`): `host.turn` from each `begin` request to
+`turn/completed`, linked to the first owner message the turn carries, and
+`host.tool` for tool items. Run it with
+`node --import tools/soul-trace/tap.mjs tools/soul-runtime/run.mjs …` so the
+same file also has the world requests; `readout.mjs` and `inspect.mjs` read it.
 
 Finite body actions and sustained activities differ. Walking has a terminal
 receipt; reading may also have a native finite duration, while sitting can

@@ -4,7 +4,7 @@ import {mountBodyAuthoring} from './authoring.ts';
 import {coreRevision,versionOf} from './core-revisions.ts';
 import {BodyCollections,collectionPath,itemOf,LIBRARY_PAGE} from './collections.ts';
 import type {Context,Hono} from 'hono';
-import type {Entity} from '@sim/engine-contract';
+import type {Entity} from '@souls/engine-contract';
 import {EDGE_CONTRACT,EdgeError,edgeBody,type EdgeDeps, edgeErrorOf} from '../contract.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import {admitBodyGLB,bindBodyDefinition,BodyAdmissionError,BODY_LIMITS} from './admission.ts';

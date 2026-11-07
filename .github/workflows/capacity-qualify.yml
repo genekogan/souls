@@ -58,7 +58,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qualify:
-    if: github.repository == 'genekogan/souls'
+    if: github.repository == 'soulsimulation/souls'
     runs-on: ${{ fromJSON(vars.QUALIFY_RUNNER || '["self-hosted"]') }}
     timeout-minutes: 300
     env:
@@ -131,7 +131,7 @@ jobs:
       - name: Build the web and viewer bundles
         working-directory: bench
         run: |
-          pnpm --filter @sim/web build
+          pnpm --filter @souls/web build
           pnpm build:viewer
       # Only when asked: the runner must already have Chromium's system libraries (no --with-deps, no sudo here).
       - name: Chromium for the bench's real browser

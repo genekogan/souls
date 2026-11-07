@@ -2,7 +2,7 @@
 // waterfalls, decks, scatter rules, pitch frames.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Terrain, emptyGround, groundSchema, landformSchema, type Ground, type Landform } from '@sim/ground';
+import { Terrain, emptyGround, groundSchema, landformSchema, type Ground, type Landform } from '@souls/ground';
 import { GENERATORS, arcLengths, areaFrame, centreLine, prepareDeck, prepareFor, prepareRoad, queryOf, scatter2Points, snapRiver, steepest, type TerrainQuery } from './index.ts';
 
 function world(forms: Landform[], waters: Ground['waters'] = []) {

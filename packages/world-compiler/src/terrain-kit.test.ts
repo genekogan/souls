@@ -3,7 +3,7 @@
 // per-point levels, floating on a river, walls refusing a crossing, undo restoring the ground.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareFor, queryOf } from '@sim/generators';
+import { prepareFor, queryOf } from '@souls/generators';
 import terrainKit from './core-kit/terrain.json' with { type: 'json' };
 import { CORE_KIT, WorldModel, applyBatch, coreRef, type Accepted, type DefInput, type Refused } from './index.ts';
 

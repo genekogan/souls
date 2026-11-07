@@ -1,10 +1,10 @@
 // Private persistence and named canonical publication seam. No route/automatic
 // worker or G-004 behavioral activation; pending rows alone are not receipts.
 import { randomUUID } from 'node:crypto';
-import { hashOf, stableStringify } from '@sim/engine-contract';
+import { hashOf, stableStringify } from '@souls/engine-contract';
 import { INTENT_V2, intentReceivedPayloadV2Schema, intentHistoryFactV2,
   intentRequestV2Schema, intentReceiptV2Schema, intentSourceV2Schema, intentRevisionV2Schema,
-  type IntentRequestV2, type IntentReceiptV2, type IntentRevisionV2 } from '@sim/protocol';
+  type IntentRequestV2, type IntentReceiptV2, type IntentRevisionV2 } from '@souls/protocol';
 import type { Db, SoulRow } from './db.ts';
 import { checkAcceptanceGuard, type AcceptanceGuard, type AcceptanceJournal } from './world.ts';
 

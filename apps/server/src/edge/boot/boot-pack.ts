@@ -1,6 +1,6 @@
 // W1 pure preparation. Full authored knowledge and a small destination index
 // have separate cache identities. Neither static identity includes clock or Me.
-import {hashOf,stableStringify} from '@sim/engine-contract';
+import {hashOf,stableStringify} from '@souls/engine-contract';
 import type {Place} from '../ledger/places.ts';
 import type {KnownBootPlace} from './place-resolution.ts';
 export type PublicBootRules={earshotMetres:number;perceptionMetres:number;secondsCaps:Record<string,number>;fadeThresholdSeconds?:number[]};

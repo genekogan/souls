@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
-const here=new URL('.',import.meta.url).pathname,outfile=join(await mkdtemp(join(tmpdir(),'sim-world-labels-')),'labels.cjs');
+const here=new URL('.',import.meta.url).pathname,outfile=join(await mkdtemp(join(tmpdir(),'souls-world-labels-')),'labels.cjs');
 await build({entryPoints:[join(here,'WorldLabels.ts')],outfile,bundle:true,format:'cjs',platform:'node',logLevel:'silent'});
 const {placeWorldLabels,plateAnchor,nameTag}=createRequire(import.meta.url)(outfile);
 const area={left:0,top:0,width:390,height:700,aspect:390/700};

@@ -1,6 +1,6 @@
 // Opt-in legacy migration. Ordinary BODY-v1 events remain the replay truth; an atomic
 // operator receipt makes each assignment reversible without rewriting accepted history.
-import type {Entity} from '@sim/engine-contract';
+import type {Entity} from '@souls/engine-contract';
 import type {Db, SoulRow} from '../../db.ts';
 import type {WorldHost} from '../../world.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';

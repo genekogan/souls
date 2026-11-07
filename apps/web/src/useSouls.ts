@@ -7,15 +7,15 @@ import { takeBootSocket } from './snapshot-prefetch.ts';
 import { arrivalMark } from './arrival-marks.ts';
 import { watchSocket } from './client-errors.ts';
 import { useEffect, useRef, useState } from 'react';
-import { Connection } from '@sim/client';
+import { Connection } from '@souls/client';
 import {createStationConnection,type StationConnection} from './score/station-connection.mjs';
-import * as stationCodec from '@sim/protocol';
-import { PROTO } from '@sim/protocol';
-import type { StationLiveContract, BrainCall, CameraLine, KernelView, LogEvent, Me, NarrativeView, PlayView, ServerStats, TalkLine, TickerLine } from '@sim/protocol';
+import * as stationCodec from '@souls/protocol';
+import { PROTO } from '@souls/protocol';
+import type { StationLiveContract, BrainCall, CameraLine, KernelView, LogEvent, Me, NarrativeView, PlayView, ServerStats, TalkLine, TickerLine } from '@souls/protocol';
 
 declare const __BUILD__: string;
 
-export type Sim = {
+export type Souls = {
   takes: { serverTick: number; chunks: {fromTick: number; toTick: number; take: unknown}[]; receivedAt: number };
   privateAuthorityGeneration?:number;conn: Connection; station:StationConnection|null;me: Me | null; log: LogEvent[]; brain: BrainCall[]; camera: CameraLine | null; ticker: TickerLine[];
   narratives: Record<string, NarrativeView>; stats: ServerStats | null; bytesPerSec: number;
@@ -43,13 +43,13 @@ export function staleBundle(build: string, incompatible: boolean, hiddenMs = 60_
 }
 
 /** One connection for the page. Re-renders about 5 times a second while the world runs. */
-export function useSim(getToken: () => Promise<string | null>, authed: boolean,identity:string|null=null,worldId?:string,stationCapabilities?:{stationContracts?:StationLiveContract[]}): Sim {
+export function useSouls(getToken: () => Promise<string | null>, authed: boolean,identity:string|null=null,worldId?:string,stationCapabilities?:{stationContracts?:StationLiveContract[]}): Souls {
   const tokenRef = useRef(getToken); tokenRef.current = getToken;
   const identityRef=useRef(identity);identityRef.current=identity;
   const authedRef=useRef(authed);authedRef.current=authed;
   const session=JSON.stringify([authed,identity]);const sessionRef=useRef(session);
   const [, force] = useState(0);
-  const s = useRef<Omit<Sim, 'conn'> & { conn: Connection | null; lastBytes: number; lastAt: number; takeEpoch?: string }>({ takes: {serverTick: 0, chunks: [], receivedAt: 0}, conn: null,station:null, privateAuthorityGeneration:0,me: null, log: [], brain: [], camera: null, ticker: [], narratives: {}, stats: null, bytesPerSec: 0, kernel: null, plays: [], talk: [], edge: [], lastBytes: 0, lastAt: Date.now() });
+  const s = useRef<Omit<Souls, 'conn'> & { conn: Connection | null; lastBytes: number; lastAt: number; takeEpoch?: string }>({ takes: {serverTick: 0, chunks: [], receivedAt: 0}, conn: null,station:null, privateAuthorityGeneration:0,me: null, log: [], brain: [], camera: null, ticker: [], narratives: {}, stats: null, bytesPerSec: 0, kernel: null, plays: [], talk: [], edge: [], lastBytes: 0, lastAt: Date.now() });
   if(sessionRef.current!==session){sessionRef.current=session;retirePrivateAuthority(s.current);}
   if (!s.current.conn) {
     const st = s.current;
@@ -119,12 +119,12 @@ export function useSim(getToken: () => Promise<string | null>, authed: boolean,i
   // signing in or out: reconnect so the server re-reads who we are
   const first = useRef(true);
   useEffect(() => { if (first.current) { first.current = false; return; } const st=s.current;retirePrivateAuthority(st);st.conn!.rehello(); }, [authed,identity]);
-  return s.current as Sim;
+  return s.current as Souls;
 }
 
 /** Re-read who we are (the welcome's Me) without a reload: a reconnect, as signing in does. New worlds' hub never pushes
  *  an updated Me (no live private authority), so a Soul just approved in this window is not "own" until this runs. */
-export function refreshMe(sim: Sim) { retirePrivateAuthority(sim); sim.conn.rehello(); }
+export function refreshMe(sim: Souls) { retirePrivateAuthority(sim); sim.conn.rehello(); }
 
 export function makeApi(getToken: () => Promise<string | null>,session?:()=>number) {
   return createApiRequest(getToken,{path:apiPath,session});

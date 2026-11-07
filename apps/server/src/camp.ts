@@ -1,8 +1,8 @@
 // The camp's activity examples become ordinary, logged cards. They describe available acts;
 // neither this pack nor its conditions assigns times or a sequence of daily activities.
-import { cardHash, type Card } from '@sim/kernel';
-import { hashOf } from '@sim/engine-contract';
-import {CAMP_EXPANSION_CAMPUS,CAMP_EIGHT_RESOURCES} from '@sim/engine-mars';
+import { cardHash, type Card } from '@souls/kernel';
+import { hashOf } from '@souls/engine-contract';
+import {CAMP_EXPANSION_CAMPUS,CAMP_EIGHT_RESOURCES} from '@souls/engine-mars';
 import { edenCampActivities, bindCampActivity } from '../../../mars/viewer/engine/scenarios/eden-camp.ts';
 import type { WorldHost, Mind } from './world.ts';
 import {campResourceBindings,LEGACY_CAMP_RESOURCES,type CampResourceSet} from './camp-resources.ts';

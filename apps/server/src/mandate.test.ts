@@ -1,12 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {toyFactory} from '@sim/engine-toy';
-import {marsFactory} from '@sim/engine-mars';
-import type {EngineFactory} from '@sim/engine-contract';
-import {kernelHash,validateCard,applyAll,sweep} from '@sim/kernel';
-import {publicEvent,steerReceiptSchema,ownerSoulDashboardSchema,type MandateRule} from '@sim/protocol';
-import {newLife,compileUser} from '@sim/brain';
+import {toyFactory} from '@souls/engine-toy';
+import {marsFactory} from '@souls/engine-mars';
+import type {EngineFactory} from '@souls/engine-contract';
+import {kernelHash,validateCard,applyAll,sweep} from '@souls/kernel';
+import {publicEvent,steerReceiptSchema,ownerSoulDashboardSchema,type MandateRule} from '@souls/protocol';
+import {newLife,compileUser} from '@souls/brain';
 import {Db} from './db.ts';
 import {WorldHost,replayKernel} from './world.ts';
 import {Brain} from './brain.ts';

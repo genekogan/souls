@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Hono, type Context } from 'hono';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { GodMode, type WorldDiffMessage } from './god.ts';
 import { mountGodRoutes } from './routes.ts';
 

@@ -269,3 +269,19 @@ test('PC08 A1: the logged stop replays by its programme; an old edge-stop withou
     assert.equal(h.boot().from, mode); assert.deepEqual({engine: h.engine.stateHash(), kernel: kernelHash(h.kernel)}, head, mode); h.stop();
   }
 });
+
+test('PC10 (#689): "stand up / stop what I am doing" from a member is the safe stop, never a stall release that cuts the carry', {timeout: 300000}, async (t) => {
+  const w = await world(t), {Ada, Bo} = w.souls;
+  let host = null, guest = null;
+  const r = await carry(w, t, () => false, async (c) => {
+    if (host || c.phase !== 'move' || c.n < 40) return;
+    host = ok(await act(w, Ada, {capability: 'stand:here'})); guest = ok(await act(w, Bo, {capability: 'stand:here'}));
+  });
+  assert.equal(host.receipt.capability, `stop-carry:${r.op.id}`); assert.equal(host.receipt.code, 'shared.stop-requested');
+  assert.equal(guest.receipt.capability, `stop-carry:${r.op.id}`); assert.equal(guest.receipt.code, 'shared.stop-asked');
+  assert.equal(stops(w).length, 1, 'one stop event');
+  assert.equal(w.f.db.db.prepare("SELECT COUNT(*) n FROM edge_receipts_v1 WHERE code='stall.released'").get().n, 0, 'no stall release');
+  for (const [s, rc] of r.crew) { const x = read(w, s, rc); assert.equal(x.phase, 'completed'); assert.equal(x.code, 'shared.stopped'); assert.equal(x.shared.stop.name, 'Ada'); }
+  assert.equal(r.op.result, 'stopped'); assert.equal(w.f.host.engine.world.entities[r.beam].support?.kind, 'ground');
+  for (const s of [Ada, Bo]) assert.equal(w.f.host.engine.world.entities[s.entityId].human.grip ?? null, null, `${s.name}'s hands are free`);
+});

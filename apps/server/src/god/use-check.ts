@@ -4,8 +4,8 @@
 // Callers: BS2's commit check (the entities a commit placed or moved) and BS3's fuzz fixture; seatTopsOf also feeds the
 // edge sit capability's seat.too-high block (engine-bridge.ts). The walk audit does not call it
 // (its V3-walk baseline counts only navTargetsV1).
-import type { WorldModel } from '@sim/world-compiler';
-import type { UseCheckV1 } from '@sim/engine-mars';
+import type { WorldModel } from '@souls/world-compiler';
+import type { UseCheckV1 } from '@souls/engine-mars';
 
 export type UseVerdict = UseCheckV1 & {
   /** One god-readable line, unusable slots only: what cannot be used, why, and where. */

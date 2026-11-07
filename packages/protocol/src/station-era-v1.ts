@@ -1,7 +1,7 @@
 // Candidate G006 source/head codec and fold. No journal, timer, cue selection,
 // network, model, producer installation or V1 parser relaxation.
 import { z } from 'zod';
-import { commonsTransitionV1Schema,campExpansionV1Schema,hashOf } from '@sim/engine-contract';
+import { commonsTransitionV1Schema,campExpansionV1Schema,hashOf } from '@souls/engine-contract';
 import { stationEpochV1Schema,stationEpochId,type StationEpochV1 } from './station-v1.ts';
 const integer=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const digest=z.string().regex(/^[a-f0-9]{64}$/);

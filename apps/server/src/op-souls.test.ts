@@ -12,7 +12,7 @@ import { AgentInbox } from './inbox.ts';
 import { EdgeLedger } from './edge/ledger/ledger.ts';
 import { BODY_KNOBS } from './edge/ledger/body-rule.ts';
 import { OPERATOR_ACCOUNT, isTestName, deniedSoul } from './op-souls.ts';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 
 const KEY = randomBytes(32).toString('hex');
 const input = (key: string, name: string, extra: Record<string, unknown> = {}) => ({ agentLabel: 'eden-agent 1.9.5', name, idempotencyKey: 'op-souls-test-key-' + key, pollSecret: randomBytes(32).toString('base64url'), ...extra });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nativeGatheringObservationV1Schema, type Engine } from '@sim/engine-contract';
+import { nativeGatheringObservationV1Schema, type Engine } from '@souls/engine-contract';
 import { marsFactory } from './engine.ts';
 
 const factory=await marsFactory();

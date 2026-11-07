@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Op, WorldModel } from '@sim/world-compiler';
+import type { Op, WorldModel } from '@souls/world-compiler';
 import { canvasFace, flatCanvas, paintingEasel, planFinishedPainting, type ArtFailure } from './art.ts';
 import { worldDay } from '../god/poster-boards.ts';
 import { PAINTING_RENDERER, PaintingRejected, rasterizePainting, validatePainting, type Painting } from './painting.ts';
