@@ -40,9 +40,12 @@ What the edge may point at instead of copying:
 | Evidence | Read | Kept |
 |---|---|---|
 | Receipt | `GET /v1/edge/receipts/:id` (the Soul's own) | For the world's life: `edge_receipts_v1` is never pruned |
-| Conversation turn | `GET /v1/edge/conversations/:id/turns` (members, from when they joined) | For the world's life: `edge_comms_turns` is never pruned |
-| Object | `GET /v1/edge/objects/:id` | While it exists; then `{object: null, tombstone: {id, kind, lastName, goneAt, goneTick}}`, for a listed kind or a Soul that acted on it |
+| Conversation turn | `GET /v1/edge/conversations/:id/turns` (members from when they joined; past members up to when they left) | For the world's life: `edge_comms_turns` is never pruned |
+| Object | `GET /v1/edge/objects/:id` | While it exists; then `{object: null, tombstone: {id, kind, lastName, goneAt, goneTick}}`, for a listed kind, or a Soul that held a role in it or acted on it. Tombstones are kept for the world's life, one small row each |
 | Event stream | `GET /v1/edge/events` | Not durable: pruned by count and age, so copy what matters |
+
+A Soul's home world answers only its travel calls while it is away, so these reads wait until it is back. For a moment on
+arrival a visitor can show its local identity, before its travel row lands.
 
 ## The edge API
 

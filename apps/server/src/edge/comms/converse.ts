@@ -18,7 +18,9 @@ type Ref = {soulId: string; name: string};
 type Member = Ref & {joinedAt: number; lastAt: number; fromTurn: number};
 type Pending = Ref & {at: number; by?: string};
 type Body = {id: string; state: 'open' | 'closed'; createdBy: string; createdTick: number; createdAt: number;
-  members: Member[]; invited: Pending[]; asks: Pending[]; turns: number; closedAt?: number; closedReason?: string};
+  members: Member[]; invited: Pending[]; asks: Pending[]; turns: number; closedAt?: number; closedReason?: string;
+  /** #1139: who has left and the turns they were there for, so memory's pointers into a conversation still read. */
+  past?: {soulId: string; fromTurn: number; toTurn: number}[]};
 
 export type ConverseResult = {accepted: true; [k: string]: unknown} | {accepted: false; code: string; reason: string; conversation?: string};
 const refuse = (code: string, reason: string, conversation?: string): ConverseResult => ({accepted: false, code, reason, ...(conversation ? {conversation} : {})});
@@ -177,8 +179,14 @@ export class Conversations {
     this.core.spectate({kind: 'conversation.turn', tick, conversation: b.id, turn, untrusted: true});
     return {seq, tick, at};
   }
+  private retain(b: Body, soulId: string) {
+    const m = b.members.find(x => x.soulId === soulId); if (!m) return;
+    const was = b.past?.find(p => p.soulId === soulId);
+    if (was) was.toTurn = b.turns; else (b.past ??= []).push({soulId, fromTurn: m.fromTurn, toTurn: b.turns});
+  }
   private leave(b: Body, soul: EdgeSoul): ConverseResult {
     if (b.members.some(m => m.soulId === soul.soulId)) {
+      this.retain(b, soul.soulId);
       b.members = b.members.filter(m => m.soulId !== soul.soulId);
       this.memberEvent(b, this.ids(b.members), soulRef(soul), 'left');
     } else if (b.asks.some(m => m.soulId === soul.soulId)) {
@@ -220,6 +228,7 @@ export class Conversations {
       }
       for (const m of lapsed) this.emit([m.soulId], 'conversation.closed', {conversation: b.id, reason: 'request-expired'});
       for (const m of dropped) {
+        this.retain(b, m.soulId);
         b.members = b.members.filter(x => x.soulId !== m.soulId);
         this.memberEvent(b, [...this.ids(b.members), m.soulId], m, 'dropped');
       }
@@ -244,10 +253,10 @@ export class Conversations {
   /** Turns a member is entitled to read: those spoken since they joined. */
   turns(soul: EdgeSoul, id: string, after: number, limit = 100) {
     const b = this.load(id);
-    const me = b?.members.find(m => m.soulId === soul.soulId);
-    if (!b || !me) throw new EdgeError(404, 'not-found', 'no such conversation for you');
-    const from = Math.max(after, me.fromTurn);
-    const rows = this.core.db.prepare('SELECT seq, soul_id, tick, at, text FROM edge_comms_turns WHERE world_id = ? AND conversation_id = ? AND seq > ? ORDER BY seq LIMIT ?').all(this.core.worldId, id, from, limit) as {seq: number; soul_id: string; tick: number; at: number; text: string}[];
+    const me = b?.members.find(m => m.soulId === soul.soulId), was = b?.past?.find(p => p.soulId === soul.soulId);
+    if (!b || (!me && !was)) throw new EdgeError(404, 'not-found', 'no such conversation for you');
+    const from = Math.max(after, me?.fromTurn ?? was!.fromTurn), to = me ? Number.MAX_SAFE_INTEGER : was!.toTurn;
+    const rows = this.core.db.prepare('SELECT seq, soul_id, tick, at, text FROM edge_comms_turns WHERE world_id = ? AND conversation_id = ? AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?').all(this.core.worldId, id, from, to, limit) as {seq: number; soul_id: string; tick: number; at: number; text: string}[];
     return {conversation: this.view(b, soul.soulId), turns: rows.map(r => {const historical=this.core.db.prepare('SELECT name FROM edge_comms_turn_names_v1 WHERE world_id=? AND conversation_id=? AND seq=?').get(this.core.worldId,id,r.seq) as {name:string}|undefined;return {seq:r.seq,tick:r.tick,at:r.at,from:{soulId:r.soul_id,name:historical?.name??this.core.nameOf(r.soul_id),currentName:this.core.nameOf(r.soul_id),nameSource:historical?'at-turn':'current-projection'},text:r.text};}), untrusted:true};
   }
 }

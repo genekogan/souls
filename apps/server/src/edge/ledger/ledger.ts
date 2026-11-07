@@ -12,6 +12,7 @@ import {outdoorRegionExclusions} from './region-arrival.ts';
 import type {Program} from '@souls/engine-contract';
 import {clockAt} from '@souls/brain';
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
+import {config} from '../../config.ts';
 import type {WorldHost, Mind} from '../../world.ts';
 import type {Db} from '../../db.ts';
 import {readHumanCapabilitiesV1, type HumanBindingV1} from '../../human-capabilities.ts';
@@ -2678,7 +2679,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   travellerOf(soulId: string): string {
     this.travelTable ||= !!this.db.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='travel_incarnations_v1'").get();
     const row = this.travelTable ? this.db.db.prepare('SELECT traveller FROM travel_incarnations_v1 WHERE world_id=? AND soul_id=?').get(this.host.worldId, soulId) as {traveller: string} | undefined : undefined;
-    return row?.traveller ?? `${process.env.WORLD_KEY ?? this.host.worldId}/${soulId}`;
+    return row?.traveller ?? `${config.worldKey}/${soulId}`;
   }
   private travelTable = false;
   publicSoul(soulId: string) {
