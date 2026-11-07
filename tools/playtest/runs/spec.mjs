@@ -67,11 +67,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
     }
   }
   const setup = spec.setup ?? null;
-  if (setup != null) {
-    for (const k of Object.keys(setup)) if (!['batches', 'maxWallSec'].includes(k)) fail('setup.unknown-field', `setup.${k} is unknown`);
-    if (!Array.isArray(setup.batches) || !setup.batches.length) fail('setup.batches', 'setup.batches: a list of god-edit batch files or {id, ops} objects');
-    if (setup.maxWallSec != null && !(setup.maxWallSec > 0)) fail('setup.maxWallSec', 'setup.maxWallSec must be positive');
-  }
+  checkSetup(setup, fail);
   // Predeclared evaluation (SR4): question scorer files named before the run, hashed now, so a later evaluation can tell
   // predeclared acceptance from exploratory post-run questions.
   const evaluation = spec.evaluation ?? null;
@@ -127,18 +123,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   const sourceRel = spec.world?.[sourceKey] ?? scenario.world?.[sourceKey];
   const sourcePath = typeof sourceRel === 'string' ? resolve(serverRoot, sourceRel) : null; // provisioning resolves it the same way
   if (!sourcePath || !existsSync(sourcePath)) fail('world.source', `world ${sourceKey} not found: ${sourceRel}`);
-  // Setup: existing god-edit batches, resolved and hashed now; applied after provision, before any seat exists.
-  const batches = [];
-  for (const [i, b] of (setup?.batches ?? []).entries()) {
-    if (typeof b === 'string') {
-      const p = find(b);
-      if (!p) { fail('setup.batch-missing', `setup.batches[${i}]: ${b} not found`); continue; }
-      const text = readFileSync(p, 'utf8'); let j = null; try { j = JSON.parse(text); } catch (e) { fail('setup.batch-unreadable', `setup.batches[${i}]: ${e.message}`); continue; }
-      if (!Array.isArray(j?.ops) || !j.ops.length) { fail('setup.batch-ops', `setup.batches[${i}]: ${b} has no ops`); continue; }
-      batches.push({ id: j.id ?? b.split('/').pop().replace(/\.json$/, ''), path: p, sha256: sha256(text), ops: j.ops, note: j.note ?? null });
-    } else if (b && typeof b === 'object' && Array.isArray(b.ops) && b.ops.length && typeof b.id === 'string') batches.push({ id: b.id, path: null, sha256: sha256(JSON.stringify(b.ops)), ops: b.ops, note: b.note ?? null });
-    else fail('setup.batch', `setup.batches[${i}]: a file path or {id, ops}`);
-  }
+  const batches = resolveBatches(setup, find, fail);
   const questions = [];
   for (const [i, q] of (evaluation?.questions ?? []).entries()) {
     const p = find(q);
@@ -158,9 +143,33 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: effectiveSetup(setup, batches), durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
+
+/** The shape of spec.setup ({batches, maxWallSec?}), checked statically. */
+function checkSetup(setup, fail) {
+  if (setup == null) return;
+  for (const k of Object.keys(setup)) if (!['batches', 'maxWallSec'].includes(k)) fail('setup.unknown-field', `setup.${k} is unknown`);
+  if (!Array.isArray(setup.batches) || !setup.batches.length) fail('setup.batches', 'setup.batches: a list of god-edit batch files or {id, ops} objects');
+  if (setup.maxWallSec != null && !(setup.maxWallSec > 0)) fail('setup.maxWallSec', 'setup.maxWallSec must be positive');
+}
+/** Setup: existing god-edit batches, resolved and hashed now; applied after provision, before any seat exists. */
+function resolveBatches(setup, find, fail) {
+  const batches = [];
+  for (const [i, b] of (Array.isArray(setup?.batches) ? setup.batches : []).entries()) {
+    if (typeof b === 'string') {
+      const p = find(b);
+      if (!p) { fail('setup.batch-missing', `setup.batches[${i}]: ${b} not found`); continue; }
+      const text = readFileSync(p, 'utf8'); let j = null; try { j = JSON.parse(text); } catch (e) { fail('setup.batch-unreadable', `setup.batches[${i}]: ${e.message}`); continue; }
+      if (!Array.isArray(j?.ops) || !j.ops.length) { fail('setup.batch-ops', `setup.batches[${i}]: ${b} has no ops`); continue; }
+      batches.push({ id: j.id ?? b.split('/').pop().replace(/\.json$/, ''), path: p, sha256: sha256(text), ops: j.ops, note: j.note ?? null });
+    } else if (b && typeof b === 'object' && Array.isArray(b.ops) && b.ops.length && typeof b.id === 'string') batches.push({ id: b.id, path: null, sha256: sha256(JSON.stringify(b.ops)), ops: b.ops, note: b.note ?? null });
+    else fail('setup.batch', `setup.batches[${i}]: a file path or {id, ops}`);
+  }
+  return batches;
+}
+const effectiveSetup = (setup, batches) => (setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null);
 
 const SEAT_ADAPTERS = ['claude-headless', 'codex-headless', 'scripted-owner'];
 const CAST_CAMERAS = ['follow', 'wide'];
@@ -171,7 +180,8 @@ const CAST_CAMERAS = ['follow', 'wide'];
 function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   const fail = (code, message) => errors.push({ code, message });
   if (spec.scenario != null) fail('cast.with-scenario', 'a directed cast spec names cast.file and no scenario (the cast file is the whole scene)');
-  if (spec.setup != null) fail('setup.directed', 'setup batches are not supported with a directed cast yet; put the scene in the cast\'s genesis');
+  const setup = spec.setup ?? null;
+  checkSetup(setup, fail);
   for (const k of Object.keys(spec.cast)) if (k !== 'file') fail('cast.unknown-field', `cast.${k} is unknown (a directed cast takes only file)`);
   if (typeof spec.cast.file !== 'string' || !spec.cast.file) fail('cast.file', 'cast.file: path to a cast JSON (tools/playtest/scenarios/casts/)');
   const observer = { ...DEFAULTS.observer, ...(spec.observer ?? {}) };
@@ -214,6 +224,8 @@ function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   }
   const sourcePath = cast.world.genesis ? resolve(serverRoot, cast.world.genesis) : null;
   if (!sourcePath || !existsSync(sourcePath)) fail('world.source', `world genesis not found: ${cast.world.genesis}`);
+  // Setup batches apply after provision and before any seat, through cmdDirect's afterProvision hook (as for scenarios).
+  const batches = resolveBatches(setup, find, fail);
   const questions = [];
   for (const [i, q] of (evaluation?.questions ?? []).entries()) {
     const p = find(q);
@@ -236,9 +248,9 @@ function validateDirected(spec, { specPath, cwd, serverRoot, errors }) {
   if (errors.length) return { ok: false, errors };
   const effective = { soulRun: SPEC_VERSION, kind: 'cast', name: spec.name ?? cast.name, cast: { path: castPath, sha256: sha256(castText), name: cast.name, seats: eff.seats.length, consoleScript: eff.console.script.length },
     world: { port: eff.world.port, slug: eff.world.slug ?? null, genesis: eff.world.genesis, snapshot: null, source: { kind: 'genesis', path: eff.world.genesis, sha256: sha256(readFileSync(sourcePath)) } },
-    setup: null, durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
+    setup: effectiveSetup(setup, batches), durationSec: eff.durationSec, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}) };
   // scenario: the shape the playtest preflight reads, so it checks exactly the providers this cast needs.
-  return { ok: true, errors: [], effective, scenario: policy.scenario, cast: eff, controllers: controllerList, policy, setup: null };
+  return { ok: true, errors: [], effective, scenario: policy.scenario, cast: eff, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 
 /** The scenario this run executes: the referenced scenario plus only the overrides the spec names. */
