@@ -1,0 +1,20 @@
+{
+ "soulRun": 1,
+ "name": "s3-sustained-intent-dry",
+ "cast": {
+  "file": "s3-sustained-intent-dry.cast.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 1300,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/errand-kept-through-burst.mjs",
+   "../../questions/cancel-not-resumed.mjs"
+  ]
+ }
+}

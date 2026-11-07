@@ -165,6 +165,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     await cli(['register', state.base]);
     await cli(['create', state.soulName]);
     await cli(['status']);
+    if (process.env.SOUL_RUNS_RESIDENT) await cli(['serve']); // #1096 A6: the candidate arm; every later command goes through it
     say(`Set up ${state.soulName}; waiting for messages.`);
     return done(0);
   }

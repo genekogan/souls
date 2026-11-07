@@ -1,0 +1,23 @@
+{
+ "soulRun": 1,
+ "name": "s3-reasonable-actions-live-sonnet",
+ "cast": {
+  "file": "s3-reasonable-actions-live-sonnet.cast.json"
+ },
+ "observer": {
+  "check": false
+ },
+ "limits": {
+  "maxWallSec": 1300,
+  "maxControllers": 2
+ },
+ "evaluation": {
+  "questions": [
+   "../../questions/reasonable-carried-out.mjs",
+   "../../questions/refusal-helps.mjs"
+  ]
+ },
+ "controllers": {
+  "allowLiveModels": true
+ }
+}

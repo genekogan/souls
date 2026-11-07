@@ -252,3 +252,25 @@ test('direction journal: an unwritable journal warns once; commands still apply 
   assert.ok(r.dirs.some((d) => d.kind === 'gather'), 'the plan loop went on after the failed journal write');
   assert.equal(r.lines.filter((l) => /direction journal not written/.test(l)).length, 1, 'one warning, not one per command');
 });
+
+test('#1098: console.clockFrom "paired" starts the script clock once every seat is paired and observed', async () => {
+  const pairAt = 30_000;
+  const late = (sw, clock, w) => { (async () => { await clock.sleep(pairAt); w.seats.cy.info.soulId = 's_cy'; sw.paired('cy'); })(); };
+  const script = [{ atSec: 6, line: 'cy: are you there' }];
+  const gated = await play({ cast: { ...testCast(), console: { script, clockFrom: 'paired' } }, script, behaviour: { cy: { unpaired: true } }, onboarding: { cy: true }, during: late });
+  const say = readJsonl(join(gated.runDir, 'director', 'commands.jsonl')).find((c) => c.cmd === 'say');
+  assert.equal(say.outcome, 'applied', JSON.stringify(say));
+  assert.ok(say.elapsedSec >= pairAt / 1000 + 6, `delivered ${say.elapsedSec} s in, after pairing at ${pairAt / 1000} s + 6 s`);
+  const clockRow = readJsonl(join(gated.runDir, 'director', 'timeline.jsonl')).find((e) => e.kind === 'cast-clock');
+  assert.ok(clockRow && clockRow.afterSec >= pairAt / 1000);
+  // without it, the same line at 6 s reaches a seat that isn't paired yet, as before
+  const plain = await play({ script, behaviour: { cy: { unpaired: true } }, onboarding: { cy: true }, during: late });
+  const early = readJsonl(join(plain.runDir, 'director', 'commands.jsonl')).find((c) => c.cmd === 'say');
+  assert.deepEqual([early.outcome, early.reason], ['refused', 'seat not paired']);
+});
+
+test('#1098: a seat turn refused by the world budget ends the scene', async () => {
+  const r = await play({ during: (sw, clock, w) => { (async () => { await clock.sleep(20_000); w.seats.bob.budgetRefused = 'world budget: would pass $0.9'; })(); } });
+  assert.equal(r.summary.stopped, 'world-budget');
+  assert.ok(readJsonl(join(r.runDir, 'director', 'timeline.jsonl')).some((e) => e.kind === 'budget' && e.seat === 'bob'));
+});
