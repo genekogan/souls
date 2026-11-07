@@ -3,7 +3,8 @@
 // every span that fitted keeps SIT_TRANSITION, so recorded histories replay unchanged.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SIT_TRANSITION, sitDuration } from '../social/actions.ts';
+import { SIT_TRANSITION, sitDuration, seatRise } from '../social/actions.ts';
+import { seatReach } from '../bodies/humanoid.ts';
 import { DT } from '../runtime/runtime.ts';
 import { MAX_HUMAN_STEP_PER_TICK } from '../runtime/invariants.ts';
 
@@ -18,4 +19,16 @@ test('sit-down/stand-up: spans that fitted keep SIT_TRANSITION; longer ones slow
     assert.ok(peak(span, dur) <= MAX_HUMAN_STEP_PER_TICK, `span ${span}: ${peak(span, dur).toFixed(3)} m per tick`);
   }
   assert.ok(peak(1.5, SIT_TRANSITION) > MAX_HUMAN_STEP_PER_TICK, 'the café case faulted before');
+});
+
+// #1083: a seat's rise from a standard seat's top is part of the span, so at the highest seat a body reaches (its standing
+// reach) the sit-down's lift stays within a human's per-tick step; just over it the seat is refused (seat.out-of-reach)
+test('sit transition: the rise onto a seat at the standing-reach cap stays within the per-tick step', () => {
+  const smooth = (k: number) => k * k * (3 - 2 * k);
+  for (const top of [seatReach(undefined), 1.6, 0.1]) {
+    const span = Math.hypot(0.5, seatRise({ kind: 'seat', height: top })), dur = sitDuration(span);
+    let peak = 0; for (let t = 0; t < dur; t += DT) peak = Math.max(peak, span * (smooth(Math.min(1, (t + DT) / dur)) - smooth(Math.min(1, t / dur))));
+    assert.ok(peak <= MAX_HUMAN_STEP_PER_TICK + 1e-9, `top ${top}: peak ${peak} in ${dur} s`);
+  }
+  assert.equal(seatRise({ kind: 'seat' }), 0, 'a seat with no height adds nothing'); assert.equal(seatRise({ kind: 'berth', height: 0.5 }), 0);
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// W6: hang art in a Sim world from your agent. Works with the world creator's god token or a resident's Soul token.
+// W6: hang art in a Souls world from your agent. Works with the world creator's god token or a resident's Soul token.
 //
 //   eden-art.mjs <world-url> list
 //   eden-art.mjs <world-url> hang <frame> <https-url | /path | ./local-file> [--title "…"] [--slot n]
