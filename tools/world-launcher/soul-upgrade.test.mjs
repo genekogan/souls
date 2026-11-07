@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +95,16 @@ test('A3: an upgrade run from a folder below reaches every copy, and an older wo
   assert.match((await below('status')).out, /newer/, 'so does the older copy below, through the home');
   assert.notDeepEqual(readFileSync(join(sub, 'eden.mjs')), newer, 'a copy outside the home folder is left alone');
   assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, NEWER);
+});
+
+test('a home reached through a symlink still hands over', async (t) => {
+  const w = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t), link = `${d}-link`; symlinkSync(d, link); t.after(() => rmSync(link, { force: true }));
+  await run('register', `${w.base}/next`); await run('upgrade', 'next');
+  const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), 'souls-old-'))); t.after(() => rmSync(elsewhere, { recursive: true, force: true }));
+  copyFileSync(cli, join(elsewhere, 'eden.mjs'));
+  const out = await new Promise((resolve) => { const c = spawn(process.execPath, ['eden.mjs', 'status'], { cwd: elsewhere, env: { ...process.env, HOME: elsewhere, SOULS_HOME: join(link, '.souls'), SOULS_PRINCIPAL: '' }, stdio: ['ignore', 'pipe', 'ignore'] }); let o = ''; c.stdout.on('data', (x) => { o += x; }); c.on('exit', () => resolve(o)); });
+  assert.match(out, /newer/);
 });
 
 test('never older: a bundle below the home\'s is not installed', (t) => {

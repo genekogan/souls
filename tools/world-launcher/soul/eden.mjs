@@ -2312,7 +2312,7 @@ async function upgradeCommand(...argv) {
   const origin = soulHome.originOf(w.url), known = (cfg.trustedOrigins ?? []).includes(origin), safe = /^https:/.test(origin) || /^http:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origin);
   if (!(known && safe) && !trust) throw new Error(`A new client runs with every Soul's token in this home, and ${origin} is not a site this home trusts. Ask your human. Only if they agree: ${CLI} upgrade ${key} --trust`);
   const bytes = Buffer.from(await (await get("/eden.mjs")).arrayBuffer()), sha = createHash("sha256").update(bytes).digest("hex");
-  if (bytes.length !== m.bytes || sha !== m.sha256) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}). Nothing changed.`);
+  if (bytes.length !== m.bytes || sha !== m.sha256 || !bytes.includes(`const VERSION = "${m.version}"`)) throw new Error(`The bundle ${key} sent is not the one it describes (${bytes.length} bytes, expected ${m.bytes}). Nothing changed.`);
   if (trust) home.trustOrigin(origin);
   if (!home.installBundle(bytes, process.argv[1], m.version)) return { upgraded: false, world: key, version: home.config().client, served: m.version, note: "This home's bundle is already as new." };
   return { upgraded: true, world: key, from: VERSION, to: m.version, bytes: m.bytes, sha256: m.sha256 };
@@ -2358,7 +2358,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   let line;
   try { line = enterHome(process.argv.slice(2)); } catch (e) { process.stderr.write(`error: ${e.message}\n`); process.exit(1); }
   if (DELEGATE) {
-    const child = spawn(process.execPath, [DELEGATE, ...process.argv.slice(2)], { stdio: "inherit" });
+    const child = spawn(process.execPath, [realpathSync(DELEGATE), ...process.argv.slice(2)], { stdio: "inherit" });
     for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => child.kill(sig));
     child.on("exit", (code) => process.exit(code ?? 1));
     await new Promise(() => {});
