@@ -151,6 +151,18 @@ test('#468: a companion who left and came back wakes the Soul inside the cooldow
   await advance(10000);f.ingest(presence('a3','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,3,'that return restarted the cooldown');
  }finally{await f.cleanup();}
 });
+test('#468: a departure that wakes the Soul itself still lets the return wake it',async t=>{
+ const f=fixture(t),advance=async ms=>{for(let left=Math.max(0,ms);left>0;left-=1000){t.mock.timers.tick(Math.min(1000,left));await flush();}for(let i=0;i<2;i++){t.mock.timers.tick(100);await flush();}};
+ try{
+  await flush();f.host.finish({...wait(),wakeAt:far});await flush();f.ingest(presence('a0','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,2);
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(PRESENCE_COOLDOWN_MS+1000);f.ingest(presence('l1','leave.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,3,'past the cooldown, the departure wakes');
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(60000);f.ingest(presence('a1','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'and the return 60 s later wakes too');
+  f.host.finish({...wait(),wakeAt:far});await flush();
+  await advance(60000);f.ingest(presence('a2','arrive.here','s_peer'));await advance(AMBIENT_SETTLE_MS);assert.equal(f.host.calls.length,4,'one departure pays for one return');
+ }finally{await f.cleanup();}
+});
 test('presence of different subjects each wakes inside one subject cooldown',async t=>{
  const f=fixture(t),advance=async ms=>{for(let left=Math.max(0,ms);left>0;left-=1000){t.mock.timers.tick(Math.min(1000,left));await flush();}for(let i=0;i<2;i++){t.mock.timers.tick(100);await flush();}};// small steps keep the controller lease renewed
  try{
