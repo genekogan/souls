@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/health-dash-auth.test.mjs
 // Lane DASH: the health page's numbers are the site owner's only. A Clerk launcher (synthetic issuer, as in
-// launcher-auth.test.mjs) on lane ports: proxy :6999, children 6995–6998 (no worlds are started).
+// launcher-auth.test.mjs) on a free block of ports (no worlds are started).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -9,8 +9,10 @@ import { join, resolve } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { verifiedCreator } from './creator-auth.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(5);
 
-const PORT = 6999, RANGE = [6995, 6998], ORIGIN = `http://127.0.0.1:${PORT}`;
+const PORT = P0 + 4, RANGE = [P0, P0 + 3], ORIGIN = `http://127.0.0.1:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'health-dash-auth-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;

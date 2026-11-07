@@ -20,6 +20,8 @@ import { Souls } from './souls.ts';
 import { config } from './config.ts';
 import { buildApp } from './http.ts';
 import type { Brain } from './brain.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 async function accepted<T>(h:WorldHost,p:Promise<T>):Promise<T>{
   let done=false,value:T|undefined,error:unknown;p.then(v=>{value=v;done=true;},e=>{error=e;done=true;});
@@ -51,10 +53,10 @@ async function runtime(t:any,versions:('v1'|'v2')[]=['v1','v2']){
   server.on('request',getRequestListener(app.fetch));const connections:Connection[]=[],raw:WebSocket[]=[];
   t.after(async()=>{for(const c of connections)c.close();for(const s of raw)s.terminate();for(const timer of intervals)clearInterval(timer);
     for(const c of hub.clients)c.ws.terminate();await new Promise<void>(r=>hub.wss.close(()=>r()));await new Promise<void>(r=>server.close(()=>r()));db.close();});
-  server.listen(4959,'127.0.0.1');await once(server,'listening');
+  server.listen(TEST_PORT,'127.0.0.1');await once(server,'listening');
   function listener(offer?:StationLiveContract[]){
     const views:{view:StationLiveV2;receipt:TransportReceipt}[]=[],old:StationLiveV1[]=[],pongs:{message:unknown;receipt:PongReceipt}[]=[],errors:string[]=[],wire:unknown[]=[],sessions:unknown[]=[];
-    let sockets=0;const c=new Connection('ws://127.0.0.1:4959/ws',async()=>null,{
+    let sockets=0;const c=new Connection(`ws://127.0.0.1:${TEST_PORT}/ws`,async()=>null,{
       onStationV2:(view,receipt)=>{if(view&&receipt)views.push({view,receipt});},onStation:view=>{if(view)old.push(view);},
       onPong:(message,receipt)=>pongs.push({message,receipt}),onError:code=>errors.push(code),onSession:s=>sessions.push(s)
     },url=>{sockets++;const ws=new WebSocket(url);ws.on('message',data=>wire.push(JSON.parse(data.toString())));return ws;},
@@ -84,10 +86,10 @@ for(const gap of [false,true])test(`actual negotiated TCP/Hub/Connection ${gap?'
   assert.deepEqual(h.engine.world.entities.h_A,beforeBody);assert.equal(hashOf(cue),beforeCue);
   const scope={worldId:h.worldId,epoch,rulesVersion:h.engine.rulesVersion};
   const params=new URLSearchParams({...scope,tick:String(checkpointTick),sourceCutoffSeq:String(event.seq+1)});
-  let response=await fetch('http://127.0.0.1:4959/v1/station-v2/history?'+params);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  let response=await fetch(`http://127.0.0.1:${TEST_PORT}/v1/station-v2/history?`+params);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const cutoff=stationHistoricalV2Schema.parse(await response.json());assert.equal(cutoff.anchor,null);assert.equal(cutoff.physical!.revision,1);
   assert.deepEqual(cutoff.phase,gap?null:stationPhaseAtTickV2(cue,checkpointTick));assert.equal(cutoff.cue?.cueId??null,gap?null:cue.cueId);
-  response=await fetch('http://127.0.0.1:4959/v1/station-v2/eras?'+new URLSearchParams({worldId:h.worldId,epoch,limit:'1'}));
+  response=await fetch(`http://127.0.0.1:${TEST_PORT}/v1/station-v2/eras?`+new URLSearchParams({worldId:h.worldId,epoch,limit:'1'}));
   const page=stationEraPageV1Schema.parse(await response.json());assert.equal(page.eras.length,1);assert.equal(page.eras[0].fact.seq,event.seq+1);
   assert.equal(page.eras[0].source.seq,event.seq);assert.equal(page.nextAfterSeq,null);
   assert.equal(v2.eraPage({worldId:h.worldId,epoch},event.seq+1).eras.length,0);
@@ -126,7 +128,7 @@ test('actual routes are opt-in, no-overlap never downgrades, malformed capabilit
   const unsupported=f.listener(['station-live/2']);await until(()=>unsupported.c.welcome!==null);
   assert.equal(unsupported.c.welcome!.stationContract,null);assert.equal(unsupported.c.stationV2,null);assert.equal(unsupported.old.length,0);
   for(const path of ['/v1/station-v2','/v1/station-v2/history','/v1/station-v2/eras']){
-    const response=await fetch('http://127.0.0.1:4959'+path);assert.equal(response.status,404);assert.equal(response.headers.get('cache-control'),'no-store');}
+    const response=await fetch(`http://127.0.0.1:${TEST_PORT}`+path);assert.equal(response.status,404);assert.equal(response.headers.get('cache-control'),'no-store');}
   const defaults=buildApp(f.deps);for(const path of ['/v1/station-v2','/v1/station-v2/history','/v1/station-v2/eras'])assert.equal((await defaults.request(path)).status,404);
   const candidate=buildApp({...f.deps,stationV2:f.v2});const q=new URLSearchParams({worldId:f.h.worldId,epoch,rulesVersion:version,tick:String(f.h.engine.world.tick)});
   const wrongHistory:Record<string,string>[]=[{worldId:'foreign'},{epoch:'0'.repeat(64)},{rulesVersion:'wrong'},{tick:'-1'},{tick:'NaN'},{sourceCutoffSeq:'-1'},
@@ -135,7 +137,7 @@ test('actual routes are opt-in, no-overlap never downgrades, malformed capabilit
   const wrongPage:Record<string,string>[]=[{worldId:'foreign'},{epoch:'0'.repeat(64)},{afterSeq:'1'},{afterSeq:'-1'},{limit:'0'},{limit:'65'},{limit:'1e2'},
     {sourceCutoffSeq:'1'},{sourceCutoffSeq:String(seq+1)},{owner:'PRIVATE'}];
   for(const patch of wrongPage)assert.equal((await candidate.request('/v1/station-v2/eras?'+new URLSearchParams({worldId:f.h.worldId,epoch,...patch}))).status,404);
-  const ws=new WebSocket('ws://127.0.0.1:4959/ws'),messages:any[]=[];f.raw.push(ws);ws.on('message',d=>messages.push(JSON.parse(d.toString())));await once(ws,'open');
+  const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),messages:any[]=[];f.raw.push(ws);ws.on('message',d=>messages.push(JSON.parse(d.toString())));await once(ws,'open');
   for(const stationContracts of [[],['station-live/2','station-live/2'],['station-live/3'],['station-live/1','station-live/2','station-live/1']])
     ws.send(JSON.stringify({t:'hello',proto:PROTO,stationContracts}));
   ws.send(JSON.stringify({t:'ping',n:777}));await until(()=>messages.some(m=>m.t==='pong'&&m.n===777));

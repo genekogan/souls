@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(2);
 
 test('real launcher forwards asset-view bytes, validators and world isolation to the real HTTP handler', { timeout: 30_000 }, async () => {
   // Dedicated ports in the isolated test process/container; never a production data directory.
-  const port = 7461, childPort = 7462, base = `http://127.0.0.1:${port}`;
+  const port = P0, childPort = P0 + 1, base = `http://127.0.0.1:${port}`;
   const dir = mkdtempSync(join(tmpdir(), 'launcher-asset-view-'));
   const templatesDir = join(dir, 'templates'), webDir = join(dir, 'web'), assetsDir = join(dir, 'assets');
   for (const path of [templatesDir, webDir, assetsDir]) mkdirSync(path);

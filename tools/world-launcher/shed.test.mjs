@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/shed.test.mjs — lane srv-shed (LOAD-CONTRACT §2b, decision 7, Gene 2026-10-31 13:40Z):
 // shedding follows the world's level, not a count; long-polls over their ceiling are held, not bounced; refusals carry
-// words. Fake worlds on lane srv-shed's ports only: proxies :5321 and :5325, children 5322–5324 and 5326–5328.
+// words. Fake worlds on a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { listenTimeoutMs, soulCeilings, SOUL_CEILINGS } from './flood.mjs';
 import { metricsText } from './metrics.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(8);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const soulReq = (tok, m = 'GET', ip) => ({ method: m, headers: { authorization: `Bearer sim_s_${tok}_x`, ...(ip ? { 'x-forwarded-for': ip } : {}) } });
@@ -123,8 +125,8 @@ function launcherWith(P, range, extra = {}) {
 }
 
 test('through the launcher: 20 polite Souls at green are never refused nor slowed; 100 Souls (Stage B mix): amber hints, red refuses C2 by level, the budget never', async () => {
-  const P = 5321, base = `http://127.0.0.1:${P}`;
-  const L = await launcherWith(P, [5322, 5324]);
+  const P = P0, base = `http://127.0.0.1:${P}`;
+  const L = await launcherWith(P, [P0 + 1, P0 + 3]);
   const listens = [];
   try {
     const { slug } = await (await fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Shedder' }) })).json();
@@ -182,8 +184,8 @@ test('through the launcher: 20 polite Souls at green are never refused nor slowe
 });
 
 test('through the launcher: a listen over its ceiling is held and served when the stale listener is released; at red it is refused at once', async () => {
-  const P = 5325, base = `http://127.0.0.1:${P}`;
-  const L = await launcherWith(P, [5326, 5328], { soulLimits: { soulListen: 1 } });
+  const P = P0 + 4, base = `http://127.0.0.1:${P}`;
+  const L = await launcherWith(P, [P0 + 5, P0 + 7], { soulLimits: { soulListen: 1 } });
   try {
     const { slug } = await (await fetch(`${base}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Holder' }) })).json();
     await (await fetch(`${base}/w/${slug}/v1/config`)).arrayBuffer();

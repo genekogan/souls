@@ -15,6 +15,8 @@ import { kernelHash } from '@souls/kernel';
 import type { Take } from '../../../mars/viewer/engine/take/types.ts';
 import { Auth } from './auth.ts';
 import { Hub } from './hub.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 async function local(t:TestContext,install=true){
   const f=fixture(':memory:',factory);if(install)f.souls.enableLifecycle();await invite(f,'alice');await invite(f,'bob');
@@ -22,10 +24,10 @@ async function local(t:TestContext,install=true){
   const timers:ReturnType<typeof setInterval>[]=[],interval=setInterval;
   t.mock.method(globalThis,'setInterval',(...args:Parameters<typeof setInterval>)=>{const timer=interval(...args);timers.push(timer);return timer;});
   const hub=new Hub(server,f.host,auth,f.db,install?f.souls:undefined);hub.brain=f.brain;
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4958,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
   t.after(async()=>{for(const timer of timers)clearInterval(timer);for(const socket of hub.wss.clients)socket.terminate();await new Promise<void>(resolve=>hub.wss.close(()=>resolve()));await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));f.db.close();});
   const connect=async(owner:string|null)=>{
-    const socket=new WebSocket('ws://127.0.0.1:4958/ws'),messages:ServerMsg[]=[];
+    const socket=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),messages:ServerMsg[]=[];
     socket.on('message',data=>messages.push(JSON.parse(String(data)) as ServerMsg));await once(socket,'open');
     socket.send(JSON.stringify({t:'hello',proto:PROTO,...(owner?{token:'dev:'+owner}:{})}));
     await until(()=>messages.some(m=>m.t==='takes'));return {socket,messages};

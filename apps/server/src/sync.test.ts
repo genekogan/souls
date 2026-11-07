@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { Connection } from '@souls/client';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
-const PORT = 4951; // Core's reserved local range; suite runs serially.
+const PORT = TEST_PORT; // Core's reserved local range; suite runs serially.
 const BASE = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

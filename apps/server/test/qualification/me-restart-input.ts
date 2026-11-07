@@ -10,6 +10,8 @@ import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
+import {testPort} from '../test-port.ts';
+const TEST_PORT=await testPort();
 
 const input=resolve(new URL('../../../../.e2e/exports/core-native-c190-live-me-45b9c986/sim',import.meta.url).pathname);
 const parent=resolve(input,'..');
@@ -54,10 +56,10 @@ test('C194 SQLite reopen preserves two owned bodies, intents, receipts and recip
     const server=createServer(),hub=new Hub(server,f.host,f.auth,f.db,f.souls);hub.brain=f.brain;
     const app=buildApp({cfg:f.souls.cfg,db:f.db,host:f.host,auth:f.auth,brain:f.brain,souls:f.souls,hub});
     active={...f,server,hub,app,peers:[]};
-    await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(4959,'127.0.0.1',r);});
+    await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',r);});
     const connect=async(owner:string|null)=>{
       const frames:any[]=[];
-      const c=new Connection('ws://127.0.0.1:4959/ws',async()=>owner?'dev:'+owner:null,{},(url:string)=>{
+      const c=new Connection(`ws://127.0.0.1:${TEST_PORT}/ws`,async()=>owner?'dev:'+owner:null,{},(url:string)=>{
         const ws=new WebSocket(url);ws.on('message',(d:Buffer)=>frames.push(JSON.parse(String(d))));return ws;
       });
       const peer={c,frames};active.peers.push(peer);c.connect();await until(()=>c.replica.ready);return peer;

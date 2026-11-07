@@ -2,9 +2,10 @@ import test from 'node:test';import {BODY_PRESETS} from './edge/body/routes.ts';
 import {createServer} from 'node:http';import {once} from 'node:events';import {getRequestListener} from '@hono/node-server';import {Hono} from 'hono';
 import {mkdtempSync,writeFileSync,rmSync,statSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {fileURLToPath} from 'node:url';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';import {rigidGLB} from './edge/body/testing.ts';
+import {testPort} from '../test/test-port.ts';
 
-// Default sits outside 4930-4970 (the laptop's release listeners); override with TEST_BODY_CLI_PORT.
-const BODY_CLI_PORT=Number(process.env.TEST_BODY_CLI_PORT??5446);if(BODY_CLI_PORT>=4930&&BODY_CLI_PORT<=4970)throw Error('TEST_BODY_CLI_PORT must be outside 4930-4970');
+// A free port by default, which is outside 4930-4970 (the laptop's release listeners); override with TEST_BODY_CLI_PORT.
+const BODY_CLI_PORT=Number(process.env.TEST_BODY_CLI_PORT??await testPort());if(BODY_CLI_PORT>=4930&&BODY_CLI_PORT<=4970)throw Error('TEST_BODY_CLI_PORT must be outside 4930-4970');
 test('CLI BODY authenticates privately and completed plans remain readable by ID',async()=>{
  const f=fixture(':memory:'),dir=mkdtempSync(join(tmpdir(),'body-cli-'));f.brain.quiesce();let server:ReturnType<typeof createServer>|undefined,pump:NodeJS.Timeout|undefined,closed=false;
  try{

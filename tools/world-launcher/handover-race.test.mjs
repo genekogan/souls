@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/handover-race.test.mjs (lane t4-mem; fake worlds on ports 6630-6633)
+// node --test tools/world-launcher/handover-race.test.mjs (lane t4-mem; fake worlds on a free block of ports)
 // A release hands a world to the next launcher only once its previous process is gone: while that pid lives it holds the
 // data dir (edge-server.mjs's lock) and the next process refuses to open it ("fork refused", 3.53 legacy activate).
 import { test } from 'node:test';
@@ -7,6 +7,8 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChildPool } from './children.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(4);
 
 const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -20,7 +22,7 @@ const world = (slug) => ({ slug, dataDir: mkdtempSync(join(tmpdir(), `t4-race-${
 test.after(async () => { for (const p of pools) await p.closeAll(); });
 
 test('stop() returns only once a world that ignored SIGTERM is gone (SIGKILL, then its exit)', async () => {
-  const a = pool([6630, 6631], { FAKE_STOP_MS: 'never' }, { stopGraceMs: 300 });
+  const a = pool([P0, P0 + 1], { FAKE_STOP_MS: 'never' }, { stopGraceMs: 300 });
   await a.ensure(world('stubborn'));
   const pid = a.state('stubborn').child.pid;
   await a.stop('stubborn');
@@ -29,10 +31,10 @@ test('stop() returns only once a world that ignored SIGTERM is gone (SIGKILL, th
 
 test('takeOver waits for the released process to exit before the standby opens the data', async () => {
   const w = world('slow');
-  const a = pool([6630, 6631], { FAKE_STOP_MS: '700' });
+  const a = pool([P0, P0 + 1], { FAKE_STOP_MS: '700' });
   await a.ensure(w);
   const { port, child: { pid } } = a.state('slow');
-  const b = pool([6632, 6633], {}, { prewarm: true });
+  const b = pool([P0 + 2, P0 + 3], {}, { prewarm: true });
   b.adopt(w, { port, pid, script: fake });
   // a release that answers before the process has exited (as stop() did after its SIGKILL)
   const release = async () => { a.stop('slow'); };
@@ -49,10 +51,10 @@ test('takeOver waits for the released process to exit before the standby opens t
 
 test('a released process that never exits fails the takeover clearly and the standby is stopped', async () => {
   const w = world('stuck');
-  const a = pool([6630, 6631], { FAKE_STOP_MS: 'never' });
+  const a = pool([P0, P0 + 1], { FAKE_STOP_MS: 'never' });
   await a.ensure(w);
   const { port, child: { pid } } = a.state('stuck');
-  const b = pool([6632, 6633], {}, { prewarm: true });
+  const b = pool([P0 + 2, P0 + 3], {}, { prewarm: true });
   b.adopt(w, { port, pid, script: fake });
   let stopping = null;
   const release = async () => { stopping = a.stop('stuck'); };
@@ -73,7 +75,7 @@ test('a released process that never exits fails the takeover clearly and the sta
 // handed over, and the stuck one is reported; it is never handed over while its process may still hold the data.
 const stuckPool = () => {
   const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port), DATA_DIR: w.dataDir, FAKE_LOCK: '1', ...(w.slug === 'wedged' ? { FAKE_BOOT_MS: '600000' } : {}) } });
-  const p = new ChildPool({ root: process.cwd(), range: [6630, 6633], logDir: mkdtempSync(join(tmpdir(), 't4-race-')), command, healthPath: (s) => `/w/${s}/healthz` });
+  const p = new ChildPool({ root: process.cwd(), range: [P0, P0 + 3], logDir: mkdtempSync(join(tmpdir(), 't4-race-')), command, healthPath: (s) => `/w/${s}/healthz` });
   pools.push(p); return p;
 };
 const bootPid = async (p, slug) => { for (let i = 0; i < 200 && !p.state(slug)?.child; i++) await new Promise((r) => setTimeout(r, 10)); return p.state(slug).child.pid; };

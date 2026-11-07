@@ -14,6 +14,8 @@ import { Hub } from './hub.ts';
 import type { Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import { acceptStationFixture } from '../test/fixtures/station/generate.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const welcome=(worldId='client-world',epoch='process-1'):Extract<ServerMsg,{t:'welcome'}>=>({t:'welcome',proto:PROTO,build:'fixture',worldId,
   rulesVersion:'fixture-rules',schema:'fixture',dt:.05,clockRate:1,serverTick:0,you:null,serverTime:1000,epoch});
@@ -108,8 +110,8 @@ test('actual local native Hub publishes station through one Connection and echoe
   let c:Connection|undefined,connections=0;const seen:{view:StationLiveV1;receipt:TransportReceipt}[]=[],pongs:{pong:Extract<ServerMsg,{t:'pong'}>;receipt:PongReceipt}[]=[],errors:string[]=[];
   t.after(async()=>{c?.close();for(const timer of intervals)clearInterval(timer);for(const client of hub.clients)client.ws.terminate();
     await new Promise<void>(resolve=>hub.wss.close(()=>resolve()));await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();});
-  server.listen(4958,'127.0.0.1');await once(server,'listening');
-  c=new Connection('ws://127.0.0.1:4958/ws',async()=>null,{onStation:(view,receipt)=>{if(view&&receipt)seen.push({view,receipt});},
+  server.listen(TEST_PORT,'127.0.0.1');await once(server,'listening');
+  c=new Connection(`ws://127.0.0.1:${TEST_PORT}/ws`,async()=>null,{onStation:(view,receipt)=>{if(view&&receipt)seen.push({view,receipt});},
     onPong:(pong,receipt)=>pongs.push({pong,receipt}),onError:code=>errors.push(code)},url=>{connections++;return new WebSocket(url);});c.connect();
   async function until(check:()=>boolean){const limit=performance.now()+3000;while(!check()){assert.ok(performance.now()<limit,'actual Connection callback timed out');await setImmediate();}}
   await until(()=>seen.length>0);assert.deepEqual(seen[0].view,expected);assert.equal(seen[0].receipt.session.worldId,host.worldId);assert.equal(seen[0].receipt.session.epoch,hub.epoch);

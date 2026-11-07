@@ -14,6 +14,8 @@ import {buildApp} from './http.ts';
 import type {Hub} from './hub.ts';
 import type {AccountIdentity} from './accounts/store.ts';
 import {fixture as worldFixture} from '../test/native-owner-fixture.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const CLI = process.env.PAIR_CLI ?? new URL('../../../tools/edge-skill/eden-agent.mjs', import.meta.url).pathname;
 const cli = (cwd: string, args: string[], ms = 20000) => new Promise<{status: number | null; out: string; error: string}>((resolve, reject) => {
@@ -26,7 +28,7 @@ const cli = (cwd: string, args: string[], ms = 20000) => new Promise<{status: nu
 test('pair-soul <id> from a fresh folder: owner window within one poll, real name, nobody else, Approve connects', {timeout: 90000}, async t => {
   const f = worldFixture(':memory:', await marsFactory({...GREEN_FIELD_WORLD, safeCrewRemoval: true})); f.brain.quiesce(); f.souls.enableLifecycle();
   f.souls.cfg.accountAuthRequired = true; f.souls.cfg.inviteRequired = false;
-  const port = 7521, wp = '/w/pairtest', base = `http://127.0.0.1:${port}${wp}`; Object.assign(f.souls.cfg, {publicUrl: base, worldPath: wp});
+  const port = TEST_PORT, wp = '/w/pairtest', base = `http://127.0.0.1:${port}${wp}`; Object.assign(f.souls.cfg, {publicUrl: base, worldPath: wp});
   const ids = new Map<string, AccountIdentity>();
   for (const name of ['gene', 'other']) { const id = 'did:privy:' + name; f.db.upsertUser({id, email: null, wallet: null, role: 'user'}); ids.set(name, {id, issuer: 'privy.io/test-app', subject: id, verifiedAt: Date.now(), expiresAt: Date.now() + 600_000}); }
   f.auth.accountFromToken = async token => { const identity = ids.get(token ?? ''); return identity ? {identity, user: f.db.user(identity.id)!} : null; };

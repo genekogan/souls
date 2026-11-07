@@ -14,6 +14,8 @@ import {config} from './config.ts';
 import {Db} from './db.ts';
 import {WorldHost} from './world.ts';
 import {kernelHash} from '@souls/kernel';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 const legacy=await marsFactory(GREEN_FIELD_WORLD);
 async function until(predicate:()=>boolean|Promise<boolean>){for(let i=0;i<150;i++){if(await predicate())return;await new Promise(r=>setTimeout(r,20));}throw Error('owned local condition did not settle');}
 
@@ -46,15 +48,15 @@ test('actual main opt-in preserves cfg budget and old owner, enables lifecycle/V
   const dir=mkdtempSync(join(tmpdir(),'eden-main-')),path=join(dir,'sim.db');t.after(()=>rmSync(dir,{recursive:true,force:true}));
   const old=fixture(path,legacy);await invite(old,'alice');const row=await accept(old.host,old.souls.create('dev:alice',{name:'Alice',description:'Synthetic invited original main owner'}));old.brain.quiesce();old.host.saveSnapshot(true);old.host.stop();old.db.close();
   let child:ChildProcess|undefined,ws:WebSocket|undefined,output='';
-  const base='http://127.0.0.1:4959/w/eden';
-  const env={PATH:process.env.PATH,TMPDIR:process.env.TMPDIR,HOST:'127.0.0.1',PORT:'4959',WORLD_KEY:'eden',ENGINE:'mars',WORLD_ID:old.host.worldId,WORLD_SEED:old.host.seed,WORLD_PATH:'/w/eden',PUBLIC_URL:base,DATA_DIR:dir,DEV_AUTH:'1',BRAIN_MODE:'fake',BRAIN_BUDGET_USD_PER_DAY:'.37',SEED_NATIVES:'0',ENABLE_LIVING_WORLD:'1',ARCHIVE_TAKES:'0',ENABLE_EDEN_CORE:'1',BUILD_ID:'local-main-core-bootstrap'};
+  const base=`http://127.0.0.1:${TEST_PORT}/w/eden`;
+  const env={PATH:process.env.PATH,TMPDIR:process.env.TMPDIR,HOST:'127.0.0.1',PORT:String(TEST_PORT),WORLD_KEY:'eden',ENGINE:'mars',WORLD_ID:old.host.worldId,WORLD_SEED:old.host.seed,WORLD_PATH:'/w/eden',PUBLIC_URL:base,DATA_DIR:dir,DEV_AUTH:'1',BRAIN_MODE:'fake',BRAIN_BUDGET_USD_PER_DAY:'.37',SEED_NATIVES:'0',ENABLE_LIVING_WORLD:'1',ARCHIVE_TAKES:'0',ENABLE_EDEN_CORE:'1',BUILD_ID:'local-main-core-bootstrap'};
   const request=async(p:string,body?:unknown)=>{const r=await fetch(base+p,{method:body?'POST':'GET',headers:{authorization:'Bearer dev:alice',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json() as any};};
   async function open(apply:boolean){output='';child=spawn(process.execPath,['apps/server/src/main.ts'],{cwd:new URL('../../../',import.meta.url).pathname,env:{...env,...(apply?{APPLY_EDEN_CREW_CHECKPOINT:'1',APPLY_EDEN_COMMONS_CHECKPOINT:'1'}:{})},stdio:['ignore','pipe','pipe']});child.stdout!.on('data',b=>output+=String(b));child.stderr!.on('data',b=>output+=String(b));await until(async()=>{if(child!.exitCode!==null)throw Error('owned main exited: '+output);try{return (await fetch(base+'/healthz')).ok;}catch{return false;}});}
   async function close(){ws?.close();ws=undefined;if(!child)return;const process=child;child=undefined;process.kill('SIGTERM');await until(()=>process.exitCode!==null);assert.equal(process.exitCode,0,output);}
   try{
     await open(true);assert.ok(output.includes('budget $0.37/day'));
     const dashboard=await request('/v1/souls/'+row.id);assert.equal(dashboard.status,200);assert.equal(dashboard.body.control.soulId,row.id);assert.equal(dashboard.body.control.intentContract,'soul-intent/2');
-    const frames:any[]=[];ws=new WebSocket('ws://127.0.0.1:4959/w/eden/ws');ws.on('message',b=>frames.push(JSON.parse(String(b))));await new Promise<void>((r,j)=>{ws!.once('open',r);ws!.once('error',j);});ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>frames.some(f=>f.t==='welcome'));const welcome=frames.find(f=>f.t==='welcome');assert.deepEqual(welcome.you.souls,[row.id]);assert.equal(welcome.privateMe.contract,'me-live/1');
+    const frames:any[]=[];ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/w/eden/ws`);ws.on('message',b=>frames.push(JSON.parse(String(b))));await new Promise<void>((r,j)=>{ws!.once('open',r);ws!.once('error',j);});ws.send(JSON.stringify({t:'hello',proto:PROTO,token:'dev:alice'}));await until(()=>frames.some(f=>f.t==='welcome'));const welcome=frames.find(f=>f.t==='welcome');assert.deepEqual(welcome.you.souls,[row.id]);assert.equal(welcome.privateMe.contract,'me-live/1');
     const body={contract:'soul-intent/2',op:'upsert',requestId:'main-bootstrap-original-ref',words:'Explore the garden.'};const response=await request('/v1/souls/'+row.id+'/intent-v2',body);assert.ok([200,202].includes(response.status));await until(async()=>{const r=await request('/v1/souls/'+row.id+'/intent-v2/requests/'+body.requestId);return r.status===200&&r.body.phase==='refused';});
     await close();await open(false);const recovered=await request('/v1/souls/'+row.id+'/intent-v2/requests/'+body.requestId);assert.equal(recovered.status,200);assert.equal(recovered.body.phase,'refused');assert.equal(recovered.body.code,'not-understood');await close();
     const db=new Db(path);try{assert.equal(db.soul(row.id)!.owner,row.owner);assert.equal(db.soul(row.id)!.entity_id,row.entity_id);assert.equal(db.paidCost(),0);

@@ -9,8 +9,10 @@ import { openLauncher } from './launcher.mjs';
 import { projectRecords } from './owner-overview-data.mjs';
 import { verifiedCreator } from './creator-auth.mjs';
 import { clerkKeys, ISSUER, PUBLISHABLE_KEY } from '../../apps/server/test/clerk-fixture.ts';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(3);
 
-const PORT = 19883, RANGE = [19884, 19885], ORIGIN = `http://127.0.0.1:${PORT}`;
+const PORT = P0, RANGE = [P0 + 1, P0 + 2], ORIGIN = `http://127.0.0.1:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'owner-overview-auth-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const preload = new URL('../../apps/server/test/clerk-jwks-preload.mjs', import.meta.url).pathname;

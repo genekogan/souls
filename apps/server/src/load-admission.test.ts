@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import {Hono} from 'hono';
 import {Admission, admissionMiddleware, classify, FRAME_BUDGET_MS, frameBudgetMs, type RouteClass, type Ticket} from './load/admission.ts';
 import type {Level} from './load/shared.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const tick = () => new Promise(r => setTimeout(r, 2));
 const route = (method: string, path: string) => classify(method, path)!;
@@ -179,9 +181,9 @@ test('over real HTTP: a queued POST whose body was read still runs; a client tha
   const adm = new Admission(), app = new Hono(); let ran = 0;
   app.use('*', admissionMiddleware(adm, () => 'green', c => c.req.header('authorization')?.slice(7)));
   app.post('/v1/edge/act', async c => { ran++; return c.json({got: await c.req.json()}); });
-  const server = createServer(getRequestListener(app.fetch)); await new Promise<void>(r => server.listen(5187, '127.0.0.1', r));
+  const server = createServer(getRequestListener(app.fetch)); await new Promise<void>(r => server.listen(TEST_PORT, '127.0.0.1', r));
   t.after(() => { server.close(); adm.close(); });
-  const post = (token: string, signal?: AbortSignal) => fetch('http://127.0.0.1:5187/v1/edge/act', {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({verb: 'go'}), signal});
+  const post = (token: string, signal?: AbortSignal) => fetch(`http://127.0.0.1:${TEST_PORT}/v1/edge/act`, {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({verb: 'go'}), signal});
   adm.setLoadLevel('black');   // budget 0: acts queue (and would wait for their deadline)
   const ok = post('sim_a'); const ac = new AbortController(); const gone = post('sim_b', ac.signal).catch(() => null);
   await new Promise(r => setTimeout(r, 150));

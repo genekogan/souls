@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/redirects.test.mjs — the original worlds at the root (lane L2): root-path routing as the
 // laptop proxy did it, and the old->new redirect switch (off unless redirects.json says enabled; pages only; ?stay wins).
-// Launcher part on ports 6330-6332 (lane L2 range): --old-worlds-root refuses a base and every creation, flips with the file.
+// Launcher part on a free block of ports: --old-worlds-root refuses a base and every creation, flips with the file.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs';
@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { legacyWorldFor, parseRedirects, redirectSwitch, redirectTarget } from './redirects.mjs';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(3);
 
 test('root paths go where the laptop proxy sent them', () => {
   for (const [p, w] of [['/', 'eden'], ['/l/mars', 'eden'], ['/eden-agent.mjs', 'eden'], ['/skill.md', 'eden'], ['/mars-assets/x.glb', 'eden'],
@@ -53,12 +55,12 @@ test('launcher --old-worlds-root: no base, no creation, the switch answers pages
   const dir = mkdtempSync(join(tmpdir(), 'launcher-legacy-'));
   const env = join(dir, 'clerk.env'); writeFileSync(env, 'CLERK_PUBLISHABLE_KEY=pk_test_ZmFrZQ\nCLERK_ISSUER_URL=https://clerk.example.test\n');
   const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html>root');
-  const common = { range: [6331, 6332], webDir, publicOrigin: 'https://sim.example.test', authEnvFile: env, eager: 0, log: () => {}, oldWorldsRoot: true };
-  await assert.rejects(openLauncher({ ...common, port: 6330, dataDir: join(dir, 'a'), base: '/worlds' }), /drop --base/);
-  await assert.rejects(openLauncher({ ...common, port: 6330, dataDir: join(dir, 'a'), authEnvFile: undefined, devAuth: true, publicOrigin: 'http://127.0.0.1:6330' }), /needs --auth-env/);
-  const data = join(dir, 'data'); const L = await openLauncher({ ...common, port: 6330, dataDir: data });
+  const common = { range: [P0 + 1, P0 + 2], webDir, publicOrigin: 'https://sim.example.test', authEnvFile: env, eager: 0, log: () => {}, oldWorldsRoot: true };
+  await assert.rejects(openLauncher({ ...common, port: P0, dataDir: join(dir, 'a'), base: '/worlds' }), /drop --base/);
+  await assert.rejects(openLauncher({ ...common, port: P0, dataDir: join(dir, 'a'), authEnvFile: undefined, devAuth: true, publicOrigin: `http://127.0.0.1:${P0}` }), /needs --auth-env/);
+  const data = join(dir, 'data'); const L = await openLauncher({ ...common, port: P0, dataDir: data });
   try {
-    const at = (p, o = {}) => fetch(`http://127.0.0.1:6330${p}`, { redirect: 'manual', ...o });
+    const at = (p, o = {}) => fetch(`http://127.0.0.1:${P0}${p}`, { redirect: 'manual', ...o });
     for (const p of ['/__sim/worlds', '/__sim/op/create-world']) { const r = await at(p, { method: 'POST', body: '{"name":"x","template":"empty"}' }); assert.equal(r.status, 403, p); assert.equal((await r.json()).code, 'creation.elsewhere'); }
     const html = { headers: { accept: 'text/html' } };
     assert.equal((await at('/', html)).status, 200);

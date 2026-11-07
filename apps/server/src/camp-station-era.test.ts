@@ -18,6 +18,8 @@ import {CandidateStationV1} from './station.ts';
 import {CandidateStationV2} from './station-v2.ts';
 import {buildApp} from './http.ts';
 import {Hub} from './hub.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 const cfg:MarsWorldConfig={scene:'eden-camp',safeArrivalV1:true,safeCrewRemoval:true,arrival:[-3,18],arrivalPlace:'arrival',reference:[-1,17],grounds:{id:'grounds',name:'Camp grounds'}};
 const factory=await marsCampExpansionFactory(cfg);
 async function setup(t:TestContext){
@@ -51,7 +53,7 @@ test('opt-in camp rules/era commits adjacently and preserves original cue/epoch,
   const historicalResponse=await app.request('/v1/station-v2/history?'+new URLSearchParams({...Object.fromEntries(query),rulesVersion:h.engine.rulesVersion,tick:String(tick)}));assert.equal(historicalResponse.status,200);assert.deepEqual(await historicalResponse.json(),at);
   assert.equal((await app.request('/v1/station-v2/eras?'+new URLSearchParams({worldId:'foreign',epoch:original.station.epoch}))).status,404);
   const server=createServer(),hub=new Hub(server,h,f.auth,f.db,f.souls,undefined,f.station),frames:any[]=[];hub.brain=f.brain;
-  await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(4958,'127.0.0.1',r);});const ws=new WebSocket('ws://127.0.0.1:4958/ws');
+  await new Promise<void>((r,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',r);});const ws=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`);
   try{
     ws.on('message',data=>frames.push(JSON.parse(String(data))));await once(ws,'open');ws.send(JSON.stringify({t:'hello',proto:PROTO,stationContracts:['station-live/2']}));
     for(let i=0;i<100&&!frames.some(m=>m.t==='station-v2');i++)await new Promise<void>(r=>setTimeout(r,2));

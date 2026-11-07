@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { docFile, openLauncher, wantsMarkdown } from './launcher.mjs';
 import { TAKEN_PREFIXES } from './production.mjs';
 import { RESERVED } from './registry.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
 
 test('docFile maps docs and changelog paths to build files, and nothing else', () => {
   const cases = [['/docs', '', 'docs/index.html'], ['/docs/', '', 'docs/index.html'], ['/docs.md', '', 'docs.md'], ['/docs', 'text/markdown', 'docs.md'],
@@ -30,7 +31,7 @@ test('the public paths are taken prefixes and docs is a reserved slug', () => {
   assert.ok(RESERVED.has('docs'));
 });
 
-const PORT = Number(process.env.DOCS_ROUTE_TEST_PORT ?? 7110);
+const PORT = Number(process.env.DOCS_ROUTE_TEST_PORT ?? await testPort(4));
 const dir = mkdtempSync(join(tmpdir(), 'launcher-docs-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'plain.json'), JSON.stringify({ schema: 'genesis/1', name: 'Plain', description: 'x', batches: [] }));

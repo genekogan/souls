@@ -16,6 +16,8 @@ import {AgentInbox} from './inbox.ts';
 import {OwnerLoop, type OwnerLoopWorld} from './edge/owner-loop.ts';
 import {messageSteps} from './edge/ledger/vocabulary.ts';
 import type {EdgeReceipt} from './edge/contract.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 // D3d: a small commons as the ledger would report it: the balloon and a bench 40 m apart on g-commons, the pavilion's room
 const commonsWorld = (): OwnerLoopWorld => {
@@ -39,9 +41,9 @@ test('D3: act --for links the receipt to the owner message; the world writes the
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'alice');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Owner loop fixture'}));
-  const token = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5964').code, 'scripted').token;
+  const token = f.souls.pairExchange(f.souls.pairCode(a, `http://127.0.0.1:${TEST_PORT}`).code, 'scripted').token;
   const edge = new EdgeLedger(f.host, f.db);
-  const app = buildApp({cfg: {...config, port: 5964, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5964/w/eden', accountAuthRequired: false, webDir: '/nonexistent-loop-fixture', marsWebDir: '/nonexistent-loop-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge, hub: {clients: new Map(), refreshMe() {}} as never});
+  const app = buildApp({cfg: {...config, port: TEST_PORT, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-loop-fixture', marsWebDir: '/nonexistent-loop-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge, hub: {clients: new Map(), refreshMe() {}} as never});
   const req = async (path: string, auth?: string, body?: unknown, method?: string) => {
     const r = await app.request(path, {method: method ?? (body === undefined ? 'GET' : 'POST'), headers: {...(auth ? {authorization: `Bearer ${auth}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     return {status: r.status, data: await r.json() as any};

@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/health-dash.test.mjs
 // Lane DASH: the owner's health page numbers against direct reads, with fake world processes (fake-world.mjs) on the
-// lane's ports: proxy :6994, children 6990–6993. (The Clerk owner-only test is health-dash-auth.test.mjs, :6999.)
+// free block of ports. (The Clerk owner-only test is health-dash-auth.test.mjs.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(5);
 
-const PORT = 6994, RANGE = [6990, 6993], O = `http://127.0.0.1:${PORT}`;
+const PORT = P0 + 4, RANGE = [P0, P0 + 3], O = `http://127.0.0.1:${PORT}`;
 const dir = mkdtempSync(join(tmpdir(), 'health-dash-test-'));
 const root = join(dir, 'srv'), dataDir = join(root, 'production'), backups = join(dir, 'backups');
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);

@@ -8,13 +8,15 @@ import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/st
 import {INTENT_V2,intentHistoryPageV1Schema} from '@souls/protocol';
 import {intentNativeFixture} from '../test/intent-native-fixture.ts';
 import {handleMcp} from './mcp.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 function decoded(raw:any){assert.ok(raw.content[0].text);return {error:raw.isError===true,data:JSON.parse(raw.content[0].text)};}
 async function local(t:TestContext,historyV1=true){
-  const f=intentNativeFixture(t,':memory:',true,historyV1),url='http://127.0.0.1:4958/mcp';
+  const f=intentNativeFixture(t,':memory:',true,historyV1),url=`http://127.0.0.1:${TEST_PORT}/mcp`;
   const rotate=()=>f.souls.pairExchange(f.souls.pairCode(f.db.soul('s_A')!,url,f.db.user('dev:alice')!).code,'history SDK local fixture').token;
   const credential=rotate(),server=createServer((req,res)=>{res.setHeader('Connection','close');void handleMcp(req,res,f.souls,f.service).catch(()=>{if(!res.headersSent)res.writeHead(503);res.end();});});
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4958,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
   const client=new Client({name:'private-history-local-fixture',version:'1'});
   let closed=false;const close=async()=>{if(closed)return;closed=true;await client.close();await new Promise<void>(r=>{server.close(()=>r());server.closeAllConnections();});};
   t.after(close);await client.connect(new StreamableHTTPClientTransport(new URL(url),{requestInit:{headers:{authorization:'Bearer '+credential}}}));

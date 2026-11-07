@@ -10,6 +10,8 @@ import { PROTO,type ServerMsg } from '@souls/protocol';
 import { fixture,invite } from './native-owner-fixture.ts';
 import { Auth } from '../src/auth.ts';
 import { Hub } from '../src/hub.ts';
+import {testPort} from './test-port.ts';
+const TEST_PORT=await testPort();
 const [boundary,damaged]=process.argv.slice(2);assert.ok(['hello','periodic','broadcast','refresh'].includes(boundary));assert.ok(['body','event_hash'].includes(damaged));
 const f=fixture(':memory:',await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true}));f.souls.enableLifecycle();await invite(f,'alice');await invite(f,'bob');
 const operations=[];for(const owner of ['alice','bob']){const op=f.souls.acceptLifecycleCreate('dev:'+owner,{name:owner,description:'local fault containment'});f.host.drainInputs();await delay(0);operations.push(op);}
@@ -17,11 +19,11 @@ const auth=new Auth(f.souls.cfg,f.db);auth.devAuth=true;const server=createServe
 let periodic:(()=>void)|undefined;
 globalThis.setInterval=((callback:()=>void,ms:number,...args:unknown[])=>{if(ms===2000)periodic=callback;const timer=interval(callback,ms,...args);timers.push(timer);return timer;}) as typeof setInterval;
 const hub=new Hub(server,f.host,auth,f.db,f.souls);hub.brain=f.brain;globalThis.setInterval=interval;
-await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(4958,'127.0.0.1',resolve);});
+await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(TEST_PORT,'127.0.0.1',resolve);});
 const notices:string[]=[];const stderr=console.error;console.error=(...args:unknown[])=>{notices.push(String(args[0]));};
 async function until(ready:()=>boolean){const deadline=performance.now()+4000;while(!ready()&&performance.now()<deadline)await delay(2);assert.ok(ready(),'actual local callback/socket reaches its expected boundary');}
 async function connect(owner:string|null,ready=true){
-  const socket=new WebSocket('ws://127.0.0.1:4958/ws'),messages:ServerMsg[]=[];socket.on('message',data=>messages.push(JSON.parse(String(data))));await once(socket,'open');
+  const socket=new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`),messages:ServerMsg[]=[];socket.on('message',data=>messages.push(JSON.parse(String(data))));await once(socket,'open');
   socket.send(JSON.stringify({t:'hello',proto:PROTO,...(owner?{token:'dev:'+owner}:{})}));if(ready)await until(()=>messages.some(m=>m.t==='takes'));return {socket,messages};
 }
 try {

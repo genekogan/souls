@@ -7,7 +7,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Db} from './db.ts';
-const port=4957,base='http://127.0.0.1:'+port+'/w/eden';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
+const port=TEST_PORT,base='http://127.0.0.1:'+port+'/w/eden';
 async function ready(child:ChildProcess,logs:()=>string){for(let i=0;i<300;i++){if(child.exitCode!==null)throw Error('normal main exited early: '+logs());try{const response=await fetch(base+'/healthz');if(response.ok)return response.json() as Promise<{worldId:string;tick:number}>;}catch{}await delay(20);}throw Error('normal main startup timeout: '+logs());}
 async function stop(child:ChildProcess){if(child.exitCode!==null)return;child.kill('SIGTERM');for(let i=0;i<200&&child.exitCode===null;i++)await delay(20);assert.equal(child.exitCode,0,'actual normal main orderly SIGTERM settles before closing DB');}
 test('actual normal main fake-owner startup, paused shutdown and restart retain the same DB/owner/history',async t=>{

@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/body-read.test.mjs (#717; launcher :6754, fake worlds on 6750-6753)
+// node --test tools/world-launcher/body-read.test.mjs (#717; launcher and fake worlds on a free block of ports)
 // The launcher's body read path: site key and loopback only, GET of a content address, binary passed through, 4 MiB cap.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,8 +6,10 @@ import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(5);
 
-const PORT = 6754, RANGE = [6750, 6753];
+const PORT = P0 + 4, RANGE = [P0, P0 + 3];
 const dir = mkdtempSync(join(tmpdir(), 'launcher-body-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const webDir = join(dir, 'web'); mkdirSync(webDir);

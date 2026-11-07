@@ -17,6 +17,7 @@ import { Db } from './db.ts';
 import { optionsFor } from './deck.ts';
 import { initKernel, replayKernel } from './fold.ts';
 import { WorldHost, replayFromGenesis } from './world.ts';
+import {testPort} from '../test/test-port.ts';
 
 if (!marsAvailable()) test('the shell on the Mars engine (skipped: no Mars checkout on this machine)', { skip: true }, () => {});
 else {
@@ -72,8 +73,8 @@ else {
   });
 
   // ---------------------------------------------------------------- a real server process on the Mars engine
-  // Default sits outside 4930-4970 (the laptop's release listeners); override with TEST_MARS_PORT.
-  const PORT = Number(process.env.TEST_MARS_PORT ?? 5445);
+  // A free port by default, which is outside 4930-4970 (the laptop's release listeners); override with TEST_MARS_PORT.
+  const PORT = Number(process.env.TEST_MARS_PORT ?? await testPort());
   assert.ok(Number.isInteger(PORT) && PORT >= 1024 && PORT <= 65535,'explicit valid fixture port');
   assert.ok(PORT < 4930 || PORT > 4970,'TEST_MARS_PORT must be outside 4930-4970 (release listeners)');
   const BASE = `http://127.0.0.1:${PORT}`;

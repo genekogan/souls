@@ -1,6 +1,6 @@
 // node --test tools/world-launcher/read-route.test.mjs — Stage B (lane B-port, LOAD-CONTRACT §4 readPort): C2 reads to a
 // world's read workers. Fake worlds (fake-world.mjs: a read worker thread when SIM_READ_WORKER=1) on lane B-port's ports
-// only: launchers :5240 (on) / :5239 (off), children 5231–5238.
+// only: two launchers (on, off) and their children on a free block of ports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
 import { readWorkersOf } from './registry.mjs';
 import { requestClass } from './flood.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(10);
 
 const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -39,12 +41,12 @@ test('registry readWorkers: explicit wins (0 = off, capped at 4), else SIM_READ_
 });
 
 test('flag off: no read env reaches the world, and even an advertised readPort is ignored (everything to main)', async () => {
-  const { L, make, call, hit } = await launcher({ port: 5239, range: [5237, 5238], on: false });
+  const { L, make, call, hit } = await launcher({ port: P0 + 8, range: [P0 + 6, P0 + 7], on: false });
   try {
     const plain = await make('Plain');
     assert.deepEqual((await call(plain, '/read-env')).body, { SIM_READ_WORKER: null, SIM_READ_WORKERS: null, SIM_READ_PORTS: null, SIM_READ_MODE: null });
     // a world that starts read workers on its own (forced by its command env) is still not routed to
-    const forced = await launcher({ port: 5240, range: [5235, 5236], on: false, env: { SIM_READ_WORKER: '1' } });
+    const forced = await launcher({ port: P0 + 9, range: [P0 + 4, P0 + 5], on: false, env: { SIM_READ_WORKER: '1' } });
     try {
       const slug = await forced.make('Forced'); await advertised(forced.L, slug);
       for (const path of ['/v1/edge/here', '/v1/edge/capabilities', '/v1/edge/observe', '/healthz/read']) {
@@ -59,13 +61,13 @@ test('flag off: no read env reaches the world, and even an advertised readPort i
 });
 
 test('flag on (subset): here/capabilities to the worker, the rest to main; fallback on error/5xx/timeout; metrics', async () => {
-  const { L, base, make, call, hit } = await launcher({ port: 5240, range: [5231, 5234], on: true });
+  const { L, base, make, call, hit } = await launcher({ port: P0 + 9, range: [P0, P0 + 3], on: true });
   try {
     const slug = await make('Readers');
     const env = (await call(slug, '/read-env')).body;
-    assert.equal(env.SIM_READ_WORKER, '1'); assert.equal(env.SIM_READ_WORKERS, '1'); assert.equal(env.SIM_READ_PORTS, '5234', 'the read port comes from the range top'); assert.equal(env.SIM_READ_MODE, '2', 'mode 2 (B-facade) unless the launcher says SIM_READ_MODE=1');
-    assert.equal(await advertised(L, slug), 5234);
-    assert.deepEqual(L.pool.status(slug).readPorts, [5234]);
+    assert.equal(env.SIM_READ_WORKER, '1'); assert.equal(env.SIM_READ_WORKERS, '1'); assert.equal(env.SIM_READ_PORTS, String(P0 + 3), 'the read port comes from the range top'); assert.equal(env.SIM_READ_MODE, '2', 'mode 2 (B-facade) unless the launcher says SIM_READ_MODE=1');
+    assert.equal(await advertised(L, slug), P0 + 3);
+    assert.deepEqual(L.pool.status(slug).readPorts, [P0 + 3]);
     const to = async (path, init) => { const r = await call(slug, path, init); return r.body?.from ?? (r.headers.get('x-sim-read') === 'worker' ? 'worker' : String(r.status)); };
     assert.equal(await to('/v1/edge/here'), 'worker');
     assert.equal(await to('/v1/edge/capabilities'), 'worker');
@@ -93,7 +95,7 @@ test('flag on (subset): here/capabilities to the worker, the rest to main; fallb
 });
 
 test('the worker answers through the launcher while the main thread is held for 2 s', async () => {
-  const { L, make, call } = await launcher({ port: 5240, range: [5231, 5234], on: true });
+  const { L, make, call } = await launcher({ port: P0 + 9, range: [P0, P0 + 3], on: true });
   try {
     const slug = await make('Busy'); await advertised(L, slug);
     await call(slug, '/busy?ms=2000'); await sleep(60);
@@ -110,7 +112,7 @@ test('the worker answers through the launcher while the main thread is held for 
 });
 
 test('full mode (B-facade route set): observe and view to the worker too, with queries; around still to main; readWorkers 0 turns a world off', async () => {
-  const { L, make, call } = await launcher({ port: 5240, range: [5231, 5234], on: true, env: { FAKE_READ_MODE: 'full' } });
+  const { L, make, call } = await launcher({ port: P0 + 9, range: [P0, P0 + 3], on: true, env: { FAKE_READ_MODE: 'full' } });
   try {
     const slug = await make('Full'); await advertised(L, slug);
     for (const p of ['/v1/edge/here?include=doHere', '/v1/edge/observe', '/v1/edge/view?alt=only', '/v1/edge/capabilities?all=1']) assert.equal((await call(slug, p)).body.from, 'worker', p);
@@ -118,16 +120,16 @@ test('full mode (B-facade route set): observe and view to the worker too, with q
     for (const p of ['/v1/edge/view', '/v1/edge/view?mode=map', '/v1/edge/view?alt=only&gaze=left']) assert.notEqual((await call(slug, p)).body?.from, 'worker', p);
     assert.equal((await call(slug, '/v1/edge/around')).body.from, 'main');
     const off = await make('Off');
-    const op = await fetch(`http://127.0.0.1:5240/__sim/op/set-read-workers`, { method: 'POST', body: JSON.stringify({ slug: off, readWorkers: 0 }) });
+    const op = await fetch(`http://127.0.0.1:${P0 + 9}/__sim/op/set-read-workers`, { method: 'POST', body: JSON.stringify({ slug: off, readWorkers: 0 }) });
     assert.equal(op.status, 200); assert.equal((await op.json()).readWorkers, 0);
-    assert.equal((await fetch(`http://127.0.0.1:5240/__sim/op/set-read-workers`, { method: 'POST', body: JSON.stringify({ slug: off, readWorkers: 7 }) })).status, 400);
+    assert.equal((await fetch(`http://127.0.0.1:${P0 + 9}/__sim/op/set-read-workers`, { method: 'POST', body: JSON.stringify({ slug: off, readWorkers: 7 }) })).status, 400);
     assert.equal(readWorkersOf(L.registry.get(off), { SIM_READ_WORKER: '1' }), 0);
     assert.equal((await call(off, '/v1/edge/here')).body.from, 'main', 'off from the registry: routed to main at once');
   } finally { await L.close(); }
 });
 
 test('at red/black a read the workers answer is routed to them, not shed (lag ≤ 2 gens); around is C1 (never shed as a read)', async () => {
-  const { L, base, make, call } = await launcher({ port: 5240, range: [5231, 5234], on: true });
+  const { L, base, make, call } = await launcher({ port: P0 + 9, range: [P0, P0 + 3], on: true });
   try {
     const slug = await make('Hot'); await advertised(L, slug);
     await call(slug, '/level?l=red'); await call(slug, '/healthz');   // the next answer carries X-Sim-Load: red
@@ -149,7 +151,7 @@ test('at red/black a read the workers answer is routed to them, not shed (lag �
 });
 
 test('world budget (lane B-serve): reads the workers answer are exempt; what reaches main counts (a fallback, a worker relay); registry override', async () => {
-  const { L, base, make, call } = await launcher({ port: 5240, range: [5231, 5234], on: true, env: { FAKE_READ_MODE: 'full' } });
+  const { L, base, make, call } = await launcher({ port: P0 + 9, range: [P0, P0 + 3], on: true, env: { FAKE_READ_MODE: 'full' } });
   try {
     const slug = await make('Budget'); await advertised(L, slug);
     const set = await fetch(`${base}/__sim/op/set-limits`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug, limits: { worldBudgetRps: 1, accountHeavyPerMin: 6000 } }) });

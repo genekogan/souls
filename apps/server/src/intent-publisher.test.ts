@@ -24,6 +24,8 @@ import { IntentRequests, IntentRequestUnavailable, type RequestReservation, type
 import { Souls } from './souls.ts';
 import { WorldHost, replayKernel } from './world.ts';
 import { waitForSocketCondition } from '../test/socket-condition.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 const words = 'PRIVATE_OWNER_WORDS drink tea later';
 const interpretation = { summary: 'PRIVATE_INTERPRETATION rest here', agenda: [{ card: 'rest', target: null }], trigger: { kind: 'none' as const } };
@@ -233,8 +235,8 @@ test('named public HTTP/real WS handlers and takes exclude private publication; 
   const server = createServer((_, res) => res.end('fixture')); const hub = new Hub(server, f.host, auth, f.db);
   const brain = new Brain(f.host, f.db, cfg, { clients: () => 0, onCall() {}, onCamera() {}, onTicker() {}, onNarrative() {} }); hub.brain = brain;
   const souls = new Souls(f.host, f.db, brain, cfg), app = buildApp({ cfg, db: f.db, host: f.host, auth, hub, brain, souls });
-  await new Promise<void>(resolve => server.listen(4952, '127.0.0.1', resolve));
-  const ws = new WebSocket('ws://127.0.0.1:4952/ws'); const messages: any[] = [];
+  await new Promise<void>(resolve => server.listen(TEST_PORT, '127.0.0.1', resolve));
+  const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}/ws`); const messages: any[] = [];
   ws.on('message', data => messages.push(JSON.parse(String(data))));
   t.after(async () => { ws.terminate(); hub.wss.close(); await new Promise<void>(resolve => server.close(() => resolve())); });
   await once(ws, 'open'); ws.send(JSON.stringify({ t: 'hello', proto: 1 }));

@@ -1,4 +1,4 @@
-// node --test tools/world-launcher/prepare-handover.test.mjs (lane soul3-prepare; fake worlds, launcher :6664, children 6660–6663)
+// node --test tools/world-launcher/prepare-handover.test.mjs (lane soul3-prepare; fake worlds, on a free block of ports)
 // The launcher's own prepareHandover (keeper step 1) must answer inside the keeper's 60 s even when a world is stuck
 // booting (R389/R390) or a creation is in flight, without ever letting two processes hold one world's data, without
 // touching a new world's data, and without freezing the registry after the keeper has given up and resumed it.
@@ -8,8 +8,10 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openLauncher } from './launcher.mjs';
+import { testPort } from '../../apps/server/test/test-port.ts';
+const P0 = await testPort(5);
 
-const PORT = 6664, RANGE = [6660, 6663];
+const PORT = P0 + 4, RANGE = [P0, P0 + 3];
 const dir = mkdtempSync(join(tmpdir(), 'prepare-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Sim</title>');

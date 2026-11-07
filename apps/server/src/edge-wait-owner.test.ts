@@ -6,13 +6,15 @@ import {fixture, invite, accept} from '../test/native-owner-fixture.ts';
 import {buildApp} from './http.ts';
 import {config} from './config.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
+import {testPort} from '../test/test-port.ts';
+const TEST_PORT=await testPort();
 
 test('wait wakes on an owner message: any not yet acked for an ownerSince client; acked ones never', async t => {
   const f = fixture(':memory:'); f.brain.quiesce(); t.after(() => { f.host.stop(); f.db.close(); });
   await invite(f, 'alice');
   const a = await accept(f.host, f.souls.create('dev:alice', {name: 'Avery', description: 'Wait fixture'}));
-  const token = f.souls.pairExchange(f.souls.pairCode(a, 'http://127.0.0.1:5963').code, 'scripted').token;
-  const app = buildApp({cfg: {...config, port: 5963, worldPath: '/w/eden', publicUrl: 'http://127.0.0.1:5963/w/eden', accountAuthRequired: false, webDir: '/nonexistent-wait-fixture', marsWebDir: '/nonexistent-wait-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
+  const token = f.souls.pairExchange(f.souls.pairCode(a, `http://127.0.0.1:${TEST_PORT}`).code, 'scripted').token;
+  const app = buildApp({cfg: {...config, port: TEST_PORT, worldPath: '/w/eden', publicUrl: `http://127.0.0.1:${TEST_PORT}/w/eden`, accountAuthRequired: false, webDir: '/nonexistent-wait-fixture', marsWebDir: '/nonexistent-wait-fixture'}, db: f.db, host: f.host, auth: f.auth, brain: f.brain, souls: f.souls, edge: new EdgeLedger(f.host, f.db), hub: {clients: new Map(), refreshMe() {}} as never});
   const req = async (path: string, auth?: string, body?: unknown) => {
     const r = await app.request(path, {method: body === undefined ? 'GET' : 'POST', headers: {...(auth ? {authorization: `Bearer ${auth}`} : {}), 'content-type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     return {status: r.status, data: await r.json() as any};
