@@ -172,8 +172,10 @@ function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: 
   return { nav, checked };
 }
 
+const DINING: Vec2[] = [[-4, -4], [4, -4], [4, 12], [-4, 12]];
+
 test('#875: a chair whose front is a sealed pocket is walked to on the connected floor beside it', () => {
-  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2);
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2, DINING);
   const chair = nav.thing('chair')!;
   assert.equal(chair.kind, 'seat');
   const goal = nav.goal(chair, [0, 10])!;
@@ -188,9 +190,15 @@ test('#875: a two-seat sofa is walked to at the stand point that is connected, n
 });
 
 test('#875: a chair with no connected floor within 2.5 m keeps its own goal (refused honestly, not moved far)', () => {
-  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4);
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 4, DINING);
   const goal = nav.goal(nav.thing('chair')!, [0, 10])!;
   assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
+});
+
+test('#875: a seat in no room keeps its goal, so a bench behind a closed yard door is not walked to through the wall', () => {
+  // the yard's floor reads as cut off while its door is shut; the connected ground 2 m off is the far side of the wall
+  const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2);
+  assert.deepEqual(nav.goal(nav.thing('chair')!, [0, 10])!, { p: [0, 0.75], level: 0 });
 });
 
 test('#875: the spot beside a pocketed chair stays in its own room, not through the wall', () => {

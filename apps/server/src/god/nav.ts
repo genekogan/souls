@@ -454,13 +454,15 @@ export class GodNav {
       if (goal && goal.level > 0 && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) goal = this.roofReach(goal) ?? goal;
       // #875: a seat whose stand point is in a pocket furniture closes off (a dining chair pushed in between the table and
       // the wall) while the room's main floor is beside it: another stand point of it that is connected, else the nearest
-      // connected standing spot in its own room within 2.5 m of that stand point; with none the goal stays, refused honestly
+      // connected standing spot in its own room within 2.5 m of that stand point; with none the goal stays, refused honestly.
+      // A seat in no room keeps its goal: a bench in a walled yard behind a closed door reads as cut off too, and the door
+      // opens on the way, while the connected floor 2.5 m off is the far side of the wall
       if (goal && t.seat && E.navCheckV1 && E.navWarmV1?.(0) && !E.navCheckV1([{ id: t.ref, ...goal }])[0]?.ok) {
         let other: { p: Vec2; level: number } | null = null;
         for (const s of stands) { const g = near(s, t.level, 6); if (g && E.navCheckV1([{ id: t.ref, ...g }])[0]?.ok) { other = g; break; } }
         // the spot stays in the seat's own room: the floor through the wall (the next room, the garden) is no way to it
         const room = this.things().find((r) => r.kind === 'room' && r.level === t.level && r.poly && inPoly(t.at[0], t.at[1], r.poly));
-        goal = other ?? this.roofReach(goal, 2.5, room?.poly) ?? goal;
+        goal = other ?? (room?.poly ? this.roofReach(goal, 2.5, room.poly) : null) ?? goal;
       }
       // WALK3: a duck on the lake, a boat in the harbour: the shore of the water it floats on, nearest to it
       if (!goal && !t.level) for (const w of this.things()) {
