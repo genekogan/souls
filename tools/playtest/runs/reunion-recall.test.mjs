@@ -22,6 +22,44 @@ test('both finish the walk they named, by name: pass, and the `here` beside the 
   const r = question.score(ctxOf(good('Bo', here({ near: [{ name: 'Ada' }] })), good('Ada')));
   assert.equal(r.verdict, 'pass'); assert.equal(r.detail.kept, true); assert.equal(r.detail.plan, 'flag-orchard');
 });
+test('a real walk id can hold a slash', () => {
+  const at = (other) => [plan('cottage/bench'), parted(), say(`${other}!`), walk('cottage/bench')];
+  const r = question.score(ctxOf(at('Bo'), at('Ada')));
+  assert.equal(r.verdict, 'pass'); assert.equal(r.detail.plan, 'cottage/bench');
+});
+test('a move this question can\'t place is unknown, finished or not; a plan\'s walk read from `pending` counts', () => {
+  const move = (cap, phase) => ({ verb: 'act', args: [cap], atMs: T + 2500, out: { accepted: true, receipt: { capability: cap, phase } } });
+  for (const m of [move('run:g-orchard', 'completed'), move('run:g-orchard', 'started'), move('jog:g-orchard', 'started'), move('hang-out:flag-orchard', 'completed'), move('stroll:field', 'completed')]) assert.equal(verdict([plan(), parted(), say('Bo!'), m]), 'unknown', m.args[0]);
+  assert.equal(verdict([plan(), parted(), say('Bo!'), walk('flag-mill'), move('run:g-orchard', 'started')]), 'unknown');
+  const planned = { verb: 'plan', args: ['["walk:flag-orchard"]'], atMs: T + 2000, out: { accepted: true, plan: { state: 'running' } } }, ended = { verb: 'pending', args: [], atMs: T + 2600, out: { endedReceipts: [{ capability: 'walk:flag-orchard', phase: 'completed' }] } };
+  assert.equal(verdict([plan(), parted(), say('Bo!'), planned]), 'unknown');
+  assert.equal(verdict([plan(), parted(), say('Bo!'), planned, ended]), 'pass');
+});
+test('leaving after the meeting changes nothing', () => {
+  assert.equal(verdict(good('Bo', walk('flag-pond', 'completed', T + 5000))), 'pass');
+});
+test('a plan said with punctuation or the card\'s own brackets is the same plan', () => {
+  for (const said of ['Tomorrow at walk:flag-orchard)', 'Tomorrow at walk:flag-orchard:', 'Tomorrow at walk:flag-orchard—see you', 'Tomorrow at walk:flag-orchard”', 'Tomorrow at walk:<flag-orchard>']) assert.equal(verdict([say(said, T - 5000), parted(), say('Bo!'), walk('flag-orchard')]), 'pass', said);
+});
+test('a refused `say` greets no one and plans nothing', () => {
+  const refused = { ...say('Morning, Bo.'), out: { accepted: false } };
+  assert.equal(verdict([plan(), parted(), refused, walk('flag-orchard')]), 'fail');
+});
+test('day one read back without the phrase is still being told', () => {
+  const turns = { verb: 'converse', args: ['turns', 'cv_1'], atMs: T + 500, out: { turns: [{ text: 'Shall we, by the orchard flag?' }, { text: 'Yes.' }] } };
+  const events = { verb: 'events', args: [], atMs: T + 500, out: { events: [{ text: 'See you by the orchard in the morning' }] } }, id = { verb: 'events', args: [], atMs: T + 500, out: { events: [{ text: 'by walk:flag-orchard then' }] } };
+  for (const read of [turns, events, id]) assert.equal(verdict([plan(), parted(), read, say('Bo!'), walk('flag-orchard')]), 'unknown', read.verb);
+  const offers = { verb: 'here', args: [], atMs: T + 500, out: { me: { place: 'world' }, offers: { walk: ['walk:flag-orchard'] } } };
+  assert.equal(verdict([plan(), parted(), offers, say('Bo!'), walk('flag-orchard')]), 'pass', 'an offer is not a plan');
+  assert.equal(verdict([plan(), parted(), say('Bo!'), walk('flag-orchard'), { ...turns, atMs: T + 4000 }]), 'pass', 'after setting off it tells nothing');
+});
+test('reading the conversation back is being told, not speaking', () => {
+  const turns = { verb: 'converse', args: ['turns', 'cv_1'], atMs: T + 500, out: { turns: [{ text: 'Tomorrow at walk:flag-orchard.' }] } };
+  assert.equal(verdict([plan(), parted(), turns, say('Bo!'), walk('flag-orchard')]), 'unknown');
+  const r = question.score(ctxOf([plan(), parted(), { verb: 'converse', args: ['turns', 'cv_1'], atMs: T + 500, out: {} }, walk('flag-orchard')], good('Ada')));
+  assert.equal(r.detail.rows[0].spoke, 0);
+  assert.equal(verdict([plan(), parted(), { verb: 'converse', args: ['start', 's_b', 'Morning, Bo.'], atMs: T + 600 }, walk('flag-orchard')]), 'pass');
+});
 test('"both" is not Bo: a name is a whole word', () => {
   assert.equal(verdict([plan(), parted(), say('We both made it!'), walk('flag-orchard')]), 'fail');
 });

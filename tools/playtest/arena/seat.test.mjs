@@ -49,7 +49,9 @@ test('restart: reads what the last chat left, waits out a stopping serve, starts
 test('restart: a step that fails says which, and the seat keeps its chat; a turn in flight ends first', async () => {
   const { s } = restartable();
   writeFileSync(join(s.folder, 'fail'), 'serve');
+  let listens = 0; s.listener = { kill() {} }; s.startListen = () => { listens += 1; };
   await assert.rejects(s.restart(), /seat pip: serve exited 3: no/); assert.equal(s.info.sessionId, 'old');
+  assert.equal(listens, 1, 'a failed restart leaves the seat listening'); s.listener = null;
   writeFileSync(join(s.folder, 'fail'), '');
   let done = false; s.chain = new Promise((r) => setTimeout(() => { done = true; r(); }, 50));
   await s.restart(); assert.equal(done, true); assert.equal(s.info.sessionId, null);

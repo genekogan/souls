@@ -4,27 +4,46 @@
 // "Tomorrow at" and the walk the world finished. Warmth is not scored.
 import { actOutcome } from '../evaluate.mjs';
 
-const PLAN = /\btomorrow at\s+[`'"]?((?:walk|go):[a-z0-9_-]+)/i, MOVE = /^(?:walk|go):/, RETOLD = /\btomorrow at\b/i;
-const spoken = (s) => ['say', 'converse'].includes(s.verb);
-const words = (s) => s.args.filter((a) => a !== 'start' && !a.startsWith('--') && !/^s_[a-z0-9]+$/i.test(a)).join(' ');
+const PLAN = /\btomorrow at\s+[`'"<]?((?:walk|go):<?[a-z0-9_/-]+)/i, WALK = /^(?:walk|go):/, RETOLD = /\btomorrow at\b/i;
+/** Ways to get somewhere that aren't a finished walk: ids differ (`run:g-knoll`, `walk:knoll`), so where they end can't be compared. */
+const OTHER_MOVE = /^(?:run|jog|stroll|hang-out|approach|follow|go-near|fly|ride|climb)\b/;
+/** The reads that can carry words from day one. `here` and `caps` list every place as an offer, so a place's id there tells nothing. */
+const READS_SPEECH = new Set(['events', 'pending', 'wait', 'listen', 'converse', 'batch', 'receipt']);
+const said = (s) => !s.isError && s.out?.accepted !== false;
+const spoken = (s) => said(s) && (s.verb === 'say' || (s.verb === 'converse' && ['start', 'say'].includes(s.args[0])));
+const words = (s) => s.args.filter((a) => !(s.verb === 'converse' && ['start', 'say'].includes(a)) && !a.startsWith('--') && !/^s_[a-z0-9]+$/i.test(a)).join(' ');
 const holds = (text, name) => new RegExp(`\\b${String(name).replace(/[^\p{L}\p{N} ]/gu, '.')}\\b`, 'iu').test(text);
 const dayOf = (s) => { const m = s.verb === 'here' ? /\bworld day (\d+)\b/i.exec(String(s.out?.now ?? '')) : null; return m ? Number(m[1]) : null; };
 const shown = ({ out }) => JSON.stringify(out && typeof out === 'object' ? { ...out, brief: undefined } : out ?? '');
-const idOf = (cap) => String(cap).replace(MOVE, '');
-const moves = (steps) => steps.filter((s) => MOVE.test(s.out?.receipt?.capability ?? '')).map((s) => ({ step: s, id: idOf(s.out.receipt.capability), outcome: actOutcome(s).outcome })).filter((m) => m.outcome !== 'failed');
-const finished = (steps) => moves(steps).filter((m) => m.outcome === 'completed').at(-1)?.id ?? null;
+const idOf = (cap) => String(cap).toLowerCase().replace(/^(?:walk|go):/, '').replace(/[<>]/g, '');
+/** Every receipt a step shows, its own or those a serve finished (a `plan`'s steps end in `pending`). */
+const receiptsIn = (s) => [...(s.out?.receipt ? [{ step: s, receipt: s.out.receipt, outcome: actOutcome(s).outcome }] : []), ...(Array.isArray(s.out?.endedReceipts) ? s.out.endedReceipts : []).map((r) => ({ step: s, receipt: r, outcome: r?.phase === 'completed' ? 'completed' : ['failed', 'replaced', 'refused', 'cancelled', 'interrupted'].includes(r?.phase) ? 'failed' : 'started' }))];
+const walked = (steps) => steps.flatMap(receiptsIn).filter((r) => WALK.test(r.receipt?.capability ?? '') && r.outcome === 'completed').map((r) => idOf(r.receipt.capability));
+/** Some move this question can't place: a walk with no observed end, any other move, or a plan with steps still unseen. */
+const unplaced = (steps) => steps.some((s) => (s.verb === 'plan' && s.out?.accepted === true)) || steps.flatMap(receiptsIn).some((r) => { const cap = r.receipt?.capability ?? ''; return r.outcome !== 'failed' && (OTHER_MOVE.test(cap) || (WALK.test(cap) && r.outcome !== 'completed')); });
+/** Anything but the Soul's own memory that showed it day one's words before it set off. */
+function toldBefore(steps, id) {
+  const leaf = id.split(/[-/]/).at(-1), set = steps.findIndex((s) => receiptsIn(s).some((r) => idOf(r.receipt?.capability ?? '') === id) || (s.verb === 'plan' && s.args.join(' ').includes(id)));
+  return (set < 0 ? steps : steps.slice(0, set)).some((s) => {
+    if (spoken(s) || s.verb === 'memory') return false;
+    const text = shown(s);
+    if (s.verb === 'converse' && s.args[0] === 'turns') return said(s) && text.length > 2;
+    return RETOLD.test(text) || (READS_SPEECH.has(s.verb) && (text.includes(id) || holds(text, leaf)));
+  });
+}
 
 export default {
   id: 'reunion-recall',
-  version: 3,
+  version: 5,
   question: 'On the second day, in a new chat, did both Souls finish a walk to the place they named on the first day, each using the other\'s name in what it said?',
   assumptions: [
     'Each seat\'s last two cards are the two days; the second names neither the other Soul nor a place.',
     'The agreed place is the walk id each Soul said after "Tomorrow at" on the first day; a plan not stated by both, or not the same, is unknown, not a failure of memory.',
     'A Soul that never finished a walk away from that place on the first day proves nothing by being there: unknown.',
-    'Where a Soul ended is the last walk the world completed that day; a later walk with no observed end is unknown.',
-    'If anything but the Soul\'s own memory showed "Tomorrow at" before it set off, the world told it: unknown.',
-    'A name counts as a whole word in a say or converse call that day. Whether it came before the world showed it, and whether the wake carried a brief, are reported and decide nothing.',
+    'Keeping the plan is a walk to that id the world finished that day, in a receipt the seat read. Leaving afterwards changes nothing.',
+    'A Soul with no such walk, but with a move this question can\'t place (a walk with no observed end, another way of moving, a plan), is unknown.',
+    'If anything but the Soul\'s own memory showed it day one\'s words before it set off, the world told it: unknown. Reading conversation turns counts whatever they say.',
+    'A name counts as a whole word in a say or converse call the world took that day. Whether it came before the world showed it, and whether the wake carried a brief, are reported and decide nothing.',
     'The world day turns between the two cards: `here` frames that say otherwise make the run unknown.',
   ],
   score(ctx) {
@@ -39,11 +58,10 @@ export default {
       const before = ctx.steps(seat).filter((s) => s.atMs < from), after = ctx.steps(seat).filter((s) => s.atMs >= from), talk = after.filter(spoken), days = before.map(dayOf).filter((d) => d !== null);
       const firstName = after.findIndex((s) => spoken(s) && holds(words(s), other));
       const plan = before.filter(spoken).map((s) => PLAN.exec(words(s))?.[1]).filter(Boolean).at(-1) ?? null, id = plan ? idOf(plan.toLowerCase()) : null;
-      const set = moves(after).find((m) => m.id === id)?.step, ahead = set ? after.slice(0, after.indexOf(set)) : after, last = moves(after).at(-1);
       return {
         seat, secondDay: true, plan: id, after, spoke: talk.length, greeted: firstName >= 0, namedBeforeSeen: firstName >= 0 && !after.slice(0, firstName).some((s) => holds(shown(s), other)),
-        parted: !!finished(before) && finished(before) !== id, retold: ahead.some((s) => !spoken(s) && s.verb !== 'memory' && RETOLD.test(shown(s))),
-        ended: finished(after), walking: last && last.outcome !== 'completed' ? last.id : null,
+        parted: !!walked(before).at(-1) && walked(before).at(-1) !== id, retold: !!id && toldBefore(after, id),
+        kept: !!id && walked(after).includes(id), open: unplaced(after),
         briefAtWake: (ctx.listens?.(seat) ?? []).some((l) => Date.parse(l.t) >= from && /"brief"/.test(l.stdout ?? '')),
         days: { first: days[0] ?? null, last: days.at(-1) ?? null, next: after.map(dayOf).find((d) => d !== null) ?? null },
         refs: talk.slice(0, 2).map((s) => ctx.stepRef(s)),
@@ -56,8 +74,8 @@ export default {
     if (!a.plan || a.plan !== b.plan) return unknown('the two Souls stated no shared plan on the first day');
     if (rows.some((r) => !r.parted)) return unknown('a Soul never walked away from the agreed place on the first day');
     if (rows.some((r) => r.retold)) return unknown('the world showed a Soul the plan before it set off');
-    if (rows.some((r) => r.walking)) return unknown('a Soul\'s last walk has no observed end');
-    const kept = rows.every((r) => r.ended === a.plan), greeted = rows.every((r) => r.greeted);
+    const kept = rows.every((r) => r.kept), greeted = rows.every((r) => r.greeted);
+    if (!kept && rows.every((r) => r.kept || r.open)) return unknown('a Soul\'s move has no end this question can read');
     return { verdict: kept && greeted ? 'pass' : 'fail', evidence, detail: { kept, greeted, plan: a.plan, rows: detail } };
   },
 };

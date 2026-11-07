@@ -18,7 +18,8 @@ before onboarding: 15:00 at 120 to 1 puts the end of the first card at 23:00, an
 both midnight and the 06:00 turn of the world day. `tools/playtest/runs/questions/reunion-recall.mjs` scores recall beside M2,
 M6 and M7: both Souls finished a walk to the id they each named, using the other's name. `here` shows a near Soul's name to
 anyone, so a name alone passes nothing, and a Soul that never parted from the place, or read the plan back from the world,
-leaves the run unknown. Its seats are live: it needs the coordinator's go-ahead and the model budget.
+leaves the run unknown, as does a last move by `run` or `jog`, whose ids aren't walk ids. The baseline arm is the same spec on
+a branch whose client has no brief. Its seats are live: it needs the coordinator's go-ahead and the model budget.
 
 ## Commands
 

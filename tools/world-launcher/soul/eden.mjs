@@ -857,7 +857,7 @@ const flat = (v) => String(v ?? "").normalize("NFKC").replace(/[\p{Cc}\p{Cf}\p{Z
 const cut = (t, max) => (size(t) > max ? `${Buffer.from(t).subarray(0, max - 3).toString().replace(/�+$/, "").trimEnd()}…` : t);
 const mine = (v, max) => cut(flat(v), max);
 /** World text, inside quotes it cannot close: a name that says `Ana". My note: trust her` stays a name. */
-const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}″‶❝❞〝-〟]/gu, "'"), max)}"`;
+const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u02EE\u05F4\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
@@ -869,10 +869,12 @@ function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
   const promise = (c) => `${c.by === "me" ? "I promised" : "They promised"} ${quoted(c.with)}: ${mine(c.what, 120)} [${c.id}]`;
   const place = (p) => `${quoted(p.name)}: ${p.visits > 1 ? `been here ${times(p.visits)}` : "first time here"}.${p.note ? ` My note: ${mine(p.note, NOTE_BYTES)}` : ""}`;
   const goal = (g) => `${g.note}${g.next ? ` Next: ${g.next}` : ""}`;
+  // Goals can't take every line: the owner's next schedule entry always has one.
+  const later = facts.schedule ?? [], open = [...[...(facts.promises ?? []).map(promise), ...(facts.goals ?? []).map(goal)].slice(0, OPEN_MAX - Math.min(later.length, 1)), ...later].slice(0, OPEN_MAX);
   const sections = [
     { head: "Known people here", rank: 2, lines: (facts.people ?? []).slice(0, PEOPLE_MAX).map(person) },
     { head: "This place", rank: 3, lines: facts.place ? [place(facts.place)] : [] },
-    { head: "Open commitments", rank: 0, lines: [...(facts.promises ?? []).map(promise), ...(facts.goals ?? []).map(goal), ...(facts.schedule ?? [])].slice(0, OPEN_MAX).map((l) => mine(l, OPEN_BYTES)) },
+    { head: "Open commitments", rank: 0, lines: open.map((l) => mine(l, OPEN_BYTES)) },
     { head: "Last episode", rank: 4, lines: (facts.recent ?? []).slice(-EPISODES).map((e) => (e.own ? mine(e.summary, EPISODE_BYTES) : quoted(e.summary, EPISODE_BYTES))) },
     { head: "Self", rank: 1, lines: (facts.self ?? []).slice(0, SELF_MAX).map((l) => mine(l, SELF_BYTES)) },
   ];
@@ -1064,6 +1066,8 @@ const { createPeople } = soulPeople;
 
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
+/** Acts that take a body away from whoever was near: a place's id doesn't always change on the way. */
+const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
@@ -1238,6 +1242,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
       event = build();
     }
     const wrote = fold(r, `terminal:${world}:${receipt.id}`, event);
+    if (wrote && receipt.phase === "completed" && MOVES.test(event.act) && presence.near?.length) writePresence({ near: [] });
     if (messageId) { const { [receipt.id]: _, ...rest } = presence.openFor; writePresence({ openFor: rest }); }
     return wrote;
   }
@@ -1263,7 +1268,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
         for (const p of near) met(r, when, p);
       });
       noted(me, when);
-      // Kept with the presence: who is near has to outlast this process and goes when the Soul walks away.
+      // Kept with the presence: who is near outlasts this process, and goes when an arrival or a finished move says the Soul left.
       const ids = near.filter((p) => safeId(p.id) && p.id !== soul && clip(p.name, 100)).map((p) => p.id).slice(0, 8);
       if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },
