@@ -6,7 +6,7 @@
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file, so this module
 // lives inside it as a generated block.
 
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { join, relative } from "node:path";
 import { openMemoryFolder } from "../../edge-skill/memory-folder.mjs";
@@ -77,7 +77,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   function flushPeople() {
     const { write, remove } = people.changes(), dir = join(soulDir, "memory", "people");
     if (write.length) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    for (const [file, text] of write) { const tmp = join(dir, `${file}.tmp`); writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, join(dir, file)); }
+    const plain = (path) => { try { if (lstatSync(path).isSymbolicLink()) throw new Error("memory: a link in the people folder; nothing was written"); } catch (e) { if (e.code !== "ENOENT") throw e; } return path; };
+    if (write.length) plain(dir);
+    for (const [file, text] of write) { const tmp = plain(join(dir, `${file}.tmp`)); writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, plain(join(dir, file))); }
     for (const file of remove) { try { unlinkSync(join(dir, file)); } catch { /* gone already */ } }
   }
   const lockGone = (file) => { try { return Date.now() - statSync(file).mtimeMs > LOCK_OLD_MS; } catch { return false; } };
@@ -120,10 +122,11 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       try { return fn(records); }
       catch (e) {
         if (!stale(e)) throw e;
+        records = null;
         records = openRecords();
         return fn(records);
       }
-    } finally { try { flushPeople(); } finally { dropLock(mine); } }
+    } finally { try { if (records) flushPeople(); } finally { dropLock(mine); } }
   }
 
   // One wire event or frame: both clocks. The world day is only in `here`; a clock going backwards as ticks go forwards means a
@@ -211,7 +214,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       });
       noted(me, when);
       // Kept with the presence: who is near has to outlast this process and goes when the Soul walks away.
-      const ids = near.map((p) => p.id).filter(safeId).slice(0, 8);
+      const ids = near.filter((p) => safeId(p.id) && p.id !== soul && clip(p.name, 100)).map((p) => p.id).slice(0, 8);
       if (ids.join() !== (presence.near ?? []).join()) writePresence({ near: ids });
     },
     /** Events off the stream or a `wait`. One the record won't take costs only itself. */
@@ -251,14 +254,14 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       const when = clockAt({ real: now(), tick: null, time: null }), from = own ? "owner" : "plan";
       withRecords((r) => fold(r, `${from}:${world}:${messageId}`, { type: "outcome", receiptId: worldKey(world, own ? messageId : `plan-${messageId}`), messageId, act: "owner-message", phase: done ? "completed" : "failed", summary: clip(text, 160), untrusted: !own, learned: [], produced: [], met: [], when, seen: {} }));
     },
-    /** What this Soul just said: to the people near, or to a conversation. */
+    /** What this Soul just said: to the people near, or to a conversation, and then only to those in it. */
     sawSaid(text, { to, conversationId } = {}) {
       const said = clip(text, 500); if (!said) return;
-      const when = clockAt({ real: now(), tick: null, time: null }), ids = (to ?? presence.near ?? []).filter(safeId).slice(0, 16);
+      const when = clockAt({ real: now(), tick: null, time: null }), private_ = safeId(conversationId);
       withRecords((r) => {
-        const members = safeId(conversationId) ? people.conversation(conversationId) : [], personIds = ids.length ? ids : members;
+        const personIds = [...(to ?? (private_ ? [] : presence.near ?? [])), ...(private_ ? people.conversation(conversationId) : [])].filter((id) => safeId(id) && people.view(id)).slice(0, 16);
         if (!personIds.length) return;
-        fold(r, `told:${world}:${sha([said, personIds, when.real])}`, { type: "told", personIds, text: said, channel: safeId(conversationId) ? "private-conversation" : "public-speech", ...(safeId(conversationId) ? { conversationId } : {}), when, seen: seenOf(personIds.map((id) => [id, people.view(id)?.name])) });
+        fold(r, `told:${world}:${sha([said, personIds, when.real])}`, { type: "told", personIds, text: said, channel: private_ ? "private-conversation" : "public-speech", ...(private_ ? { conversationId } : {}), when, seen: seenOf(personIds.map((id) => [id, people.view(id)?.name])) });
       });
     },
     /** A promise, to or from someone this Soul knows. `by` is me or them. */
@@ -267,23 +270,21 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       return withRecords((r) => {
         const row = people.find(target);
         if (!row) throw new Error(`I have no record of ${target}.`);
-        const id = `promise:${sha([row.traveller, what, at]).slice(0, 16)}`, to = people.addressOf(row);
-        r.fold({ id, at, world, when, type: "commitment", personId: to.id, by, what: clip(what, 300), seen: seenOf([[to.id, row.name]]), ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
+        const id = `promise:${sha([row.key, what, at]).slice(0, 16)}`;
+        r.fold({ id, at, world, when, type: "commitment", personId: row.id, of: row.key, by, what: clip(what, 300), seen: seenOf([[row.id, row.name]]) });
         return { promised: id, with: row.name, by };
       });
     },
-    /** A promise kept, by what happened after it with that person: a shared receipt for one of mine, their own words for one of
-     *  theirs. An owner's message, or an act of mine alone, keeps no one's promise. */
+    /** A promise kept, by what happened since with that person: their own turn in a conversation, or for a promise of mine a
+     *  completed act that names them. An owner's message, or an act of mine alone, keeps no one's promise. */
     kept(commitmentId, evidence) {
       const at = now(), when = clockAt({ real: at, tick: null, time: null });
       return withRecords((r) => {
         const c = people.commitment(commitmentId);
         if (!c) throw new Error(`No promise ${commitmentId}.`);
-        const receipt = r.terminal(worldKey(world, evidence)) ?? r.terminal(evidence), turn = people.lastTurn(evidence, c);
-        const shared = c.by === "me" && receipt?.phase === "completed" && !receipt.own && receipt.at > c.at && people.involves(receipt, c), spoke = turn !== null && turn > c.at;
-        if (!shared && !spoke) throw new Error(`${evidence} is not ${c.by === "me" ? "a completed act shared with" : "something said by"} ${c.row.name}${c.by === "me" ? ", or a conversation turn of theirs," : ""} since the promise. A promise is kept by what happened, not by saying so.`);
-        const to = people.addressOf(c.row), proof = shared ? receipt.receiptId : evidence;
-        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: to.id, commitmentId, evidence: proof, seen: {}, ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
+        const proof = people.proof(c, evidence, worldKey(world, evidence));
+        if (!proof) throw new Error(`${evidence} is not ${c.by === "me" ? "a completed act shared with them, or a conversation turn of theirs," : "a conversation turn of theirs"} since the promise. A promise is kept by what happened, not by saying so.`);
+        r.fold({ id: `kept:${commitmentId}`, at, world, when, type: "commitment.kept", personId: c.row.id, of: c.row.key, commitmentId, evidence: proof, seen: {} });
         return { kept: commitmentId, evidence: proof };
       });
     },
@@ -311,9 +312,8 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
         if (selector === "person") {
           const p = people.find(target);
           if (!p) throw new Error(`I have no record of meeting ${target}. Use their id from around or here, once they have been near.`);
-          const to = people.addressOf(p);
-          r.remember({ ...value, person: to.id, seen: seenOf([[to.id, p.name]]), note: clip(note, 300), ...(Object.keys(to.travellers).length ? { travellers: to.travellers } : {}) });
-          return { remembered: "person", id: to.id, name: p.name };
+          r.remember({ ...value, person: p.id, of: p.key, seen: seenOf([[p.id, p.name]]), note: clip(note, 300) });
+          return { remembered: "person", id: p.id, name: p.name };
         }
         // Worlds from one template share names, so this world's place comes first.
         const key = worldKey(world, target), called = (x) => x.name.toLowerCase() === lower || x.formerly.some((n) => n.toLowerCase() === lower), mine = (x) => x.id.startsWith(`${world}:`);
@@ -346,8 +346,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
           else if (raw.startsWith("## ")) section = line.slice(3);
           if (!raw.trim() || !terms.every((t) => line.toLowerCase().includes(t))) continue;
           if (matches.length >= SEARCH_MAX) { more++; continue; }
-          const from = [title, section].filter(Boolean).join(" / ");
-          matches.push({ text: line.replace(/^[-> ]+/, ""), file: relative(root, file), provenance: from, untrusted: /untrusted/i.test(`${from} ${line}`) });
+          // A person's file is titled with a name a world gave them, so its title vouches for nothing.
+          const person = relative(root, file).startsWith("people"), from = person ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
+          matches.push({ text: line.replace(/^[-> ]+/, ""), file: relative(root, file), provenance: from, untrusted: /untrusted/i.test(`${from} ${line}`) || (person && !section) });
         }
       }
       return { query, matches, ...(more ? { more } : {}) };

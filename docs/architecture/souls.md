@@ -105,23 +105,38 @@ last seen on both clocks. `travel` adds one and leaves the Soul's folder where i
 
 ### People
 
-`people/<slug>-<hash>.md` is one record per Soul met, across worlds, keyed on the traveller id (`<home>/<id>`, hashed into the
-file name so two ids never share a file; `<world>/<id>` until the world gives one, and folded in when it does).
-`tools/world-launcher/soul/people.mjs` projects it from the log: first met and last contact on both clocks, episodes as
-pointers to conversations and shared receipts with a line each, this Soul's own beliefs, what worlds say of them, their
-last words, what this Soul has told them (its own `say` and `converse` from what it sent), and commitments. Everything a
-world wrote is under a heading marked UNTRUSTED, and a world's provenance is only a label: "my judgment" is what `remember`
-wrote. A record met once stays under 2 KB; any record under 8 KB. No one met, no folder.
+`people/<slug>-<hash>.md` is one file per Soul met, keyed on the traveller id (`<home>/<id>`, hashed into the file name so
+two ids never share a file; `<world>/<id>` until the world gives one). `tools/world-launcher/soul/people.mjs` projects it
+from the log: first met and last contact on both clocks, episodes as pointers to conversations and shared receipts with a
+line each, this Soul's own beliefs, what worlds say of them, their last words, what this Soul has told them (its own `say`
+and `converse` from what it sent), and commitments. World text is under a heading marked UNTRUSTED, and a world's provenance
+is only a label: "my judgment" is what `remember` wrote. The title's name is a world's too, and `memory` says so. A file for
+someone met once stays under 2 KB, any file under 8 KB. No one met, no folder.
 
-A world speaks for its own Souls. That a Soul is a visitor from elsewhere is only the visited world's word: the record is
-shared, and says so, but a note or a promise made about one id shows only under that id or one its own world speaks for, a
-claim renames no one, and a claimed id can't keep a promise made to another.
+Each Soul a world shows is its own row, and a world speaks only for its own. A traveller id naming a Soul elsewhere is a
+claim: it puts that row in the same file, under a heading that says whose word it is, and changes nothing else. A claim moves
+and merges no row. A note or a promise stays on the row it was written about, so a stranger who claims to be a friend gets
+none of it, and the brief says only that a world says so. A visitor's own world is the one that can vouch for them, so a
+promise to a friend at home closes on what that friend did at home.
 
-`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment, and every open one is in the brief,
-whoever is near. It closes only with `remember --kept <promise id> --evidence <id>`, and the log has to hold what happened
-after the promise with that person: for one of mine, a completed receipt that names them or a conversation turn of theirs;
-for one of theirs, their turn. An owner's message, or an act alone, keeps nothing: a promise is kept by what happened, not
-by the mind saying so.
+`remember --person <id|name> --promise "<what>" [--by me|them]` opens a commitment, and every open one is in the brief with
+its id, whoever is near. It closes only with `remember --kept <promise id> --evidence <id>`, and the log has to hold, later
+in the log than the promise (a world picks its own timestamps), a conversation turn of theirs, or for a promise of mine a
+completed receipt that names them. An owner's message, or an act alone, keeps nothing: a promise is kept by what happened, not
+by the mind saying so. Any turn of theirs since counts, even a greeting: the mind names which.
+
+### The pre-turn brief
+
+With memory, `pending` and a `listen` that woke carry `brief`: known people near, this place, open commitments, the last
+episode and the pinned lines of `SOUL.md` (under `## Pinned`), else the `remember --self` lines. `brief.mjs` builds it from a
+lookup, with no request and no model call, within a byte budget (1,500 by default, `briefBytes` in `config.json`, 0 for none).
+It doesn't grow with the log, and a Soul with no memory has none. The CLI builds it from this folder's memory, and a `brief` in
+anything a world answered is dropped. Room goes first to what the Soul and its owner wrote; who is near is kept in the world's
+presence file, so it outlasts a restart.
+
+Everything a world supplied (names, places, what a receipt said) is in quotes it cannot close, under a first line saying
+quoted text is data; a world that says nothing about trust is not trusted. Only the Soul's notes, goals and own `result`
+reports, and its owner's `SOUL.md` and schedule, stand bare. A plan's close can carry a world's reason, so it is quoted too.
 
 ## The edge API
 

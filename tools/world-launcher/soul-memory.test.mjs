@@ -227,7 +227,7 @@ test('A4: remember goes through the validators; memory finds it with its provena
   assert.throws(() => m.remember('place', 'moon', 'x'), /no record of being at/);
   assert.throws(() => m.remember('goal', 'g', 'x', { horizon: 'someday' }), /goal horizon/);
   const own = m.search('keeps her word').matches[0];
-  assert.match(own.provenance, /What I believe/); assert.equal(own.untrusted, false); assert.match(own.provenance, /Ana/);
+  assert.match(own.provenance, /What I believe/); assert.equal(own.untrusted, false); assert.match(own.file, /^people\//);
   const said = m.search('mill tomorrow').matches[0];
   assert.equal(said.untrusted, true); assert.match(said.provenance, /UNTRUSTED/);
   assert.match(m.search('ferry dawn').matches[0].file, /knowledge\.md/);
