@@ -1,5 +1,28 @@
 # Continuity fixture and oracle contract
 
+## Run one family from a fresh clone
+
+```
+pnpm install --frozen-lockfile && pnpm assets:pull && pnpm --dir apps/web build
+node tools/playtest/continuity/run-family.mjs --out .local/continuity-1
+```
+
+This runs the restart family with no model, `.env` or credentials: a local fake-mind hello-hamlet world, one managed Soul
+on the real launcher and controller, and one unlaunched body beside it. A model-free host answers each turn with a `say`
+or a `wait`. Partway, the controller is killed with SIGKILL with a write in flight when one shows up in time.
+
+It passes on the same journal and thread, a new generation, no write repeated, and nothing left listening or running.
+Exit 0 is a pass, 1 a failed run, 2 a checkout that isn't set up. `--force-failure` fails it partway to prove the cleanup,
+and `--seconds` sets the length. `report.json` stays local; `export.json` holds only the fields named in
+`continuity/lib.mjs`, and is the one file that may leave the run.
+
+Run `--seconds 300` to see what the unlaunched body does. A disconnected body starts its zombie shuffle after the 120 s
+grace in `body-rule.ts`, so the default 60 s always reports 0 m. `wakeEligible` uses the Soul's own `listenTo`, and
+`wakeEligibleNearby` shows what a Soul listening to `nearby` would wake on.
+
+**It proves the driver and the recovery path, not behaviour, so it qualifies nothing.** The model-free host never
+reasons, so the qualification design below still needs real trials.
+
 The four intents in `matrix.json` remain unchanged. `fixtures.json` binds
 physical fixtures, actor roles, original errands, starts, real UTC offsets and
 disturbances. `oracles.json` declares numeric thresholds and a source-cited
