@@ -36,7 +36,7 @@ async function world(t, {sharedCarry = true, names = ['Ada', 'Bo', 'Cy', 'Dee', 
   const clock = {now: 1_700_000_000_000}, w = {f, path, clock, now: () => clock.now, current: null};
   t.after(() => {try {w.comms?.close();} catch {} try {w.host.stop();} catch {} try {if (w.db.db.isOpen) w.db.close();} catch {} rmSync(dir, {recursive: true, force: true});});
   mount(w, f.host, f.db, sharedCarry);
-  w.tick = async (n = 5) => {for (let i = 0; i < n; i++) {clock.now += STEP_MS; w.host.tickOnce(); if (w.host.clockFailure) throw new Error('HALT ' + String(w.host.clockFailure).slice(0, 300)); await setImmediate(); w.host.drainInputs();}};
+  w.tick = async (n = 5) => {for (let i = 0; i < n; i++) {clock.now += STEP_MS; w.host.tickOnce(); w.trace?.(); if (w.host.clockFailure) throw new Error('HALT ' + String(w.host.clockFailure).slice(0, 300)); await setImmediate(); w.host.drainInputs();}};
   await w.tick();
   const souls = {};
   for (const name of names) {
@@ -63,16 +63,19 @@ async function yard(w, {yaw = 0, skip = []} = {}) {
     ...[1, 2, 3, 4, 5].map((i) => [`tread${i}`, 'core/deck-stair-tread@1', -2.0, 0.9 + 0.4 * i, 0])].filter((x) => !skip.includes(x[0]));
   const at = [[-2, -5.5], [-3, -5.5], [2, -5.5], [3, -5.5], [-1, 5.5], [1, 5.5]];
   for (const [i, s2] of Object.values(w.souls).entries()) if (at[i]) await w.at(s2, ...P(...at[i]));
-  ok(w.god.act({ops: [zone('site', xm, z0), ...stock.map(([n, def, x, z, r]) => ({op: 'place', def, name: n, p: P(x, z), r: r + yaw}))]}));
+  ok(w.god.act({ops: [zone('site', xm, z0), zone('apron', ...P(-7, 7)), ...stock.map(([n, def, x, z, r]) => ({op: 'place', def, name: n, p: P(x, z), r: r + yaw}))]}));
   await w.tick(60);
   return {xm, z0, P};
 }
 const see = (w, s, id) => inspectFrame(w.edge, s, id, {all: true});
 const offers = (w, s) => w.edge.capabilitiesPage(s, {all: true}).capabilities;
+const TRACE = +(process.env.BAY_TRACE ?? 0);
+const traced = (w) => {if (!TRACE) return; w.trace = () => {const tk = w.host.engine.world.tick; if (tk < TRACE || tk > TRACE + 80 || tk % 8) return; console.log('T', tk, Object.entries(w.souls).map(([n, q]) => {const e = w.E()[q.entityId]; return `${n}:${e.pose.p[0].toFixed(2)},${e.pose.p[2].toFixed(2)}/${e.human.activity ?? ''}${e.human.grip ? '*' + e.human.grip.entity.slice(-4) : ''}`;}).join(' '), Object.values(w.E()).filter((e) => e.support?.kind === 'held').map((e) => `${e.id.slice(-4)}@${e.pose.p[0].toFixed(2)},${e.pose.p[2].toFixed(2)},y${(e.pose.yaw ?? 0).toFixed(2)}`).join(' '));};};
 const open = (w, s) => w.edge.openReceipts(s.soulId);
 
+const walk = async (w, s, place) => ok(await act(w, s, {capability: offers(w, s).find((c) => c.verb === 'walk' && c.id === `walk:${place}`)?.id ?? `walk:${place}`}));
 /** Organize, then have every pair take the next ready maneuver `inspect` names, partners answering by their standing agreement. */
-async function build(w, host, pairs, {yaw = 0, max = 30000} = {}) {
+async function build(w, host, pairs, {yaw = 0, max = +(process.env.BAY_MAX ?? 9000)} = {}) {
   const o = ok(await act(w, host, {capability: `organize:${PROC}`, params: {at: 'site', yaw, with: Object.values(w.souls).filter((s) => s !== host).map((s) => s.name).join(', ')}}));
   const pj = o.result.project, souls = Object.values(w.souls);
   let section = null;
@@ -81,7 +84,7 @@ async function build(w, host, pairs, {yaw = 0, max = 30000} = {}) {
   for (let n = 0; n < max; n++) {
     const v = see(w, host, pj), st = v.state;
     if (st.complete) {log('complete', seconds()); return {pj, seconds: +seconds()};}
-    if (st.section !== section) {section = st.section; log('section', section, seconds()); for (const s of souls) ok(await act(w, s, {capability: `volunteer:${pj}`, params: {revision: st.revision}}));}
+    if (st.section && st.section !== section) {section = st.section; log('section', section, seconds()); for (const s of souls) ok(await act(w, s, {capability: `volunteer:${pj}`, params: {revision: st.revision}}));}
     for (const r of st.ready) {
       if (claimed.has(r.maneuver) || !r.offer) continue;
       if (r.crew === 1) {
@@ -92,17 +95,22 @@ async function build(w, host, pairs, {yaw = 0, max = 30000} = {}) {
       }
       const pair = pairs.find((p) => p.every((s) => !open(w, s).length)); if (!pair) break;
       const res = await act(w, pair[0], {capability: r.offer, params: {...r.params, with: pair[1].name}}); log(r.maneuver, pair[0].name, res.accepted === false ? JSON.stringify(res).slice(0, 300) : 'ok', seconds());
+      // told who is in the way, that Soul walks clear by its own ordinary offer
+      if (res.accepted === false && /occupied/.test(res.code)) {const by = souls.find((s) => res.reason.includes(s.name)); if (by && !open(w, by).length) await walk(w, by, 'apron');}
       if (res.accepted !== false) {claimed.set(r.maneuver, pair[0]); if (r.offer.startsWith('raise-with:')) holds.set(r.part, pair[0]);}
     }
     for (const k of [...claimed.keys()]) if (!st.maneuvers.running.includes(k) && !st.ready.some((r) => r.maneuver === k) ? false : st.ready.some((r) => r.maneuver === k) && !open(w, claimed.get(k)).length) claimed.delete(k);
     await w.tick(5);
   }
+  for (const s of souls) log(s.name, w.E()[s.entityId].pose.p.map((v) => v.toFixed(2)).join(','), w.E()[s.entityId].human.activity, JSON.stringify(open(w, s).map((r) => [r.capability, r.phase, r.reason, r.shared?.phase, r.shared?.blocked])).slice(0, 400));
+  for (const i of w.edge.together.openShared().concat(w.edge.together.committedShared?.() ?? [])) log('inv', i.id, i.state, JSON.stringify(i.shared.op), JSON.stringify(w.host.engine.programAction?.(i.shared.op?.programId)?.action ?? null).slice(0, 700));
+  log('holds', JSON.stringify([...w.E()[souls[0].entityId] ? [] : []]), JSON.stringify(w.host.engine.rt?.records ? [...w.host.engine.rt.records.values()].filter((r) => ['blocked', 'running'].includes(r.status)).map((r) => [r.verb, r.status, r.diagnostic?.code, r.diagnostic?.message, r.phase]).slice(0, 14) : 'norec').slice(0, 1800));
   assert.fail(`no end: ${JSON.stringify(see(w, host, pj).state).slice(0, 900)}`);
 }
 
 test('R3: six Souls build the bay through the offers they are given, and a Soul who built none of it walks up', {timeout: 900000}, async (t) => {
   const w = await world(t), {Ada, Bo, Cy, Dee, Eve, Fay} = w.souls;
-  await yard(w);
+  await yard(w); traced(w);
   const {pj} = await build(w, Ada, [[Ada, Bo], [Cy, Dee], [Eve, Fay]]);
   const v = see(w, Ada, pj).state;
   assert.equal(v.joints.made, 29); assert.equal(v.complete, true);

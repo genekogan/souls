@@ -338,14 +338,22 @@
      "template": "install-joist",
      "part": "joist-1",
      "crew": 2,
-     "after": []
+     "after": [
+      "set-joist-0",
+      "set-joist-2",
+      "set-joist-4"
+     ]
     },
     {
      "key": "set-joist-3",
      "template": "install-joist",
      "part": "joist-3",
      "crew": 2,
-     "after": []
+     "after": [
+      "set-joist-0",
+      "set-joist-2",
+      "set-joist-4"
+     ]
     },
     {
      "key": "lay-sheet",
