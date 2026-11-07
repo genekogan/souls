@@ -12,7 +12,7 @@ import { now, sleep } from '../lib/clock.mjs';
 import * as claude from './adapters/claude-headless.mjs';
 import * as codex from './adapters/codex-headless.mjs';
 import * as scriptedOwner from './adapters/scripted-owner.mjs';
-import { worldBudgetFor } from './world-budget.mjs';
+import { worldBudgetFor, priceDriftOf } from './world-budget.mjs';
 
 export const ADAPTERS = { 'claude-headless': claude, 'codex-headless': codex, 'scripted-owner': scriptedOwner };
 export const LIVE_ADAPTERS = new Set(['claude-headless', 'codex-headless']);
@@ -119,15 +119,24 @@ export class Seat {
     const ended = now();
     // #1098: `claude -p --resume` reports total_cost_usd for the whole session so far, so this turn's cost is the difference
     // from the session's last total (a crashed turn can report zero: then its cost is unknown and the whole reservation counts).
+    // A turn killed at its wall limit writes no final result, and its stream can carry an early result line repeating the last
+    // total, which would read as a known $0. Its cost is unknown too. The CLI's next total for the session includes it, so the
+    // reservation stands until then and is taken back when that total arrives. A kill on a seat's last turn stays counted.
     const sessionCost = this.info.adapter === 'claude-headless' ? r.usage?.costUsd ?? null : null;
     let turnCost = r.usage?.costUsd ?? null;
-    if (sessionCost != null) {
+    if (r.timedOut) turnCost = null;
+    else if (sessionCost != null) {
       const sid = r.sessionId ?? this.info.sessionId, prev = this.info.sessionCostUsd?.[sid] ?? 0;
       turnCost = sessionCost >= prev ? sessionCost - prev : null;
       this.info.sessionCostUsd = { ...(this.info.sessionCostUsd ?? {}), [sid]: Math.max(prev, sessionCost) };
     }
     if (hold) {
       this.budget.settle(hold, turnCost);
+      const unknown = this.info.unknownCostUsd ?? 0;
+      if (turnCost == null) { this.info.unknownCostUsd = Math.round((unknown + hold.usd) * 1e6) / 1e6; this.save(); }
+      else if (unknown > 0 && sessionCost != null) { this.budget.release(this.seat.id, unknown, 'the session total now includes the turn whose cost was unknown'); this.info.unknownCostUsd = 0; this.save(); }
+      const drift = priceDriftOf((r.stream ?? []).filter((e) => e?.type === 'result').at(-1)?.modelUsage);
+      if (drift) this.budget.priceDrift(this.seat.id, drift);
       // the reservation assumed: no output past maxOutputTokens in a call; context growing by at most one observation plus one
       // output between calls (from the session's last context, or from maxContextTokens on the first call); and the turn
       // costing no more than it reserved. Anything past that ends the world's turns.
@@ -145,7 +154,7 @@ export class Seat {
         else if (prev != null && c.ctx > prev + step) broke = `context grew ${c.ctx - prev} tokens between calls`;
         if (broke) break; prev = c.ctx + c.out;
       }
-      if (!broke && turnCost != null && turnCost > hold.usd) broke = `turn cost $${turnCost} past its reservation $${hold.usd}`;
+      if (!broke && turnCost != null && turnCost > hold.usd + unknown) broke = `turn cost $${turnCost} past its reservation $${hold.usd}`;
       if (broke) this.budget.exceeded(this.seat.id, broke);
       const last = calls.at(-1); if (last) { this.info.sessionContextTokens = last.ctx + last.out; this.save(); }
     }

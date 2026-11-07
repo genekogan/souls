@@ -9,9 +9,11 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-// Sonnet list prices per million tokens. An uncached input token is written to the 1-hour prompt cache by Claude Code
-// (cacheCreationEphemeral1hInputTokens), which costs twice the base input price.
-export const SONNET_USD_PER_MTOK = Object.freeze({ uncachedInput: 6, cacheRead: 0.3, output: 15 });
+// claude-sonnet-5-5 per million tokens, as the claude CLI prices it (costBasis "list"): input $2, 1-hour cache write $4, cache
+// read $0.10, output $10. An uncached input token is written to the 1-hour prompt cache by Claude Code
+// (cacheCreationEphemeral1hInputTokens). Measured on #1098: these reproduce modelUsage.costUSD to within $0.000001 on all 31
+// result lines of its live runs. A turn whose reported cost differs is written to the ledger as `price-drift` (priceDriftOf).
+export const SONNET_USD_PER_MTOK = Object.freeze({ input: 2, uncachedInput: 4, cacheRead: 0.1, output: 10 });
 export const WORLD_BUDGET_DEFAULTS = Object.freeze({ capUsd: 0.90, turnCapUsd: 0.20, maxContextTokens: 60_000, maxOutputTokens: 4_096, maxObservationTokens: 8_000, minTurnCapUsd: 0.05 });
 const DAY_MS = 24 * 3600 * 1000;
 const ledgers = new Map();
@@ -20,6 +22,16 @@ const round = (x) => Math.round(x * 1e6) / 1e6;
 /** The worst single call past a turn's CLI cap: every context token uncached, plus the most output a call may write. */
 export function worstCallUsd({ maxContextTokens, maxOutputTokens } = WORLD_BUDGET_DEFAULTS, price = SONNET_USD_PER_MTOK) {
   return round((maxContextTokens * price.uncachedInput + maxOutputTokens * price.output) / 1e6);
+}
+
+/** A result line's modelUsage against the coded prices: null when they agree, else {model, reportedUsd, pricedUsd}. */
+export function priceDriftOf(modelUsage, price = SONNET_USD_PER_MTOK) {
+  for (const [model, u] of Object.entries(modelUsage ?? {})) {
+    if (!Number.isFinite(u?.costUSD) || !u.cacheCreationEphemeral1hInputTokens && u.cacheCreationEphemeral5mInputTokens) continue;
+    const priced = ((u.inputTokens ?? 0) * price.input + (u.cacheCreationInputTokens ?? 0) * price.uncachedInput + (u.cacheReadInputTokens ?? 0) * price.cacheRead + (u.outputTokens ?? 0) * price.output) / 1e6;
+    if (Math.abs(priced - u.costUSD) > Math.max(1e-5, u.costUSD * 0.01)) return { model, reportedUsd: round(u.costUSD), pricedUsd: round(priced) };
+  }
+  return null;
 }
 
 /** The coordinator's rule (#1098): a turn's reservation is its next call priced uncached, from the session's current context
@@ -43,6 +55,7 @@ function priorSpend(file, now) {
     rows += 1; const key = `${r.run ?? ''}:${r.id}`;
     if (r.kind === 'reserved') open.set(key, r.usd ?? 0);
     if (r.kind === 'settled') { open.delete(key); spent += r.costUsd ?? r.usd ?? 0; }
+    if (r.kind === 'released') spent = Math.max(0, spent - (r.usd ?? 0));
   }
   for (const usd of open.values()) spent += usd;   // reserved and never settled: count the whole worst case
   return { spentUsd: round(spent), rows };
@@ -89,6 +102,14 @@ export function worldBudgetFor(runDir, { capUsd, turnCapUsd, maxContextTokens, m
       write({ kind: 'settled', id: r.id, seat: r.seat, usd: r.usd, costUsd: round(cost), known: Number.isFinite(costUsd), overReservation: cost > r.usd, spentUsd: round(spent), reservedUsd: round(reserved) });
       wake();
     },
+    /** A killed turn was settled at its reservation; the seat's next session total now holds its real cost, so take that back. */
+    release(seat, usd, why) {
+      const x = Math.min(usd, spent); spent -= x;
+      write({ kind: 'released', seat, usd: round(x), why, spentUsd: round(spent), reservedUsd: round(reserved) });
+      wake();
+    },
+    /** The CLI reported a cost the coded prices don't reproduce. Recorded, not acted on: the reported cost is what's spent. */
+    priceDrift(seat, drift) { write({ kind: 'price-drift', seat, ...drift }); },
     /** A turn showed a call larger than the worst case the margin was sized for: refuse every later turn in this world. */
     exceeded(seat, what) { broken ??= `world budget: ${seat}'s turn exceeded the sized worst case (${what}); no further turns`; write({ kind: 'exceeded', seat, what }); wake(); },
     maxContextTokens: k.maxContextTokens, maxObservationTokens: k.maxObservationTokens,
