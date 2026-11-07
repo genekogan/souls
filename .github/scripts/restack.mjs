@@ -16,6 +16,11 @@
 // Children are open same-repo PRs whose base is the merged head branch, or whose base is already the merged PR's base
 // (GitHub retargets them itself when it deletes the merged branch) and that share commits with the merged head that
 // the target lacks. Every GitHub call goes through `gh api` (GH_TOKEN); pushes go through `origin`.
+//
+// The merge train rebases a PR before it lands, so the merged head can share nothing with a child cut before that. The
+// PR's force-push history gives the heads it had before: a child is matched against the merged head, then those, newest
+// first. When that history or an old head cannot be read, the merged PR gets a comment: a child that shares no commits
+// looks exactly like an unrelated PR, so it would otherwise be skipped in silence.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -66,6 +71,13 @@ export function conflictComment({ merged, target, fork, files, retargeted }) {
   ].join('\n\n');
 }
 
+export function unreadComment({ merged, target, unread }) {
+  return [
+    `Restack: #${merged.number} was rebased before it landed, and restack could not read ${unread.join(', ')}. PRs stacked on it may have been skipped, because a child of the old head looks unrelated to the merged head.`,
+    `Check for PRs cut from this branch. Merge \`${target}\` into each by hand, or redo this with \`gh workflow run restack.yml -f pr=${merged.number}\`.`,
+  ].join('\n\n');
+}
+
 export function forkComment({ merged, target, retargeted }) {
   return `Restack: #${merged.number} squash-merged into \`${target}\`.${retargeted ? ` This PR now targets \`${target}\`.` : ''} This branch lives in a fork, so it was not merged forward automatically: merge \`${target}\` into it, push, then remove \`${REBASE}\`.`;
 }
@@ -78,6 +90,30 @@ const ok = (git, ...args) => { try { git(...args); return true; } catch { return
 export function ancestry(git, { child, mergedHead, target }) {
   const fork = git('merge-base', child, mergedHead);
   return { fork, sharesCommits: !ok(git, 'merge-base', '--is-ancestor', fork, target), containsTarget: ok(git, 'merge-base', '--is-ancestor', target, child) };
+}
+
+/** `ancestry` against the first of `heads` the child shares commits with: the merged head, then its older heads. */
+export function ancestryOver(git, { child, heads, target }) {
+  let first;
+  for (const mergedHead of heads) {
+    const facts = ancestry(git, { child, mergedHead, target });
+    if (facts.sharesCommits) return facts;
+    first ??= facts;
+  }
+  return first;
+}
+
+/** The merged PR's heads from before a force-push that this repository can read, fetching any a child did not bring. */
+export function olderHeads(git, api, number) {
+  let oids;
+  try { oids = api.priorHeads(number); } catch { return { heads: [], unread: ['its force-push history'] }; }
+  const heads = [], unread = [];
+  for (const oid of new Set(oids)) {
+    if (!oid) unread.push('a head GitHub no longer records');
+    else if (ok(git, 'cat-file', '-e', `${oid}^{commit}`) || ok(git, 'fetch', '-q', '--no-tags', 'origin', oid)) heads.push(oid);
+    else unread.push(`old head \`${short(oid)}\``);
+  }
+  return { heads, unread };
 }
 
 /**
@@ -109,6 +145,13 @@ const ghAll = path => gh(path, '--paginate', '--slurp').flat();
 export const githubApi = repo => ({
   pr: n => gh(`repos/${repo}/pulls/${n}`),
   open: () => ghAll(`repos/${repo}/pulls?state=open&per_page=100`),
+  /** Heads PR `n` had before each force-push, newest first; null where GitHub no longer records one. */
+  priorHeads: n => {
+    const [owner, name] = repo.split('/');
+    const query = 'query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){timelineItems(last:100,itemTypes:[HEAD_REF_FORCE_PUSHED_EVENT]){nodes{... on HeadRefForcePushedEvent{beforeCommit{oid}}}}}}}';
+    const r = gh('graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `n=${n}`);
+    return r.data.repository.pullRequest.timelineItems.nodes.map(e => e.beforeCommit?.oid ?? null).reverse();
+  },
   retarget: (n, base) => ghRaw(['-X', 'PATCH', `repos/${repo}/pulls/${n}`, '-f', `base=${base}`]),
   label: (n, name) => ghRaw([`repos/${repo}/issues/${n}/labels`, '--input', '-'], JSON.stringify({ labels: [name] })),
   comment: (n, body) => ghRaw([`repos/${repo}/issues/${n}/comments`, '--input', '-'], JSON.stringify({ body })),
@@ -124,11 +167,15 @@ export function run({ prNumber, dryRun = false, api, git, log = console.log }) {
   git('fetch', '-q', '--no-tags', 'origin', `+refs/heads/${target}:refs/remotes/origin/${target}`, `+refs/pull/${merged.number}/head:refs/restack/merged`,
     ...list.map(pr => `+refs/pull/${pr.number}/head:refs/restack/${pr.number}`));
   const targetSha = git('rev-parse', `refs/remotes/origin/${target}`), mergedHead = git('rev-parse', 'refs/restack/merged');
-  const results = [];
+  const { heads: older, unread } = olderHeads(git, api, merged.number), results = [];
+  if (unread.length) {
+    results.push({ pr: merged.number, result: `could not read ${unread.join(', ')}; children may have been skipped` });
+    if (!dryRun) api.comment(merged.number, unreadComment({ merged, target, unread }));
+  }
   for (const pr of list) {
     const child = git('rev-parse', `refs/restack/${pr.number}`);
     if (child !== pr.head.sha) { results.push({ pr: pr.number, result: `head moved (${short(pr.head.sha)} → ${short(child)}); skipped` }); continue; }
-    const facts = ancestry(git, { child, mergedHead, target: targetSha });
+    const facts = ancestryOver(git, { child, heads: [mergedHead, ...older], target: targetSha });
     const plan = childAction({ pr, merged, ...facts });
     if (plan.action === 'skip') { if (pr.base.ref === target && !facts.sharesCommits) continue; results.push({ pr: pr.number, result: `skip: ${plan.why}` }); continue; }
     const say = result => { results.push({ pr: pr.number, result }); log(`#${pr.number}: ${result}`); };
