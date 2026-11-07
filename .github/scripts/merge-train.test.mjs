@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { awaitHead, blocker, fullScope, HEAD_WAIT_MS, landingMode, mainCiState, maintainerApproved, next, parseChecks, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
+import { awaitHead, blocker, dropped, enqueueArgs, fullScope, HEAD_WAIT_MS, holdAction, landingMode, mainCiState, maintainerApproved, next, parseChecks, queued, queueRequired, summarizeChecks, wait, DEFAULT_CHECKS } from './merge-train.mjs';
 import { JOBS } from './ci-scope.mjs';
 
 const M = 'owner';
@@ -339,6 +339,112 @@ test('landing: pending head checks (merge:ready re-runs proof-ok) wait, not stri
   const strictAnyway = train({ files: ['docs/a.md'], pendingPolls: Infinity, mainRuns: [run(9, 'failure')], full: [] });
   assert.equal(strictAnyway.run().mode, 'strict');
   assert.equal(strictAnyway.pauses(), 0); // main red: strict regardless, no wait
+});
+
+// A queue-mode next(): `prs` maps number -> overrides; `state` maps number -> the PR's queue state.
+function queueTrain({ prs, state = {}, rules = [{ type: 'pull_request' }, { type: 'merge_queue' }], files = ['docs/a.md'], approved = [] }) {
+  const pr = n => ({ number: n, title: 't', labels: [{ name: 'merge:ready' }], head: { ref: `agent/${n}-x`, sha: `h${n}`, repo: { full_name: 'o/r' } }, base: { ref: 'main' }, mergeable: true, mergeable_state: 'clean', ...prs[n] });
+  const reads = { pr: {}, checks: 0, comments: [] };
+  const api = {
+    gh: path => {
+      if (path === 'repos/o/r') return { default_branch: 'main' };
+      const n = Number(path.split('/').pop());
+      reads.pr[n] = (reads.pr[n] ?? 0) + 1;
+      return reads.pr[n] > 1 && prs[n].later ? { ...pr(n), ...prs[n].later } : pr(n);
+    },
+    ghAll: path => {
+      if (path.startsWith('repos/o/r/rules/branches/main')) return rules;
+      if (path.startsWith('repos/o/r/issues?')) return Object.keys(prs).map(number => ({ number: Number(number), pull_request: {} }));
+      if (path.includes('/check-runs') || path.includes('/actions/')) { reads.checks++; return []; }
+      if (path.includes('/files')) return files.map(filename => ({ filename }));
+      if (path.includes('/reviews')) return approved.includes(Number(path.split('/')[4])) ? [{ user: { login: M }, state: 'APPROVED' }] : [];
+      return [];
+    },
+    comment: (repo, n, body) => reads.comments.push({ n, body }),
+    queueState: (repo, n) => state[n] ?? {},
+    pause: () => {},
+  };
+  return { run: () => next({ repo: 'o/r', maintainer: M, notifyIssue: '755', api }), reads };
+}
+
+test('queue: the rule is read from the branch rules; without it the train picks as before', () => {
+  assert.equal(queueRequired([{ type: 'pull_request' }, { type: 'merge_queue' }]), true);
+  assert.equal(queueRequired([{ type: 'pull_request' }]), false);
+  const r = train({ files: ['apps/web/src/x.ts'] }).run();
+  assert.equal(r.queue, false);
+  assert.equal(r.mode, 'nonstrict');
+});
+
+test('queue: a mergeable PR goes to the queue at once, without waiting on its checks or on main', () => {
+  const t = queueTrain({ prs: { 20: {} } });
+  const r = t.run();
+  assert.deepEqual([r.pr, r.mode, r.queue], [20, 'queue', true]);
+  assert.equal(t.reads.checks, 0);
+});
+
+test('queue: enqueueing is auto-merge at exactly the head, never a direct merge', () => {
+  const args = enqueueArgs({ repo: 'o/r', pr: 20, sha: 'h20' });
+  assert.deepEqual(args.slice(0, 3), ['pr', 'merge', '20']);
+  assert.ok(args.includes('--auto'));
+  assert.equal(args[args.indexOf('--match-head-commit') + 1], 'h20');
+  assert.ok(!args.includes('--admin'));
+});
+
+test('queue: a queued PR is skipped, so the self-dispatch ends', () => {
+  const state = { 20: { isInMergeQueue: true }, 21: { autoMergeRequest: { enabledAt: 'x' } } };
+  const r = queueTrain({ prs: { 20: {}, 21: {} }, state }).run();
+  assert.equal(r.pr, '');
+  assert.equal(r.more, false);
+  assert.deepEqual(r.skipped.map(s => [s.pr, s.why]), [[20, 'queued'], [21, 'queued']]);
+  assert.equal(queueTrain({ prs: { 20: {}, 21: {} }, state: { 20: state[20] } }).run().pr, 21);
+});
+
+test('queue: a conflict takes the strict steps, then enqueues; unknown mergeability is asked again', () => {
+  const strict = queueTrain({ prs: { 20: { mergeable: false, mergeable_state: 'dirty' } } }).run();
+  assert.deepEqual([strict.mode, strict.queue], ['strict', true]);
+  const late = queueTrain({ prs: { 20: { mergeable: null, later: { mergeable: false, mergeable_state: 'dirty' } } } }).run();
+  assert.equal(late.mode, 'strict');
+  assert.equal(queueTrain({ prs: { 20: { mergeable: null } } }).run().mode, 'queue');
+});
+
+test('queue: an unapproved T3 is not enqueued; an approved one is', () => {
+  const files = ['packages/engine-mars/src/nav.ts'];
+  const waiting = queueTrain({ prs: { 20: {} }, files });
+  const r = waiting.run();
+  assert.equal(r.pr, '');
+  assert.deepEqual(r.skipped, [{ pr: 20, tier: 'T3', why: 'awaiting-approval' }]);
+  assert.equal(waiting.reads.comments.length, 1);
+  assert.equal(queueTrain({ prs: { 20: {} }, files, approved: [20] }).run().mode, 'queue');
+});
+
+test('queue: hold undoes what is there; a drop ejects only a PR still labelled and neither merged nor back in', () => {
+  assert.deepEqual(holdAction({ isInMergeQueue: true, autoMergeRequest: { enabledAt: 'x' } }), ['dequeuePullRequest', 'id']);
+  assert.deepEqual(holdAction({ autoMergeRequest: { enabledAt: 'x' } }), ['disablePullRequestAutoMerge', 'pullRequestId']);
+  assert.equal(holdAction({}), null);
+  assert.equal(queued({}), false);
+  const labels = { nodes: [{ name: 'merge:ready' }] };
+  assert.equal(dropped({ labels }), true);
+  assert.equal(dropped({ labels, merged: true }), false);
+  assert.equal(dropped({ labels, isInMergeQueue: true }), false);
+  assert.equal(dropped({ labels: { nodes: [] } }), false);
+});
+
+test('workflow: every required check reports on merge_group, and queue entries never share a cancelling group', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = f => readFileSync(new URL(`../workflows/${f}`, import.meta.url), 'utf8');
+  for (const f of ['ci.yml', 'security.yml', 'changelog-check.yml', 'proof-check.yml']) assert.match(read(f), /^ {2}merge_group:$/m, f);
+  const proof = read('proof-check.yml');
+  assert.match(proof, /group: proof-check-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}/);
+  assert.match(proof, /cancel-in-progress: \$\{\{ github\.event_name != 'merge_group' \}\}/);
+  assert.match(proof, /if: github\.event_name == 'merge_group' \|\| github\.event\.pull_request\.draft == false/);
+});
+
+test('workflow: only a label being added starts the train or the kick; removing one does not', async () => {
+  const { readFileSync } = await import('node:fs');
+  const yml = readFileSync(new URL('../workflows/merge-train.yml', import.meta.url), 'utf8');
+  for (const label of ['merge:ready', 'approved:maintainer']) {
+    assert.match(yml, new RegExp(`github\\.event\\.action == 'labeled' && github\\.event\\.label\\.name == '${label}'`));
+  }
 });
 
 test('workflow: every gh workflow run dispatch uses github.token, not the PAT (Next PR chain)', async () => {
