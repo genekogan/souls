@@ -45,6 +45,9 @@ export class ChildPool {
    * stopGraceMs: how long stop() waits after SIGTERM before SIGKILL (10 s; tests shorten it).
    * sleepMs (lane P3): freezeIdle() freezes a world nobody asked anything for that long (see there); 0/absent: never.
    * exitMs (lane SLEEP): releaseIdle() lets a world frozen that long more exit, giving its memory back (see there).
+   * continuous (CW6, #740; SIM_CONTINUOUS_WORLDS=1, off by default): every world on the current engine keeps its full clock
+   *   whoever is there. Its child gets no SIM_UNWATCHED_PACE (no attention pace, no clock catch-up), it is never frozen,
+   *   released or evicted, and keepRunning() starts it without a visitor. Old-engine forks keep the idle policy.
    * guard (lane L1): overrides of guard.mjs GUARD (tests); random: the backoff's jitter source (tests).
    */
   constructor(o) {
@@ -192,10 +195,12 @@ export class ChildPool {
     const tmp = `${this.o.pidFile}.${process.pid}.tmp`;
     try { writeFileSync(tmp, JSON.stringify(rec, null, 2) + '\n'); renameSync(tmp, this.o.pidFile); } catch { /* best effort */ }
   }
-  /** Put the least recently used idle world to sleep to free a port (it wakes on its next visit). */
+  /** CW6 (#740): a world that keeps its full clock (the continuous setting, on the current engine). */
+  continuous(k) { return !!this.o.continuous && !(k?.world ?? k)?.fork; }
+  /** Put the least recently used idle world to sleep to free a port (it wakes on its next visit). Never a continuous one. */
   async evictIdle(except) {
     const idleMs = this.o.idleMs ?? 60_000, now = Date.now();
-    const victim = [...this.kids.values()].filter((k) => k.slug !== except && k.status === 'running' && !k.adopted && now - (k.lastUsed ?? 0) > idleMs && !this.o.busy?.(k.slug)).sort((a, b) => (a.lastUsed ?? 0) - (b.lastUsed ?? 0))[0];
+    const victim = [...this.kids.values()].filter((k) => k.slug !== except && k.status === 'running' && !k.adopted && !this.continuous(k) && now - (k.lastUsed ?? 0) > idleMs && !this.o.busy?.(k.slug)).sort((a, b) => (a.lastUsed ?? 0) - (b.lastUsed ?? 0))[0];
     if (!victim) return null;
     await this.stop(victim.slug);
     victim.asleep = true;
@@ -211,7 +216,7 @@ export class ChildPool {
     if (!(ms > 0) || this.closing || this.fenced || this.gate) return [];
     const frozen = [];
     for (const k of this.kids.values()) {
-      if (k.frozen || k.status !== 'running' || !k.child || k.adopted || k.ready || k.stopped || now - (k.lastUsed ?? 0) < ms || this.o.busy?.(k.slug)) continue;
+      if (k.frozen || k.status !== 'running' || !k.child || k.adopted || k.ready || k.stopped || this.continuous(k) || now - (k.lastUsed ?? 0) < ms || this.o.busy?.(k.slug)) continue;
       try { k.child.kill('SIGSTOP'); } catch { continue; }
       k.frozen = true; k.frozenAt = now; frozen.push(k.slug); this.o.onChange?.(k.slug);
     }
@@ -226,7 +231,7 @@ export class ChildPool {
   async releaseIdle(now = Date.now()) {
     const ms = this.o.exitMs ?? 0, sleepMs = this.o.sleepMs ?? 0;
     if (!(ms > 0) || !(sleepMs > 0) || this.closing || this.fenced || this.gate) return [];
-    const due = [...this.kids.values()].filter((k) => k.frozen && k.status === 'running' && k.child && !k.adopted && !k.ready && !k.stopped && !k.stopping
+    const due = [...this.kids.values()].filter((k) => k.frozen && k.status === 'running' && k.child && !k.adopted && !k.ready && !k.stopped && !k.stopping && !this.continuous(k)
       && (this.o.exitForks || !k.world?.fork) && now - (k.lastUsed ?? 0) >= sleepMs + ms && !this.o.busy?.(k.slug));
     const released = [];
     for (const k of due) {
@@ -239,6 +244,38 @@ export class ChildPool {
     }
     return released;
   }
+  /** CW6 (#740): with the continuous setting, start (passively: not a use) every given world that should be running and
+   *  is not: never visited, its process gone, or capacity freed since. A world that cannot run is never silent: it is in
+   *  problems() as continuousDown with the reason (a refused sweep boot, or a crash restart waiting for capacity). Old-
+   *  engine forks are configuration, not a fault: they are in continuousStatus().unsupported, not in problems() (which
+   *  turns the host's hostOk false). Held, booting, stopping, adopted and handed-back worlds are left to their own paths.
+   *  Returns the slugs it starts a boot for that were not already down (so a world that stays down is logged once). */
+  keepRunning(worlds) {
+    const notes = (this.continuousNotes ??= new Map()), unsupported = (this.continuousForks ??= new Set()), started = [];
+    if (!this.o.continuous || this.closing || this.fenced || this.gate) return started;
+    const known = new Set();
+    const down = (slug, why) => notes.set(slug, { code: 'continuousDown', text: `${slug} should keep its full clock but is not running (${why})` });
+    unsupported.clear();
+    for (const w of worlds) {
+      known.add(w.slug);
+      if (w.fork) { unsupported.add(w.slug); continue; }
+      const k = this.kids.get(w.slug);
+      if (k?.held) { notes.delete(w.slug); continue; }   // shown as held
+      if (k && k.status === 'running') { notes.delete(w.slug); continue; }
+      // a crash restart refused for capacity re-schedules itself without counting toward the breaker: still down
+      if (k?.timer) { if (k.restartReason === 'capacity') down(w.slug, `capacity: ${k.lastError ?? 'no room'}; it restarts when room frees`); continue; }
+      if (k && (k.ready || k.stopping || k.adopted || k.handedBack || k.status === 'handover')) continue;
+      if (!notes.has(w.slug)) started.push(w.slug);
+      this.ensure(w, { passive: true }).then(() => notes.delete(w.slug), (e) => {
+        if (['handed-over', 'handed-back', 'stopping', 'starting'].includes(e.code) || this.closing) return;
+        down(w.slug, `${e.code ?? 'error'}: ${e.message}`);
+      });
+    }
+    for (const slug of notes.keys()) if (!known.has(slug)) notes.delete(slug);   // unregistered (archived) since
+    return started;
+  }
+  /** CW6: the continuous setting, the worlds it cannot cover (old-engine forks) and those down (as in problems()). */
+  continuousStatus() { return { on: !!this.o.continuous, unsupported: [...(this.continuousForks ?? [])], down: [...(this.continuousNotes ?? new Map()).keys()] }; }
   /** Wake a frozen world (SIGCONT); it counts as just used unless `use` is false (a passive read: it may sleep again soon). */
   thaw(k, { use = true } = {}) {
     if (!k?.frozen) return;
@@ -459,7 +496,7 @@ export class ChildPool {
     if (reason === 'wedged') k.lastWedge = { at: now, reason: k.lastExit?.reason ?? 'wedged' };
     if (reason !== 'capacity' && reason !== 'planned' && this.noteFailure(k, reason)) return;
     const wait = reason === 'planned' ? 0 : backoffMs(k.crashes++, this.random, g);
-    k.restartsBy = { ...(k.restartsBy ?? {}), [reason]: (k.restartsBy?.[reason] ?? 0) + 1 };
+    k.restartsBy = { ...(k.restartsBy ?? {}), [reason]: (k.restartsBy?.[reason] ?? 0) + 1 }; k.restartReason = reason;
     k.status = 'restarting'; k.restarts++; k.nextTryAt = now + wait; this.o.onChange?.(k.slug);
     this.log(`world ${k.slug} restarts in ${(wait / 1000).toFixed(1)} s (${reason}; failure ${k.failures?.length ?? 0} of ${g.breakerN} in ${Math.round(g.breakerWindowMs / 60_000)} min)`);
     if (!k.pending) { let resolve; const p = new Promise((r) => { resolve = r; }); p.catch(() => {}); k.pending = { p, resolve }; }
@@ -574,6 +611,7 @@ export class ChildPool {
       if (this.halted(k)) out.push({ slug: k.slug, code: 'halted', text: `${k.slug} halted: its clock has stopped and visitors get 503; the reason is its [world] glitch line (op.mjs glitches --world ${k.slug}); a restart boots from the log` });
       if (k.status === 'starting' && k.boot && now - k.boot.since > g.bootSlowMs) out.push({ slug: k.slug, code: 'bootSlow', text: `${k.slug} booting for ${s(now - k.boot.since)}${k.boot.stage ? ` (${k.boot.stage}${k.boot.tick != null ? ` ${k.boot.tick}${k.boot.target ? `/${k.boot.target}` : ''}` : ''})` : ''}; last progress ${s(now - k.boot.movedAt)} ago` });
     }
+    for (const [slug, n] of this.continuousNotes ?? []) out.push({ slug, ...n });
     return out;
   }
 
@@ -644,8 +682,9 @@ export function defaultCommand(world, port, o) {
     SOUL_LIFECYCLE: '1',
     // Souls fade and are lifted up after an hour without an action (green → yellow → red → beam-up), as on /w/eden (R4-LIVE)
     EDGE_FADING: '1',
-    // Nobody watching or acting here for 30 s: the clock runs at a quarter of its wall pace (apps/server/src/attention.ts)
-    SIM_UNWATCHED_PACE: process.env.SIM_UNWATCHED_PACE ?? '0.25',
+    // Nobody watching or acting here for 30 s: the clock runs at a quarter of its wall pace (apps/server/src/attention.ts);
+    // with the continuous setting (CW6, #740) it keeps full pace: no attention pace and no clock catch-up in the child
+    ...(o.continuous ? {} : { SIM_UNWATCHED_PACE: process.env.SIM_UNWATCHED_PACE ?? '0.25' }),
     // Eyes (apps/server/src/edge/eyes): a Soul's first-person picture. Off unless the launcher's own environment sets EDGE_EYES
     // (`world` = each world renders its own public page), optionally scoped by EDGE_EYES_WORLDS. The browser path,
     // GPU mode, budgets and nice level come with it; the allowlist itself is not a server setting.

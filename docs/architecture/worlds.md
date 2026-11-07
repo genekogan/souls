@@ -74,6 +74,18 @@ switch independent. A previously saved master mute migrates to both switches off
   released to exit later; the next visit wakes them. Unwatched worlds run at a slower clock
   (`SIM_UNWATCHED_PACE`, 0.25 by default for children); on return, the time of day jumps to the present
   (`apps/server/src/clock-catchup.ts`) without simulating the gap.
+- **Continuous worlds (CW6, #740; off by default).** With `SIM_CONTINUOUS_WORLDS=1` (or `--continuous`), every
+  registered world on the current engine keeps its full configured clock whoever is there. This deliberately corrects
+  the unattended policy above, which slowed, froze or stopped a world nobody watched and only moved its displayed day
+  clock on return. The child gets no `SIM_UNWATCHED_PACE`, so it has no attention pace and no clock catch-up. It is never frozen, released to exit or
+  evicted to make room. At start and every 15 s, `ChildPool.keepRunning` starts any such world that is not running,
+  including one never visited, with a passive boot that is not a use. A world that cannot run (the running cap, the
+  memory floor, a boot failure, a crash restart waiting for room) is never evicted or silent: `problems()` lists it as
+  `continuousDown`, so it appears in `/__sim/healthz` `hostCodes` and `world-problems.json`. Repeated boot failures still
+  trip the breaker (`held`). Old-engine forks are not supported: they keep the idle policy and are listed under
+  `continuous.unsupported` in `/__sim/launcher`, a configuration fact rather than a host fault, so not in `hostCodes`. An admin pause, archive, body sleep, crash and wedge restarts, the
+  breaker (`held`) and handovers are unchanged. Restart downtime is not simulated: the clock resumes where the snapshot
+  left it. Operating recipe and rollback: [runbook](../operations/runbook.md#continuous-worlds).
 - **Registry.** `<data>/worlds.json` records each world (slug, owner, template, flags). Reserved slugs include `toy`,
   `mars`, `littlemartians`, `eden`, `assets`, `api`, `god` and `launcher`.
 - **Thumbnails.** Each `worlds.json` row carries `thumbnail` (a URL or `null`) and `thumbnailSource` (`owner`,
@@ -95,7 +107,7 @@ switch independent. A previously saved master mute migrates to both switches off
 ### What a child runs with
 
 `children.mjs` builds each child's environment: `ENGINE=mars`, `ENABLE_WORLD_ENGINE=1`, `BRAIN_MODE=fake` with empty
-provider keys, `SEED_NATIVES=0`, `SOUL_LIFECYCLE=1`, `EDGE_FADING=1`, `SIM_UNWATCHED_PACE=0.25`, Clerk sign-in
+provider keys, `SEED_NATIVES=0`, `SOUL_LIFECYCLE=1`, `EDGE_FADING=1`, `SIM_UNWATCHED_PACE=0.25` (not with continuous worlds), Clerk sign-in
 (`AUTH_PROVIDER=clerk`, `ACCOUNT_AUTH_REQUIRED=1`, `ACCOUNT_REGISTRY_PATH`), the world's identity and paths, the
 served skill and CLI files, the site relay settings (`SIM_SITE_URL`, `SIM_SITE_KEY`), and the Eyes settings when the
 launcher's own environment sets them (see [Souls](souls.md#eyes)).

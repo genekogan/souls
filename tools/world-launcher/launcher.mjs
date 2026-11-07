@@ -150,6 +150,10 @@ export const ROOT = resolve(here, '../..');
 export const KEEP_ALIVE_MS = 130_000;
 /** Freeze a world nobody has asked anything for this long (children.mjs freezeIdle; --sleep-ms, 0 = never). Lane P3. */
 export const SLEEP_MS = 10 * 60_000;
+/** CW6 (#740): healthy worlds keep their full clock whoever is there (children.mjs keepRunning). Off unless
+ *  SIM_CONTINUOUS_WORLDS=1 or --continuous; turning it off restores the idle policy above at the next launcher start. */
+export const continuousWorlds = (env = process.env) => env.SIM_CONTINUOUS_WORLDS === '1';
+export const CONTINUOUS_SWEEP_MS = 15_000;
 /** A world asleep this long more exits, giving its memory back; its next visit cold-boots it (children.mjs releaseIdle;
  *  SIM_WORLD_IDLE_EXIT_MIN minutes, default 60; 0 = never; SIM_WORLD_IDLE_EXIT_FORKS=1 includes the old-engine forks). Lane SLEEP. */
 export function idleExitMs(env = process.env) {
@@ -197,7 +201,7 @@ const direct = (req) => !req.headers['x-forwarded-for'] && ['127.0.0.1', '::1', 
 
 /**
  * @param {{ port?: number, dataDir?: string, range?: [number, number], root?: string, webDir?: string,
- *           templatesDir?: string, marsWebDir?: string, eager?: number, idleMs?: number, sleepMs?: number, exitMs?: number, exitForks?: boolean, command?: Function, log?: (s: string) => void,
+ *           templatesDir?: string, marsWebDir?: string, eager?: number, idleMs?: number, sleepMs?: number, exitMs?: number, exitForks?: boolean, continuous?: boolean, command?: Function, log?: (s: string) => void,
  *           publicOrigin?: string, devAuth?: boolean, authEnvFile?: string, clerkSatellite?: string, clerkSignInUrl?: string, clerkLegacySatellites?: string, clerkAuthorizedParties?: string, maxWorlds?: number, maxRunning?: number,
  *           minFreeMb?: number, worldHeapMb?: number, createLimit?: number, base?: string,
  *           soulCli?: string, soulSkill?: string, soulInstructions?: string, maxWorldsPerAccount?: number,
@@ -263,7 +267,7 @@ export async function openLauncher(cfg = {}) {
   const siteKey = randomBytes(32).toString('hex');
   const siteOk = (req) => { const h = String(req.headers['x-sim-site-key'] ?? ''); return direct(req) && h.length === siteKey.length && timingSafeEqual(Buffer.from(h), Buffer.from(siteKey)); };
   const pool = new ChildPool({ root, range, site: { url: `${origin}${prod.base}`, key: siteKey }, logDir: join(dataDir, 'logs'), pidFile: join(dataDir, 'children.json'), libraryDir: join(dataDir, 'library'), compileCache: cfg.compileCache === false || process.env.SIM_COMPILE_CACHE === '0' ? null : compileCacheDir(dataDir, BUILD), cobuilders: cfg.cobuilders ?? process.env.SIM_COBUILDERS === '1', idleMs: cfg.idleMs, marsWebDir, publicOrigin, auth: auth?.child, soulCliFile: resolve(cfg.soulCli ?? SOUL.cli), soulControllerCliFile: resolve(cfg.soulControllerCli ?? SOUL.controllerCli), soulSkillFile: resolve(cfg.soulSkill ?? SOUL.skill), soulInstructionsFile: resolve(cfg.soulInstructions ?? SOUL.instructions), command: cfg.command ?? ((w, p, o) => (w.fork ? forkCommand : defaultCommand)(w, p, o)), healthPath: (s) => `${wp(s)}/healthz`,
-    maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, /* handover pre-warm: only world commands that know SIM_STANDBY (this release's own) */ prewarm: cfg.prewarm ?? (!cfg.command && process.env.SIM_PREWARM !== '0'), busy: (slug) => (live.get(slug) ?? 0) > 0 || (httpLive.get(slug) ?? 0) > 0, sleepMs: cfg.sleepMs ?? SLEEP_MS, exitMs: cfg.exitMs ?? idleExitMs(), exitForks: cfg.exitForks ?? process.env.SIM_WORLD_IDLE_EXIT_FORKS === '1', decorate: (c, w) => { const d = decorateCommand({ ...c, env: { ...c.env, WEB_DIR: webDir } }, { ...prod, worldHeapMb: 0 }); withHeap(d, d.env.SIM_FORK ? (w?.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb)); if (Number.isInteger(w?.loadBaselineMs) && w.loadBaselineMs >= 0) d.env.SIM_LOAD_BASELINE_MS = String(w.loadBaselineMs); /* LOAD-CONTRACT §1: per-world quiet-baseline pin (lane L2) */ if (d.env.SIM_FORK && oldRoot) Object.assign(d.env, { SIM_FORK_ROOT: '1', INVITE_REQUIRED: '0', SEED_NATIVES: '0' }); return d; }, /* lane L1: the guard (guard.mjs; cfg.guard overrides its numbers, false: off) and the watchdog port (real worlds, a range of 2 per running world) */ log, guard: cfg.guard || undefined, /* Stage B (lane B-port): read workers per world (registry readWorkers, SIM_READ_WORKER=1) */ readWorkers: (w) => readWorkersOf(w, cfg.readWorkerEnv ?? process.env), healthPorts: cfg.healthPorts ?? (!cfg.command && range[1] - range[0] + 1 >= 2 * prod.maxRunning),   /* (a second port per running world: only where the range has one for each) */
+    maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, /* handover pre-warm: only world commands that know SIM_STANDBY (this release's own) */ prewarm: cfg.prewarm ?? (!cfg.command && process.env.SIM_PREWARM !== '0'), busy: (slug) => (live.get(slug) ?? 0) > 0 || (httpLive.get(slug) ?? 0) > 0, sleepMs: cfg.sleepMs ?? SLEEP_MS, exitMs: cfg.exitMs ?? idleExitMs(), exitForks: cfg.exitForks ?? process.env.SIM_WORLD_IDLE_EXIT_FORKS === '1', continuous: cfg.continuous ?? continuousWorlds(), decorate: (c, w) => { const d = decorateCommand({ ...c, env: { ...c.env, WEB_DIR: webDir } }, { ...prod, worldHeapMb: 0 }); withHeap(d, d.env.SIM_FORK ? (w?.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb)); if (Number.isInteger(w?.loadBaselineMs) && w.loadBaselineMs >= 0) d.env.SIM_LOAD_BASELINE_MS = String(w.loadBaselineMs); /* LOAD-CONTRACT §1: per-world quiet-baseline pin (lane L2) */ if (d.env.SIM_FORK && oldRoot) Object.assign(d.env, { SIM_FORK_ROOT: '1', INVITE_REQUIRED: '0', SEED_NATIVES: '0' }); return d; }, /* lane L1: the guard (guard.mjs; cfg.guard overrides its numbers, false: off) and the watchdog port (real worlds, a range of 2 per running world) */ log, guard: cfg.guard || undefined, /* Stage B (lane B-port): read workers per world (registry readWorkers, SIM_READ_WORKER=1) */ readWorkers: (w) => readWorkersOf(w, cfg.readWorkerEnv ?? process.env), healthPorts: cfg.healthPorts ?? (!cfg.command && range[1] - range[0] + 1 >= 2 * prod.maxRunning),   /* (a second port per running world: only where the range has one for each) */
     /* worlds serve the same web build, with its --base */ onChange: (slug) => { const s = pool.status(slug); if (s.port && registry.get(slug) && registry.get(slug).port !== s.port) registry.update(slug, { port: s.port }); } });
   const worldEnv = (w) => ({ ...w, dataDir: registry.worldDir(w.slug), bodyCollectionPath: join(dataDir, 'body-collections.sqlite'), templateFile: w.template && w.template !== 'empty' ? templateList({ all: true }).find((t) => t.id === w.template)?.file ?? null : null });
 
@@ -1043,7 +1047,7 @@ export async function openLauncher(cfg = {}) {
       }
       if (path === '/__sim/launcher' && req.method === 'GET') {
         if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
-        json(res, 200, { origin, publicOrigin: prod.publicOrigin, devAuth: prod.devAuth, dataDir, range, maxWorlds: MAX_WORLDS, maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, memAvailableMb: memAvailableMb(), children: registry.worlds.map((w) => ({ slug: w.slug, viewers: live.get(w.slug) ?? 0, heapMb: w.fork ? (w.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb), ...pool.status(w.slug) })) }); return;
+        json(res, 200, { origin, publicOrigin: prod.publicOrigin, devAuth: prod.devAuth, dataDir, range, maxWorlds: MAX_WORLDS, maxRunning: prod.maxRunning, minFreeMb: prod.minFreeMb, memAvailableMb: memAvailableMb(), continuous: pool.continuousStatus(), children: registry.worlds.map((w) => ({ slug: w.slug, viewers: live.get(w.slug) ?? 0, heapMb: w.fork ? (w.worldHeapMb ?? cfg.forkHeapMb ?? 1536) : worldHeapMb(w, prod.worldHeapMb), ...pool.status(w.slug) })) }); return;
       }
       // lane L7: Prometheus text for the worlds and the launcher (LOAD-CONTRACT §5), loopback only
       if (path === '/__sim/metrics' && req.method === 'GET') { if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; } serveMetrics(res, { launcher: { build: BUILD, maxRunning: prod.maxRunning, maxWorlds: MAX_WORLDS, memAvailableMb: memAvailableMb() }, clientErrors: errors, worlds: registry.worlds.map((w) => ({ slug: w.slug, ...pool.status(w.slug), refused: ceilings.refused(w.slug), listenHeld: ceilings.held(w.slug), ...(readStats.has(w.slug) ? { read: { ...readStats.get(w.slug) } } : {}), live: readLive(registry.worldDir(w.slug)) })) }); return; }
@@ -1179,7 +1183,14 @@ export async function openLauncher(cfg = {}) {
   const writeProblems = () => { try { writeFileSync(`${problemsFile}.tmp`, JSON.stringify({ at: new Date().toISOString(), problems: pool.problems() }) + '\n'); renameSync(`${problemsFile}.tmp`, problemsFile); } catch { /* next time */ } };
   writeProblems(); const problemsTimer = setInterval(writeProblems, cfg.problemsEveryMs ?? 10_000); problemsTimer.unref();
   const wakeRecent = () => { for (const w of [...registry.worlds].sort((a, b) => b.createdAt - a.createdAt).slice(0, cfg.eager ?? 4)) if (pool.status(w.slug).status !== 'running') pool.ensure(worldEnv(w)).then((p) => log(`woke ${w.slug} on :${p}`), (e) => log(`could not wake ${w.slug}: ${e.message}`)); };
-  if (!adopting) wakeRecent();   // a handover wakes nothing until it has taken over (takeOverAll)
+  // CW6 (#740): with the continuous setting every registered world (but one being archived) runs without a visitor;
+  // a handover starts nothing until it has taken over (takeOverAll sets `taken`)
+  let taken = !adopting;
+  const keepRunning = () => { if (!taken || closed || !pool.o.continuous) return; for (const slug of pool.keepRunning(registry.worlds.filter((w) => !closing.has(w.slug)).map(worldEnv))) log(`${slug}: starting it (continuous worlds: it keeps its clock without a visitor)`); };
+  if (pool.o.continuous) log('continuous worlds: on (no attention pace, idle sleep, idle exit or idle eviction for current-engine worlds)');
+  if (!adopting) { wakeRecent(); keepRunning(); }   // a handover wakes nothing until it has taken over (takeOverAll)
+  const continuousSweep = pool.o.continuous ? setInterval(keepRunning, cfg.continuousSweepMs ?? CONTINUOUS_SWEEP_MS) : null;
+  continuousSweep?.unref();
   // idle worlds sleep (frozen in place) and wake on their next request; see ChildPool.freezeIdle
   const sleepMs = cfg.sleepMs ?? SLEEP_MS;
   // ...and a world asleep for exitMs more exits (its memory given back) and cold-boots on its next request; see ChildPool.releaseIdle
@@ -1283,7 +1294,7 @@ export async function openLauncher(cfg = {}) {
       }
       const lanes = Array.from({ length: Math.max(1, concurrency) }, async () => { while (todo.length) await one(todo.shift()); });
       await Promise.all(lanes);
-      wakeRecent();
+      wakeRecent(); taken = true; keepRunning();
       return { worlds: out };
     },
     /** Open (non-upgraded) requests still being answered here. */
@@ -1295,7 +1306,7 @@ export async function openLauncher(cfg = {}) {
      *  a held port every moment here is refused connections, so it stops at once, as before. After a handover (`gentle`)
      *  the keeper's port is served by the next launcher, so that exit is gentle too. */
     close: async ({ drainMs = 3_000, idleMs = 1_500, gentle = process.env.SIM_PORT_HELD === '1' } = {}) => {
-      if (closed) return; closed = true; clearInterval(sweep); errors.flush();
+      if (closed) return; closed = true; clearInterval(sweep); clearInterval(continuousSweep); errors.flush();
       const live = () => [...sockets].filter((s) => !s.simUpgraded);
       if (gentle) for (const t0 = Date.now(); live().length && Date.now() - t0 < drainMs && (Date.now() - t0 < idleMs || live().some((s) => s.simBusy));) await new Promise((r) => setTimeout(r, 20));
       const done = new Promise((r) => server.close(() => r()));   // (Node's close() also cuts idle connections: only now)
@@ -1365,7 +1376,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       publicOrigin: flag('public-origin'), clerkSatellite: flag('clerk-satellite'), clerkLegacySatellites: flag('clerk-legacy-satellites'), clerkSignInUrl: flag('clerk-sign-in-url'), authEnvFile: flag('auth-env') ?? flag('auth-env-file'), devAuth: argv.includes('--dev-auth') ? true : undefined,
       maxWorlds: num('max-worlds'), maxRunning: num('max-running'), minFreeMb: num('min-free-mb'), worldHeapMb: num('world-heap-mb'), idleMs: num('idle-ms'), sleepMs: num('sleep-ms'), exitMs: flag('idle-exit-min') === undefined ? undefined : num('idle-exit-min') * 60_000, createLimit: num('create-limit'),
       maxWorldsPerAccount: num('max-worlds-per-account'), newAccountHours: num('new-account-hours'), newAccountWorldLimit: num('new-account-world-limit'), newAccountCreateLimit: num('new-account-create-limit'), newAccountWindowMinutes: num('new-account-window-minutes'),
-      marsWebDir: flag('mars-web'), cobuilders: argv.includes('--cobuilders') ? true : undefined, webDir: flag('web'), base: flag('base'), oldWorldsRoot: argv.includes('--old-worlds-root') ? true : undefined, soulCli: flag('soul-cli'), soulSkill: flag('soul-skill'), soulInstructions: flag('soul-instructions'),
+      marsWebDir: flag('mars-web'), cobuilders: argv.includes('--cobuilders') ? true : undefined, continuous: argv.includes('--continuous') ? true : undefined, webDir: flag('web'), base: flag('base'), oldWorldsRoot: argv.includes('--old-worlds-root') ? true : undefined, soulCli: flag('soul-cli'), soulSkill: flag('soul-skill'), soulInstructions: flag('soul-instructions'),
       ...(underKeeper ? { listen: false, adopt: process.env.SIM_ADOPT ? JSON.parse(process.env.SIM_ADOPT) : null } : {}) });
     let stopping = false;
     const stop = (why, gentle) => { if (stopping) return; stopping = true; console.log(`[launcher] ${why}: stopping worlds…`); void l.close(gentle ? { gentle } : {}).then(() => process.exit(0)); };
