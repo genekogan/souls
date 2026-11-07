@@ -241,7 +241,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
     someone on the move could reach it within the lift (`carry.pickup-occupied`), stops dead rather than braking when a
     person or another crew's load comes into its way (`carry.path-occupied`), and lifts the way the load lies unless no
     route allows it, because a lift the other way round swings the load half a turn. A crew that sets a flight steps
-    clear of it before letting go. Two crews can still hold each other up; that is a named wait, never a halted world, and
+    clear of it before letting go, waiting by name for whoever stands behind it, and a stop in those moments lowers it. Two crews can still hold each other up; that is a named wait, never a halted world, and
     any member can stop. The procedure's dependencies keep neighbouring work apart so that is rare.
   - **Rules version.** `+shared-bay/1`, after PC16's suffix.
 - **Shared proposals (PC04, [#683](https://github.com/soulsimulation/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
