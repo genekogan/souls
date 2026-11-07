@@ -73,6 +73,9 @@ export function newerThan(a, b) {
   for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? 0) - (y[i] ?? 0); if (d) return d > 0; }
   return false;
 }
+/** A world's name for a Soul or itself, as this home keeps it: one plain line. It reaches the guide an agent reads, and a
+ *  world may be hostile, so no line breaks, control or invisible characters, and a cap well above any name a world allows. */
+export const plainName = (v, max = 64) => String(v ?? "").replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max).trim();
 /** The name a person can type for a Soul: "Old Mira" answers to old-mira. */
 export const norm = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 
@@ -254,8 +257,9 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   }
 
   /** Display name, from the world. */
-  function named(id, name) {
-    if (config().souls[id]?.name === name) return;
+  function named(id, raw) {
+    const name = plainName(raw);
+    if (!name || config().souls[id]?.name === name) return;
     updateConfig((c) => { if (c.souls[id]) c.souls[id].name = name; });
     identify(id);
   }
@@ -265,7 +269,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return all.map(([id, e]) => {
       const twin = reserved.has(norm(e.name)) || all.some(([other, o]) => other !== id && o.state === "active" && norm(o.name) === norm(e.name));
       const state = readJson(at("souls", id, "runtime", STATE_FILE), {});
-      return { name: e.name, id, world: e.world, ...(e.at && e.at !== e.world ? { visiting: e.at } : {}), state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...(c.default === id ? { default: true } : {}), lastSeen: state.lastActAt ?? null };
+      return { name: plainName(e.name) || id, id, world: e.world, ...(e.at && e.at !== e.world ? { visiting: e.at } : {}), state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...(c.default === id ? { default: true } : {}), lastSeen: state.lastActAt ?? null };
     });
   }
 
@@ -323,7 +327,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     if (config().souls[me.id]) return { imported: false, soul: me.id, reason: "This Soul already lives in this home." };
     const key = me.world ? ensureWorld(me.world) : null;
     cpSync(folder, at("souls", me.id), { recursive: true, filter: (p) => basename(p) !== "runtime" && basename(p) !== CREDENTIALS });
-    updateConfig((c) => { c.souls[me.id] = { name: me.name ?? me.id, world: key, state: "unpaired" }; });
+    updateConfig((c) => { c.souls[me.id] = { name: plainName(me.name) || me.id, world: key, state: "unpaired" }; });
     return { imported: true, soul: me.id, world: key, paired: false };
   }
 
