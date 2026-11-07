@@ -3,13 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
-import { coreRef } from '@sim/world-compiler';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { WorldHost, replayFromGenesis } from '../world.ts';
 import { GodMode } from './god.ts';
 import { GroundHost, loadGroundRecipes } from './ground-host.ts';
-import { groundFact } from '@sim/engine-mars';
+import { groundFact } from '@souls/engine-mars';
 
 const factory = await marsFactory(GREEN_FIELD_WORLD);
 const worldId = 'ground-host-1', seed = 'ground-host';

@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { marsFactory } from '@sim/engine-mars';
-import { clockAt, newLife, advanceNeeds, livingChoice } from '@sim/brain';
+import { marsFactory } from '@souls/engine-mars';
+import { clockAt, newLife, advanceNeeds, livingChoice } from '@souls/brain';
 import { WorldHost } from './world.ts';
 import { LivingWorld } from './living.ts';
 import { Db } from './db.ts';
 
 test('model reservations retain costs across concurrent admission, restarts, budget changes and call pruning', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'sim-budget-')), 'test.db');
+  const path = join(mkdtempSync(join(tmpdir(), 'souls-budget-')), 'test.db');
   let db = new Db(path);
   const a = db.reserveCost(0.6, 'test', 1); assert.throws(() => db.reserveCost(0.5, 'test', 1), /budget/);
   a.settle(0.3); db.reserveCost(0.6, 'uncertain-transport', 1); db.pruneBrainCalls(0); db.close();
@@ -39,7 +39,7 @@ test('seeded living choices respond to needs and journal while remaining variabl
 });
 
 test('daily quiet barrier renews Runtime and checkpoint resumes exact needs, journal and physical hash', async () => {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-living-')), 'test.db')), factory = await marsFactory();
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-living-')), 'test.db')), factory = await marsFactory();
   const host = new WorldHost(db, factory, 'living', 1e9, 'mars-1'); host.boot();
   const living = new LivingWorld(host);
   void living.install(['People may share supper.']);

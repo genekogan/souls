@@ -7,7 +7,7 @@ import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 import { groundFact, groundField } from './ground-bridge.ts';
 import { nextEntityPhysics, type WorldEditV1 } from './entity-physics.ts';
 import { emptyGround } from '../../ground/src/index.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 
 const factory = await marsFactory(GREEN_FIELD_WORLD);
 const fact = groundFact(emptyGround(1000), 4, { paged: process.env.GROUND_PAGED === '1' });

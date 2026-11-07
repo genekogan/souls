@@ -1,5 +1,5 @@
 // LAYERS (2026-10-11): what Souls perceive and do with a god world's invisible systems (the data and its validation
-// live in @sim/world-compiler: layers.ts, the set/economy/mint/pay/relate ops). This module reads them for Souls and
+// live in @souls/world-compiler: layers.ts, the set/economy/mint/pay/relate ops). This module reads them for Souls and
 // drives them with the world clock:
 //
 //  - schedules: each scheduled thing's place carries today's slots (the ledger's place schedule: `whatson`, observe's
@@ -15,11 +15,11 @@
 //
 // Nothing here acts on a world whose god never used a layer: no schedules → the clock step returns at once; no prices
 // → no buy capability; no owners → no refusals.
-import { clockAt } from '@sim/brain';
-import { describeSchedule, followPatch, minutesOf, scheduleSlots, isOpen, eventsOn, type Entity, type Op, type Result, type Schedule, type WorldModel } from '@sim/world-compiler';
+import { clockAt } from '@souls/brain';
+import { describeSchedule, followPatch, minutesOf, scheduleSlots, isOpen, eventsOn, type Entity, type Op, type Result, type Schedule, type WorldModel } from '@souls/world-compiler';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
-import { hashOf } from '@sim/world-compiler';
+import { hashOf } from '@souls/world-compiler';
 import { ApiError } from '../souls.ts';
 import type { Objects } from '../edge/comms/objects/framework.ts';
 import { isVerificationProbe } from '../verification-probe.ts';
@@ -283,6 +283,10 @@ export class GodLayers {
     }
     return null;
   }
+  /** #435: the same answer a `pick-up` offer gets, for a plan that takes a thing on the way to using it. */
+  takeRefusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
+    return this.refusal(id, soul) ?? (economyOn() ? this.forSale(id, soul) : null);
+  }
   /** Can this Soul use (open, sit on, take) this thing? Owners, owner-group members and those who work at it may. */
   refusal(id: string, soul: { soulId: string; name: string }): Refusal | null {
     const building = this.buildingRefusal(id, soul); if (building) return building;
@@ -373,8 +377,6 @@ export class GodLayers {
   }
   /** A building (it has rooms): walking into a private one is refused; open ground (a private garden) is not fenced by words. */
   private enclosed(e: Entity): boolean { const d = this.m.resolvedDef(e.def); if (!d) return false; try { return (this.m.bake(d, e.params ?? {}, e.seed ?? 0, e.shape).rooms?.length ?? 0) > 0; } catch { return false; } }
-  /** Why this Soul may not take this thing: whose it is, or that it is for sale. */
-  takeRefusal(id: string, soul: { soulId: string; name: string }): Refusal | null { return this.refusal(id, soul) ?? (economyOn() ? this.forSale(id, soul) : null); }
   private forSale(id: string, soul: { soulId: string; name: string }): Refusal | null {
     const e = this.m.entities.get(id); if (!e?.price || e.price.service) return null;
     if (this.isOf(this.ownership(id)?.owner ?? 'god', soul)) return null;

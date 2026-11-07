@@ -4,7 +4,7 @@
 //   node --test apps/web/src/gen-mesh/motion-obstacles.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORE_KIT, WorldModel, applyBatch, type DefInput, type Entity, type StoredDef } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, type DefInput, type Entity, type StoredDef } from '@souls/world-compiler';
 import terrainKit from '../../../../packages/world-compiler/src/core-kit/terrain.json' with { type: 'json' };
 import { solidFootprints, surroundings } from './motion.ts';
 

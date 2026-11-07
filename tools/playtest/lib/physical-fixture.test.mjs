@@ -9,7 +9,7 @@ test('semantic enrichment and JSON key ordering preserve physical hash; pose and
  enriched.batches[0].ops[0].p=[1,2];enriched.batches.push({ops:[{op:'set',id:'chair',about:{title:'Seat'},params:{w:8}}]});assert.notEqual(physicalGenesisSha256(enriched),physicalGenesisSha256(base));
 });
 test('runner checks actual genesis bytes before a frozen measurement can launch',t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-physical-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));writeFileSync(join(dir,'world.json'),JSON.stringify(base));
+ const dir=mkdtempSync(join(tmpdir(),'souls-physical-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));writeFileSync(join(dir,'world.json'),JSON.stringify(base));
  const scenario={freeze:{physicalSha256:physicalGenesisSha256(base)},world:{genesis:'world.json'}};
  assert.equal(assertFrozenGenesis(scenario,dir).physicalSha256,scenario.freeze.physicalSha256);
  writeFileSync(join(dir,'world.json'),JSON.stringify({...base,constants:{extent:101}}));assert.throws(()=>assertFrozenGenesis(scenario,dir),/fixture mismatch/);
@@ -18,7 +18,7 @@ test('runner checks actual genesis bytes before a frozen measurement can launch'
 
 test('genesis-only destination credit requires both unchanged materialization proofs before boot',async t=>{
  const {destinationBinding}=await import('./destination-choice.mjs');
- const dir=mkdtempSync(join(tmpdir(),'sim-destination-proof-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));writeFileSync(join(dir,'world.json'),JSON.stringify(base));
+ const dir=mkdtempSync(join(tmpdir(),'souls-destination-proof-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));writeFileSync(join(dir,'world.json'),JSON.stringify(base));
  const snapshot={defs:[{ref:'hall@1',hash:'hash'}],entities:[{id:'hall-id',name:'hall',def:'hall@1',in:{parent:'world'},p:[1,0,2]}]};
  const bytes=JSON.stringify(snapshot);for(const arm of['control','treatment'])writeFileSync(join(dir,arm+'.json'),bytes);
  const {sha256}=await import('./hash.mjs');const s={world:{genesis:'world.json'},freeze:{physicalSha256:physicalGenesisSha256(base),destinationSources:Object.fromEntries(['control','treatment'].map(a=>[a,{path:a+'.json',sha256:sha256(bytes)}]))},director:{script:[{expect:{journey:{firstDestinationChoices:[{binding:destinationBinding(snapshot,'hall',{portable:true}),receipt:{verb:'walk',capabilities:['walk:hall']}}]}}}]}};

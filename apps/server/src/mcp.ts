@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { GOALS, intentRequestV2Schema,intentHistoryQueryV1Schema } from '@sim/protocol';
+import { GOALS, intentRequestV2Schema,intentHistoryQueryV1Schema } from '@souls/protocol';
 import type { SoulRow } from './db.ts';
 import { ApiError, type Souls } from './souls.ts';
 import { checkAcceptanceGuard,type AcceptanceGuard } from './world.ts';

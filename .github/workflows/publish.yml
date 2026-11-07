@@ -1,0 +1,99 @@
+# Publish an already shipped release: fold changes/ into CHANGELOG.md, tag v<version> on the shipped commit and create
+# the GitHub Release (#519, #1133 itinerary §2b). This is release.yml's publish job, decoupled so a release that was
+# shipped by hand (as 4.15 was) still gets its tag, notes and changelog the same way.
+#
+#   gh workflow run publish.yml -f version=4.16 -f sha=<full sha of the shipped commit>
+#
+# Guards: the sha is on main and has no v* tag yet; the public healthz names the build we-<sha12> (so only what is
+# live gets tagged; pass skip_live_check=true only for a release that is deliberately not live); changes/ compiles.
+# The changelog commit goes to main through a pull request (branch release/changelog-<version>), not a direct push,
+# because the main ruleset requires its checks. The PR is created with MERGE_TRAIN_TOKEN when present so CI runs on it.
+name: publish
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version for the changelog and tag (e.g. 4.16)
+        required: true
+      sha:
+        description: Full sha of the shipped commit
+        required: true
+      date:
+        description: Release date (YYYY-MM-DD); default today (UTC)
+        required: false
+      skip_live_check:
+        description: Tag even though healthz does not name this build (a release that is deliberately not live)
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+env:
+  SIM_ORIGIN: ${{ vars.SIM_ORIGIN || 'https://soul.game' }}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: main, fetch-depth: 0 }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - id: refs
+        name: Inputs, tag and liveness
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA_IN: ${{ inputs.sha }}
+          DATE_IN: ${{ inputs.date }}
+          SKIP_LIVE: ${{ inputs.skip_live_check }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::version must look like 4.16 or 4.16.1 (got '$VERSION')"; exit 1; }
+          [[ "$SHA_IN" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be the full 40-character commit"; exit 1; }
+          git cat-file -e "$SHA_IN^{commit}" || { echo "::error::$SHA_IN is not a commit on origin"; exit 1; }
+          git merge-base --is-ancestor "$SHA_IN" origin/main || { echo "::error::$SHA_IN is not on main"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then echo "::error::tag v$VERSION already exists"; exit 1; fi
+          date="${DATE_IN:-$(date -u +%F)}"
+          [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::date must be YYYY-MM-DD"; exit 1; }
+          node tools/changelog/compile.mjs --check
+          if [ "$SKIP_LIVE" != true ]; then
+            body=$(curl -sSf --retry 3 --retry-delay 5 --retry-all-errors "$SIM_ORIGIN/__sim/healthz") || { echo "::error::healthz at $SIM_ORIGIN is unreachable"; exit 1; }
+            echo "$body" | grep -q "we-${SHA_IN:0:12}" || { echo "::error::healthz does not name we-${SHA_IN:0:12}; the release is not live. Ship first, or pass skip_live_check=true on purpose."; exit 1; }
+          else
+            echo "::warning::skip_live_check=true: tagging v$VERSION at ${SHA_IN:0:12} without confirming it is live"
+          fi
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+          echo "Publish v$VERSION at ${SHA_IN:0:12}, date $date" >> "$GITHUB_STEP_SUMMARY"
+      - name: Changelog, tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_TOKEN: ${{ secrets.MERGE_TRAIN_TOKEN || github.token }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ inputs.sha }}
+          DATE: ${{ steps.refs.outputs.date }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Fold the fragments as of the shipped commit; fragments merged since wait for the next release.
+          shipped=$(git ls-tree --name-only "$SHA" changes/ | grep -vE '^changes/(README|_template)\.md$' | grep -E '\.md$' || true)
+          tmp="$RUNNER_TEMP/changelog"; rm -rf "$tmp"; mkdir -p "$tmp/changes"
+          for f in $shipped; do git show "$SHA:$f" > "$tmp/$f"; done
+          if [ -f CHANGELOG.md ]; then cp CHANGELOG.md "$tmp/"; fi
+          node tools/changelog/compile.mjs --root "$tmp" --version "$VERSION" --date "$DATE" --notes "$RUNNER_TEMP/notes.md"
+          git tag -a "v$VERSION" "$SHA" -m "Souls $VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" --verify-tag --title "Souls $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "Tagged v$VERSION and created the GitHub Release" >> "$GITHUB_STEP_SUMMARY"
+          # The changelog commit, as a pull request against main (the ruleset requires checks).
+          branch="release/changelog-$VERSION"
+          git checkout -q -b "$branch"
+          cp "$tmp/CHANGELOG.md" CHANGELOG.md
+          for f in $shipped; do git rm -q --ignore-unmatch "$f"; done
+          git add CHANGELOG.md
+          git commit -q -m "release: changelog for $VERSION" -m "Folds the shipped changes/ fragments into CHANGELOG.md (v$VERSION at ${SHA:0:12})."
+          git push -u origin "$branch"
+          GH_TOKEN="$PR_TOKEN" gh pr create --base main --head "$branch" --label no-changelog --title "release: changelog for $VERSION" \
+            --body "Folds the fragments shipped in v$VERSION (${SHA:0:12}) into CHANGELOG.md. Created by publish.yml run $GITHUB_RUN_ID. Review and give it merge:ready." \
+            | tee -a "$GITHUB_STEP_SUMMARY"

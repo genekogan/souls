@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {ownerLifecycleListSchema,type OwnerLifecycleList,type SoulLifecycle} from '@sim/protocol';
-import type {Api} from './useSim.ts';
+import {ownerLifecycleListSchema,type OwnerLifecycleList,type SoulLifecycle} from '@souls/protocol';
+import type {Api} from './useSouls.ts';
 export type LifecycleRead={kind:'absent'}|{kind:'unavailable'}|{kind:'ready';page:OwnerLifecycleList};
 export function readLifecycle(raw:unknown,worldId:string|undefined):LifecycleRead{
  if(raw===undefined)return {kind:'absent'};

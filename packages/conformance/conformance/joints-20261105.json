@@ -1,0 +1,5 @@
+{
+  "schema": "catalog-conformance-supplement/1",
+  "note": "2026-11-05 PC12 (#691) structural connectors. core-rack-upright@2 (7de37ad85e49…) and core-rack-beam@3 (672c3158147f…) are new immutable revisions of the loose upright and beam. They have the same geometry, mass and handling as core-rack-upright@1 and core-rack-beam@2, and add components.connectors: 88 beam seats on the upright (both columns, both faces, every 6 in from 12 in) and two bearing beam ends on the beam. No existing def's bytes changed: work.json only appends them. Narrow production K=2 runs (`conformance.mjs --k 2 --filter core-rack-upright` with 10 samples, and `--filter core-rack-beam` with 15 samples, each covering every revision) placed, baked and rendered every sample with 0 findings and 0 qualification gaps, so this supplement pins no finding. catalogue-checks: 840 items, every G2 failure held, 0 G3. No budgets, samples or gap checks were relaxed. Joint behaviour and live-client evidence are separate, in the PR.",
+  "findings": []
+}

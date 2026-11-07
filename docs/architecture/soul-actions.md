@@ -12,13 +12,18 @@ context-size checks below), regression runs, and an uncut real-client recording 
 - **Opt-in things.** Hand contact belongs to library defs tagged for it (`hand-operated`, `hand-writable`, `hand-rung`,
   `upright-carry`, containers with an `inside`, the tea defs, and so on). Older revisions of a def keep their old,
   hand-free behaviour, so existing worlds do not change until a god places the new revision.
-- **Storage with and without a door ([#435](https://github.com/genekogan/souls/issues/435)).** A container with an
+- **Storage with and without a door ([#435](https://github.com/soulsimulation/souls/issues/435)).** A container with an
   `inside` (entry 42) is open only while its door or drawer is, if its def declares an `open` state. One that declares
   none has no door: `core-swap-shelf@1` is always open, so what is on it is seen nearby and taken without an open step,
   and the viewer draws it as an ordinary thing. A container whose def declares a `leftBy` state field records who left
   each thing in it (item id = Soul id, set when the thing comes to rest from a Soul's hand, pruned to what is still
   inside). Nearby perception and the take offer name the leaver; god-placed things have none.
-- **Lost-and-found ([#435](https://github.com/genekogan/souls/issues/435)).** A container whose def declares
+- **Litter and bins ([#1088](https://github.com/soulsimulation/souls/issues/1088), W065).** `core-bin@2` and `core-wheelie-bin@2`
+  are the street bins, open at the top, on the same container faculty with data only: three places down inside at the
+  level of the rubbish already in them, reached over the rim. `core-wrapper@1` is a small thing to pick up. "put the
+  wrapper in the bin", "throw it away", "throw away the wrapper", "bin it" and "throw it in the bin" put a held thing in
+  the nearest bin with room; a full bin named by its id is refused `container.full`, and a book is too big for one.
+- **Lost-and-found ([#435](https://github.com/soulsimulation/souls/issues/435)).** A container whose def declares
   `components.container.claim: "owner"` gives a thing that has an owner of its own (the layers `owner` on the thing, a
   Soul or a group) back only to that owner or a member of that group. Anyone else, the finder included, is offered the
   take as blocked `item.not-yours`, with a reason that names the owner, and every other action on it (a wash at the tap)
@@ -26,7 +31,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
   stays until the god moves it. An owner ref by name (`soul:Ana`) follows whoever has that name, so a god that sets owners
   for a lost-and-found should prefer Soul ids. `core-lost-and-found@1` is the swap shelf's form with this claim; its `leftBy` record
   reads as who found each thing, and nearby Souls are told "bowl (Ana's, found by Ben)" ("yours, …" to the owner).
-- **Hiding places ([#435](https://github.com/genekogan/souls/issues/435)).** A doorless container whose def declares
+- **Hiding places ([#435](https://github.com/soulsimulation/souls/issues/435)).** A doorless container whose def declares
   `components.container.hidden: true` keeps what is in it out of everyone's sight, the hider's included: it has no `holds`
   fact, no offers of its own, no name nearby and no walk target, and the viewer does not draw it. The only way to it is a
   search: `search:<id>` is offered within 8 m and reads the same whether or not anything is there. The hand reaches in and
@@ -37,15 +42,177 @@ context-size checks below), regression runs, and an uncut real-client recording 
   for sale) is as if it were not there. The search's course is decided when it starts, so a thing hidden while the seeker
   walks over is missed by that search. This hides things from Souls' perception, not from the data: the snapshot the
   viewer draws from carries where a thing is, as it does for a shut drawer.
-- **Loose materials (PC03, [#682](https://github.com/genekogan/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
+- **A pantry holds real things ([#435](https://github.com/soulsimulation/souls/issues/435)).** `core-pantry@1` is the same doorless
+  storage with data only: four places, each for one small thing, so the stock is what you can see and count. Drawing from it
+  is by hand, through the entry that already handles the thing. Words go ahead rather than refuse: "make a cup of tea" or "pour
+  the tea" with a fresh mug kept in an open pantry takes it out and stands it on a free place on the kettle's counter first, and
+  "eat the apple" takes the apple from wherever it is, then eats it. `core-apple@1` and `core-bun@1` are tagged `edible`,
+  with `left` and `bites` in their state, and are eaten from the hand on entry 44's cup motion; `left` falls at each bite's own
+  moment and what is left stays in the hand. A bare "eat it" or "have a bite" means the food in the hand. Another thing already in her
+  hand is set down on the nearest free table place (or at her feet) first, and a kept mug comes out in her left hand when the
+  kettle is in her right. A mug that is not hers to take (private, for sale, or claimed in a lost-and-found) is never fetched.
+  Refused only when the act truly can't happen: `food.eaten` and `food.in-use` (in someone else's hand). The ledger's `food` and a kitchen's portions are separate systems and are untouched.
+- **Loose materials (PC03, [#682](https://github.com/soulsimulation/souls/issues/682)).** `core-rack-beam@2`, `core-rack-upright@1`
   and `core-plywood-sheet@1` carry the native engine material's handling as data (`components.carryable.handling`: the
   crew range, the grips for each crew size, the pose and the hand height). Such a material is offered `carry:<id>` with
   a place (`to`), never a one-hand `pick-up`. The native `carry` moves it on level-zero ground, and the viewer follows
   it as a recorded transport. A load that needs more people than one is offered unavailable, with
   `carry.crew-too-small` naming the crew, and acting it is refused before any motion. Shared carries come with
   [shared execution](../design/shared-execution.md). `core-rack-beam@1` keeps its one-hand item path.
-- **Shared proposals (PC04, [#683](https://github.com/genekogan/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
-  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who).
+- **A table and larger crews (PC11, [#690](https://github.com/soulsimulation/souls/issues/690)).** `core-work-table@1` is a
+  table-shaped load: 75 kg, a 2.44 × 0.91 m top, 0.76 m tall. Its handling is crew [3, 4] (three by mass at 30 kg
+  each), with grips for three and four at its legs, and it is carried level on its legs. Nothing in the shared code
+  names a def, load or Soul: a crew of three or four goes through the same invitation, op and receipts as two.
+  - **Checked on define.** A def's handling must fit together, or `define` refuses it with a named code:
+    - `handling.crew`: an inverted crew range;
+    - `handling.grips`: a crew size in range without a grip layout, or a layout of the wrong count or outside the range
+      (stricter than the native carry, which ignores a layout outside the range);
+    - `handling.mass`: a mass the largest crew cannot lift at 30 kg each;
+    - `handling.reach`: a grip outside the load's own box (`packages/world-compiler/src/handling.ts`).
+  - **Set down along its axis.** A shared carry lays the load down along its own axis, either way round, whichever is
+    nearer the way it travels, so the crew never turns it while setting it down.
+  - **Known limit ([#1031](https://github.com/soulsimulation/souls/issues/1031)).** The native planner may lift facing
+    either way along the load. When it lifts facing the other way, the load turns half a turn in the crew's hands
+    during the lift, because the native lift interpolates its yaw. This happens for any load.
+- **Joined into an assembly (PC12, [#691](https://github.com/soulsimulation/souls/issues/691)).** `core-rack-upright@2` and
+  `core-rack-beam@3` are the same loose upright and beam, plus typed structural connectors. The world's god joins them
+  into a bay with `connect` (see [god mode](godmode.md#joints)).
+  - **One graph.** The entity world holds each joint as two halves (`joins`), one on each part. With
+    `SIM_SHARED_CARRY=1` the engine mirrors it for parts adapted as items (anything `carryable`, so both rack parts)
+    as its own `connections`: a joined part is `installed`, and a beam is supported (`connected`) by the uprights its
+    ends join. A joined part that isn't carryable (a god's fixed rail) reaches the engine as a fixture on the ground,
+    with no connections. With the flag off, `world-edit/1` is exactly as before PC12: no `roll`, `connections`,
+    `connected` support or asset `sockets`. The native rack rules (`construction/rules.ts`, `campus/assembly.ts`) read
+    `beam-seat` sockets only on catalog `rack-upright` defs and campus frames, never on these adapted items. An upright stood on end (`r = [yaw, 0, π/2]`) reaches the engine with that roll, so its box stands. Its
+    connectors are the adapted asset's sockets. The beams stay at the world root, because their support is their
+    joints, not a parent. The client draws each part once, from the entity world.
+  - **Not carried while joined.** `carry:<id>`, and `pick-up:<id>` of a small part, of a joined part is offered unavailable, `carry.joined`, naming what it
+    is joined to and at which connectors, and acting it is refused before any motion. The engine refuses it on its
+    own too when it mirrors the joints (`carry.item-unavailable`: an installed part is not a load lying on the ground). The entity world's refusal holds with the flag off. A free beam of the same
+    revision is carried as before.
+  - **Restart.** Nothing new is snapshotted: the joints ride the entity rows and the logged `world-edit` events, so a
+    clean or crash restart brings back the same graph in both.
+  - **Souls and beams (PC14).** Souls seat beams between raised, held uprights (below). The native rack stability rule
+    (`construction/rules.ts`) is read for these parts from their connectors, by `packages/engine-mars/src/beam-connect.ts`:
+    the engine treats them as items, and a god's joins still depend only on a part's own bearing connectors.
+- **Raising and holding (PC13, [#692](https://github.com/soulsimulation/souls/issues/692); off unless `SIM_SHARED_CARRY=1`).**
+  A loose upright lying free is also offered `raise-with:<id>`, which takes `with`. It goes through the same invitation,
+  revision, acceptance and receipts as `carry-with` below, with no destination.
+  - **Commit.** One programme, `mars:raise_hold_v1` (`packages/engine-mars/src/raise-hold.ts`): the crew walks to its
+    stations, takes hold, walks it up about its base edge and holds it. It ends in the pose a joined upright has
+    (`r = [yaw, 0, ±π/2]`, PC12). The geometry and choreography are the native raise's (`construction/raise.ts`); the base
+    is the end nearer the host, or the other if only that one has room.
+  - **Held.** Holding isn't an end: the receipts stay `started`, with `shared.holding`, `shared.holding: true` and a
+    `shared.holding` stream event once. A member's body act is `shared.busy`; speech and looking work.
+  - **Stop.** `stop-carry:<op>` from any member, or a member going away. Before the grip they let go. After it they lower it
+    along the same arc, to its exact starting pose. If something or someone is in the way (`raise.cancel-unsafe`) they
+    keep holding, the receipts name it, and it retries with no timeout.
+  - **Refused before anyone is asked:** `raise.arc-blocked`, `raise.station-blocked`, `raise.station-unreachable`,
+    `raise.not-lying`, `raise.joined`, `raise.crew-too-small`, `raise.crew-too-large`.
+  - **Invariant.** `looseFramesHeld` (a part it turned is held by its crew, hands on it) is checked at every tick end.
+  - **Joined (PC14).** Once a beam joins a raised frame, a stop never lowers it. The crew lets go only once the frame
+    stands on its own (below). `stop-carry` keeps its name.
+- **Seating beams (PC14, [#693](https://github.com/soulsimulation/souls/issues/693); off unless `SIM_SHARED_CARRY=1`).** A loose
+  beam lying under a bay between two standing, supported uprights is offered `connect-beam-with:<id>`. It takes `column`
+  (`l` or `r`, each upright's own side), `height` (a seat height in metres) and `with` (one other Soul).
+  - **Which seats.** Only the seat pairs both uprights have free are offered. Each pair is level, a beam's span apart,
+    square to both frames, on the faces toward each other, and within standing reach (`beamBays`). Supported means held
+    by its raise crew, or standing in a frame that stands on its own.
+  - **Session.** It goes through the same invitation, revision, acceptance and receipts as `carry-with`, with exactly two
+    members.
+  - **Commit.** One programme, `mars:connect_beam_v1`. It brings the native `connect_beam`'s checks, choreography and lift
+    (`construction/beam.ts`) to PC12's connectors (`beam-seat`, `beam-end`). The two walk to the beam's ends, grip it, lift
+    it along its swept path, and its ends join both seats as reciprocal engine connections.
+    - Both ends are checked again at the lift.
+    - The write-back then puts the joints into the entity world, with the uprights' standing poses, in one edit
+      (`connect` ops after `move`s).
+    - The receipts end `completed` with `shared.seated`.
+  - **Stop.** Before the lift they let go where it lies. During the lift they lower it back along its path to exactly where
+    it lay; a beam is never left half seated.
+  - **Release.** A stop on a raise whose upright beams join lets go only if its frame stands on its own, by the native
+    Mars v1 rule:
+    - at least two standing uprights;
+    - each upright has beams on both columns at N or more heights, with N = 2 for a 12 ft frame;
+    - another upright still held by its own crew is carried by them and not counted.
+
+    Until then the native cancel refuses `support.release-premature`. The crew keeps holding, the receipts name the
+    missing beams, and the stop is asked again each tick, so they let go as soon as the frame stands. The released upright
+    stays standing and installed, held up by its beams (support `connected`, as the native `release_support`). A god's
+    joined upright stands on the ground by the god's say (PC12) and is not judged by this rule.
+  - **Refused before anyone is asked:** `beam.misaligned`, `beam.seat-taken`, `beam.not-staged`, `beam.upright-unsupported`,
+    `reach.too-high`, `lift.path-blocked`, `beam.station-unreachable`, `beam.crew`. A Soul holding an upright has no hand
+    free (`carry.hands-full`).
+  - **Invariant.** `framesStand` is checked at every tick end. An installed beam has both ends joined in standing uprights,
+    and a joined upright nobody holds is in a frame that stands on its own.
+  - **Rules version.** The flag adds `+shared-raise/1+shared-beam/1` (and `+shared-deck/1` and `+shared-stairs/1`, below), so a journal that
+    names these verbs is never replayed without them.
+  - **Not yet.** Where the uprights stand comes from where they were laid; Souls can't move a raised frame into line.
+    No disconnecting.
+- **Joists and a deck (PC15, [#694](https://github.com/soulsimulation/souls/issues/694); off unless `SIM_SHARED_CARRY=1`).**
+  Three appended revisions carry it: `core-rack-beam@4` (`@3` plus `joist-seat` connectors on a step ledge along both
+  faces every 24 in), `core-deck-joist@1` (a loose 2x4 on edge: a bearing `joist-end` under each end, a `sheet-seat` on
+  top) and `core-plywood-sheet@2` (`@1` plus five bearing `sheet-bearing` connectors every 24 in and a walkable top).
+  - **Offers.** A loose joist lying by a bay whose two beams (one per column, the same height, seated in supported frames)
+    have a free `joist-seat` pair is offered `install-joist-with:<id>`, with `at` (metres along the bay from its middle,
+    snapped to the nearest free pair within 10 cm; the free positions are listed) and `with`. A loose sheet lying beside a
+    bay whose five installed joists are 24 in apart and free on top is offered `lay-sheet-with:<id>`, with `with`. Crew
+    exactly two, through the same invitation, revision and receipts as `connect-beam-with`.
+  - **Commit.** One programme each, `mars:install_joist_v1` and `mars:lay_sheet_v1`
+    (`packages/engine-mars/src/deck-install.ts`). They bring the native `install_joist` and `install_plywood`
+    (`construction/deck.ts`) to connectors matched by kind. A joist's crew stands at its ends; a sheet's holds the two
+    corners of its long edge toward where it lies and lifts it over from the side. Every bearing connector joins its seat
+    as reciprocal connections, checked again at the lift, and the write-back puts the bearing joints and the pose into the
+    entity world in one edit. The receipts end `completed` with `shared.seated`.
+  - **Walkable.** A laid sheet's top is a floor only while every bearing connector is joined to an installed joist that
+    rests on two supported beams. On a rack's lowest beams its top is at 0.42 m: a floor of its own level, entered by a
+    climb link (a step up of at most 0.5 m) at the middle of each long side. A loose or carried sheet has no floor, and a
+    higher deck gets no step.
+  - **Stop.** Before the lift they let go where it lies. During it they lower it back along its path to exactly where it
+    lay; a part is never left half seated.
+  - **Refused before anyone is asked:** `joist.no-beams`, `joist.beam-unsupported`, `joist.occupied`, `joist.not-staged`,
+    `plywood.too-few-supports`, `plywood.span`, `plywood.overlap`, `plywood.support-unsupported`, `plywood.not-staged`,
+    `reach.too-high`, `lift.path-blocked`, `joist.station-unreachable`, `plywood.station-unreachable`, `joist.crew`,
+    `plywood.crew`. A god's edit that would move or remove a sheet someone stands on is refused `deck.occupied`; under a
+    joist or sheet, PC12's `support.none` holds.
+  - **Invariant.** `decksBear` is checked at every tick end: an installed joist or sheet has every bearing connector
+    joined to an installed support (`deck.unsupported`).
+  - **Rules version.** `+shared-deck/1`, after PC14's suffix.
+- **Stairs up to a deck (PC16, [#695](https://github.com/soulsimulation/souls/issues/695); off unless `SIM_SHARED_CARRY=1`).**
+  Three appended revisions carry it: `core-deck-stair@1` (a loose 5-tread flight, two 2x12 stringers and a header,
+  1.03 m rise over 1.35 m, 0.91 m wide: a bearing `stair-hook` on its header and `tread-seat`s `tread-1` to `tread-5`
+  from the bottom), `core-deck-stair-tread@1` (a loose 2x10 with one bearing `tread-bearing`) and `core-rack-beam@5` (`@4`
+  whose ledge `joist-seat`s also take a `stair-hook`). The flight fits a deck on step beams at seat 4 (36 in), whose top
+  at 1.03 m no step reaches.
+  - **Offers.** A loose flight standing by a bay whose beam carries a deck (a joist on its other face), seated in
+    supported frames, with a free ledge seat on its outer face at the height that puts the flight's foot on the ground, is
+    offered `install-flight-with:<id>`, with `at` (metres along the beam from its middle, snapped within 10 cm; the free
+    positions are listed) and `with`; crew exactly two, through the same invitation as `install-joist-with`. A loose tread
+    lying within 3 m of an installed, supported flight with a tread missing is offered `install-tread:<id>` to one Soul: it
+    goes into the flight's lowest missing tread.
+  - **Commit.** `mars:install_flight_v1` and `mars:install_tread_v1` (`packages/engine-mars/src/stair-install.ts`) bring
+    the native `install_stair_flight` and `install_tread` (`construction/stairs.ts`) to connectors matched by kind, through
+    PC15's seat programme: walk to it, take hold, lift along the swept path, set it on its seat. The flight goes square to
+    the beam, ascending toward it from the side of the seat's face; its crew stands either side of it. A tread's worker
+    stands beside the flight. The receipts end `completed` (the flight's with `shared.seated`).
+  - **Walkable only when finished.** A hanging flight is a `stairs` link (`<id>#stairs`) from the ground at its foot to
+    the floor level at its top. It is usable only when every tread is in and a laid floor lies at its top. Otherwise it is
+    there and unusable with its reason (`treads 3–5 missing`, `no landing at top`), so a walk that needs it is refused
+    `route.link-unusable` and the refusal says why ("The way there needs stairs that are not finished: …"). A loose or
+    carried flight is no link.
+  - **Stop.** As PC15: let go before the lift, lowered back along its path during it.
+  - **Refused before anyone is asked:** `stair.beam-unsupported`, `stair.occupied`, `stair.no-seat`, `stair.rise`,
+    `stair.site-blocked`, `stair.site-occupied`, `stair.not-staged`, `stair.crew`, `stair.station-unreachable`,
+    `tread.no-stair`, `tread.index`, `tread.already-installed`, `tread.not-staged`, `tread.crew`, `reach.too-high`,
+    `lift.path-blocked`. A god's edit that would move, remove or disconnect a flight, one of its treads, or what holds it
+    up while someone is on it is refused `stair.occupied`; under a hanging flight, PC12's `support.none` holds.
+  - **Invariant.** `stairsBear` is checked at every tick end: an installed flight's hook is joined to an installed beam
+    and an installed tread to an installed flight, both ways (`stair.unsupported`).
+  - **Rules version.** `+shared-stairs/1`, after PC15's suffix.
+- **Shared proposals (PC04, [#683](https://github.com/soulsimulation/souls/issues/683); off unless `SIM_SHARED_CARRY=1`).**
+  A `shared-carry` load is also offered `carry-with:<id>`, which takes `to` (a place) and `with` (who: names or ids,
+  comma-separated or in words, "Bo and Cy" or "Bo, Cy and Dee"; a Soul whose whole name is the phrase, nearby, stays one
+  Soul). A refused crew too small for the load's mass says
+  the arithmetic.
   - **Propose.** Acting it is a together invitation of kind `shared` at revision 1. The host's receipt is `waiting`,
     and its `awaitingAnswer` names who is undecided.
   - **Accept.** Only the invited Souls are offered `accept:<invite>`, which needs `{"revision": n}`. Accepting opens
@@ -57,18 +224,23 @@ context-size checks below), regression runs, and an uncut real-client recording 
     everyone.
   - **Closing early.** A decline or leave that leaves the proposal unable to reach its crew minimum closes it. The
     host's receipt ends then, rather than at the lapse.
+  - **One of a larger crew out (PC11).** When a guest of a crew of three or four declines or leaves, and the rest still
+    meet the minimum, that revision can never start, because a role is never filled without asking. Each member's
+    waiting receipt is noted `shared.not-ready`, saying who declined or left. The host's note also gives the exact
+    amend (`carry-with` with `invite` and the rest named), and a guest's says the host can ask again. The amend's new
+    revision clears the note, and the rest accept it again.
   - **Expiry.** A proposal lapses after 120 s (`invite.expired`). A late answer is refused `invite.gone`.
 
   - **Distance.** Proposing or accepting from more than 10 m from the load is refused `shared.too-far` before any
     receipt, because walking closer would be another body act and would leave.
-  - **Route preflight (PC06, [#685](https://github.com/genekogan/souls/issues/685)).** Before anyone is asked, the native
+  - **Route preflight (PC06, [#685](https://github.com/soulsimulation/souls/issues/685)).** Before anyone is asked, the native
     carry planner alone plans the whole crew's carry of the load to the place's centre. It skips everyone's programme
     checks, so a guest busy walking does not hide the answer.
     - **Refused.** A proposal or amend is refused when the formation has no way there (`carry.no-route`, or
       `carry.clearance` when each person could walk there alone) or when the load cannot be laid down there
       (`carry.target-blocked`), or when the crew has no room to stand at the load's grips where it lies
       (`carry.pickup-blocked`, PC07). The refusal names the blocker, and no invitation or receipt is made.
-    - **Bounded search (PC07, [#686](https://github.com/genekogan/souls/issues/686)).** The planner searches at most
+    - **Bounded search (PC07, [#686](https://github.com/soulsimulation/souls/issues/686)).** The planner searches at most
       150 000 poses. When it stops there, nothing is proven, so the refusal is `carry.search-exhausted`. It still names
       the closest try's blocker, and says that this does not prove there is no way. On an open level this is the usual
       answer for a walled place. Only a small search, such as a load in a room whose bent corridor the formation cannot
@@ -80,7 +252,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Cost.** Each proposal or amend runs one bounded planner search, the same one a solo carry's admission runs.
   - **Too heavy alone.** The solo `carry:` refusal of a `shared-carry` load that needs more people
     (`carry.crew-too-small`) names its `carry-with:` offer.
-  - **Readiness (PC05, [#684](https://github.com/genekogan/souls/issues/684)).** Once every role is accepted, the world
+  - **Readiness (PC05, [#684](https://github.com/soulsimulation/souls/issues/684)).** Once every role is accepted, the world
     checks readiness every second and never stores it. Every member must hold the current revision, have two free
     hands, stand awake on level-zero ground within 10 m of the load and run nothing else. The load must be unchanged,
     lying on the ground and not claimed by another carry. Until then each member's receipt stays `waiting` with
@@ -97,13 +269,12 @@ context-size checks below), regression runs, and an uncut real-client recording 
   - **Release.** When the native programme ends, every member's receipt ends together, in one transaction:
     `completed` on arrival, `failed` otherwise. The next act is accepted. If a member's receipt ends another way (an
     engine-fault recovery, a god walkout), the operation ends for everyone with `shared.ended`, and the host's
-    programme is stopped. A fade is not that: it is the member's stop (PC09, below). After a restart, guests of a carry that still runs keep their receipts. An operation
-    whose programme is gone is ended on the next sweeps.
+    programme is stopped. A fade is not that: it is the member's stop (PC09, below). A restart is covered under "Restart" below.
 
   - **The journey (PC06).** On open level-0 ground, the native gather walks each member to their grip. The crew lifts
     the load and carries it as one formation, then lays it down at the place's centre. Every observer sees that one
     recorded trajectory, and the members walk on afterwards. A solo carry of a load that one person can take is unchanged.
-  - **Held up on the way (PC07, [#686](https://github.com/genekogan/souls/issues/686)).** The native carry owns every
+  - **Held up on the way (PC07, [#686](https://github.com/soulsimulation/souls/issues/686)).** The native carry owns every
     movement. It halts for people in its way and asks idle ones to step aside, and it replans when construction cuts its
     route. Each tick, the ledger reads the native action of each running operation; with none running, it does nothing.
     - **Blocked.** A hold-up of 0.5 s makes the operation `blocked`: someone in the way (`carry.path-occupied`), on a
@@ -122,7 +293,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
       the load: nobody lets go on a timeout. Clearing the obstacle lets the carry go on, and the native carry rechecks
       the changed scene. A cut is searched once per scene change, not every tick (the shared carry's opt-in `holdCutV1`;
       every other carry is unchanged).
-  - **Stopping (PC08, [#687](https://github.com/genekogan/souls/issues/687)).** Any member, host or guest, can act
+  - **Stopping (PC08, [#687](https://github.com/soulsimulation/souls/issues/687)).** Any member, host or guest, can act
     `stop-carry:<op>`; members of a running operation are offered it. The native carry's own cancel is the only cleanup.
     - **Acknowledged at once.** The stop's own receipt completes in that tick (`shared.stop-requested`). It never touches
       the member's shared receipt. The operation becomes `stopping`, and every member's started receipt
@@ -147,12 +318,14 @@ context-size checks below), regression runs, and an uncut real-client recording 
       own; nothing is resumed for them.
     - **Repeats.** The same member asking again gets the first stop's receipt. Another member's stop completes with
       `shared.stop-asked` and changes nothing. One stop event is logged.
-    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop.
-    - **Restart.** A stop asked before a restart is logged again for the replayed programme; a native stop is
-      idempotent. Full restart qualification is PC10.
+    - **Words and verbs.** The offer reached through words or `{verb: 'stop-carry'}` is the same stop. So is a
+      member's `stand:here` ("stand up / stop what I am doing"): it never releases the crew's programme as a stall (PC10).
+    - **One transaction.** The stop's `edge-stop` and its journal (the op `stopping`, the stop's own receipt) are
+      written together at the sequencer, or not at all. A second stop in the same drain logs nothing and is answered as
+      already asked; a member's fade (below) is written the same way.
     - **Refusals.** A stop after the end is refused `shared.not-running`, one from a non-member `shared.not-member`,
       and an unknown op `shared.unknown-op`.
-  - **A member's mind goes away (PC09, [#688](https://github.com/genekogan/souls/issues/688)).** A disconnected mind's
+  - **A member's mind goes away (PC09, [#688](https://github.com/soulsimulation/souls/issues/688)).** A disconnected mind's
     body keeps its accepted carry to its end and joins nothing new.
     - **Not listening.** When an agent stops listening, the body rule makes its body `zombie` and later `asleep`. A
       member's open shared receipt makes the agent busy, so the rule never moves or stops a member's body while the
@@ -176,6 +349,25 @@ context-size checks below), regression runs, and an uncut real-client recording 
     - **Not enlisted.** A faded Soul cannot be asked to carry: it is not perceived, so it is not near. A disconnected
       Soul can be asked, but it is never committed without its own `accept` of that revision: the proposal waits,
       names who has not answered, and lapses.
+  - **Restart (PC10, [#689](https://github.com/soulsimulation/souls/issues/689)).** Nothing new is serialized: the native
+    carry rides the engine's history and the operation rides its invitation row.
+    - **Exact resume.** A running carry has no exact engine snapshot, so a clean shutdown logs its checkpoint
+      (`unsnappable-head`) and the boot replays to it; a durable-clock world also replays a crash to its last persisted
+      tick. In every phase (gather, lift, move, set-down, a stop's cleanup) the op, its revision, claims and load, both
+      receipts and the engine state are what they were, and the carry ends as it would have. There is one carry
+      decision and at most one stop event; a stop is never asked again after a boot.
+    - **Retries.** The same receipt ids read the same state; a `clientRef` replay returns the original receipt; a stale
+      `accept` is `shared.busy` while it runs. A member's started receipt is left to the shared sweep at boot, never
+      lost alone.
+    - **Restored to an earlier moment.** An op whose programme the restored world no longer runs ends `shared.ended`
+      for every member, saying so when the world is from before it started. If a world without the durable clock is
+      restored to before an op ended, the engine would replay its programme: that programme is stopped safely with a
+      logged `edge-stop` (`shared.restored`) at the first tick after the boot, the members' streams get
+      `shared.restored`, and an operator line is logged. The ended receipts keep how it ended. A world restored to
+      before a stop the journal already has (an older backup) is asked to stop again. A programme is taken for the
+      op's only when it has the op's id, is a native carry, and the world is not older than the commit.
+    - **LINK migration.** A Soul the old beam took that is still in a running carry's crew stays where the crew has its
+      body; it is never relocated to a starting place.
 - **Plain words.** Everyday phrases resolve to the offers a Soul has where it stands. "turn on", "switch on" and
   "light" all mean switching on; "shut" means close; "wipe" or "clean" mean erase; "put up" means pin; "tune" or "change
   the station" mean the radio's station; "put on a record" or "play a record" mean the record player, with the
@@ -194,7 +386,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Lights and fire | Switch lamps, string lights and neon signs on and off; light and put out candles, lanterns, torches and a campfire | "turn on the reading lamp", "switch off the string lights", "light the candle", "put out the campfire", "light the torch" |
 | Doors and openings | Open and close doors, gates (a picket gate and a five-bar field gate), windows, cupboard and locker doors, fridge doors, curtains, blinds, drawers and a tent flap; doors and gates open on the way while walking somewhere; knock; the owner locks and unlocks; anyone inside can always walk out | "open the garden door", "close the window", "close the curtains", "open the blind", "open the drawer", "open the tent flap", "close the field gate", "knock on the door", "lock the door" |
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
-| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
+| Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent; pick up a set of three juggling balls and juggle them, with the set back in hand when they stop | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept", "juggle" |
@@ -208,7 +400,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
   drawing (`painting`: a title, a background and at most 64 rectangles, ellipses and lines in 0..1 coordinates). When
   the activity completes, the server draws it to a 512×512 PNG, hangs it on the easel with the Soul's credit, and keeps
   the previous picture in the edit's note. Nothing changes before completion.
-- **Chalk on the ground ([#430](https://github.com/genekogan/souls/issues/430)).** The painting faculty reads two pieces
+- **Chalk on the ground ([#430](https://github.com/soulsimulation/souls/issues/430)).** The painting faculty reads two pieces
   of def data. A painting workstation whose canvas face lies flat (pitch -90°) is drawn in chalk: its offer is "Draw in
   chalk", the body stoops over it (the `chalk` pose), and the reach rule is the ground the Soul stands on. A canvas face
   with `fadeDays` fades: completion records the world `day` it was drawn on, and the viewer and perception read its age
@@ -236,10 +428,10 @@ The player steps back afterwards, a reader reads it, and a wipe sets the board u
 - a side with no pieces or no legal move loses; there is no draw rule, so two players end a drawn game by wiping the board.
 
 Squares are named a1–h8, with a1 at the bottom left seen from the front. "move c3 to d4", "c3 to d4", "jump d4 to f6"
-or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress on a board in
-sight plays that game: another board refuses it a second game, so its words go to its own board, and out of turn they are
-refused with whose turn it is. With no game in progress and more than one board that would take the move, the words are
-refused naming the boards, and the Soul acts on the chosen board's move. The read offer names only the state ("a game of checkers, X
+or "c3-d4" is the move with those squares on the board where it can be played. A Soul with a game in progress plays that game:
+her own board's move reads "…, in your game", her words go to it (to the game where it is her turn, if she has two), and out
+of turn they are refused with whose turn it is, never a new game on another board. With no game of hers, the nearest open
+board takes the move. A second game is hers to start, by acting on that board's own move. The read offer names only the state ("a game of checkers, X
 to play"). Reading gives the players, whose move it is or who won, the pieces left and the board as eight rows.
 "jump c3 to e5, then e5 to g7" makes the first jump now and says to act again for the rest. "read the checkers board"
 is still a walk to it, as with the other boards; `read:<board>` (or its offered read) reads it.
@@ -292,6 +484,7 @@ within about 4 m and in plain sight:
 - a radio that is on: its `station`; a record player that is on: its `record`; an open drawer or locker: what it `holds` (names only; nothing while shut); a
   swap shelf (no door, so always open): what it `holds` and who left each thing ("book (left by Ana)"); a
   lost-and-found: whose each thing is and who found it ("bowl (Ana's, found by Ben)");
+- a pantry: what it `holds` (names only); a food in the hand or bitten: its `bites` left, then `eaten`;
 - a planter: `dry` only when dry, and its growth `stage`; a kettle: its phase (cold, heating, boiling, hot);
   a mug: how much `tea` is left, `empty` once drunk, `clean` once washed;
 - a neon sign's words, attributed to whoever wrote them and marked untrusted;
@@ -365,7 +558,7 @@ node --test --test-concurrency=1 tools/soul-actions/<name>.test.mjs
 Set `SOUL_ACTIONS_OUT=<dir>` to keep each test's `summary.json` with its `here` byte counts. An entry that adds or
 revises a library def also runs the library budget tests, so a def over its triangle or draw budget is caught by its
 own entry: `node --test packages/world-compiler/src/core-kit/library.test.ts packages/conformance/src/catalogue-checks.test.ts`
-and `pnpm --filter @sim/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
+and `pnpm --filter @souls/conformance test`. A new revision carries no budget hold; fix the mesh instead. The tests live in
 `tools/soul-actions/`; the viewer's motion units are under `apps/web/test/`, `apps/web/src/*.test.ts`,
 `mars/viewer/engine/test/` and `mars/viewer/app/engine-view/`.
 

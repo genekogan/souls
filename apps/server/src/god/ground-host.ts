@@ -14,8 +14,8 @@ import type {EdgeLedger} from '../edge/ledger/ledger.ts';
 import type { Db } from '../db.ts';
 import type { WorldHost } from '../world.ts';
 import type { GodMode } from './god.ts';
-import { groundFact, groundRecipe, registerGroundRecipe, standHeight } from '@sim/engine-mars';
-import { groundRecipeHash, type Ground } from '@sim/ground';
+import { groundFact, groundRecipe, registerGroundRecipe, standHeight } from '@souls/engine-mars';
+import { groundRecipeHash, type Ground } from '@souls/ground';
 
 export function ensureGroundTable(db: Db) {
   db.db.exec('CREATE TABLE IF NOT EXISTS world_ground_recipes_v1 (world_id TEXT NOT NULL, hash TEXT NOT NULL, body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY (world_id, hash)) WITHOUT ROWID');
@@ -70,7 +70,7 @@ export class GroundHost {
     return standHeight(groundFieldOf(h), x, z);
   }
 }
-import { groundField as groundFieldOf } from '@sim/engine-mars';
+import { groundField as groundFieldOf } from '@souls/engine-mars';
 
 // ---------------------------------------------------------------- edge capabilities
 

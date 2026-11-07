@@ -228,10 +228,10 @@ try {
       await god('time', '11:00'); await god('weather', '--kind', 'clear');
       await page.goto(`${base}?dev=1&assets=eager`, { waitUntil: 'domcontentloaded' });
       const d = `dpr${dpr}`;
-      const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__simEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
+      const look = (eye, at) => page.evaluate(([e, a]) => { const s = window.__soulsEntity; if (!s) return false; s.controls.target.set(a[0], a[1], a[2]); s.camera.position.set(e[0], e[1], e[2]); s.controls.update?.(); return true; }, [eye, at]);
       const view = (v) => page.evaluate((x) => { globalThis.__buildingView = x; }, v);
       const snap = async (name) => { const f = resolve(out, `${name}-${d}.png`); await page.screenshot({ path: f }); report.shots.push(f); log(`  📷 ${name}-${d}.png`); };
-      const drawn = () => page.evaluate(() => { const L = window.__simEntity?.layer; return L ? { active: !!L.active, drawn: L.drawn?.size ?? null, err: L.stats?.lastError ?? null } : null; });
+      const drawn = () => page.evaluate(() => { const L = window.__soulsEntity?.layer; return L ? { active: !!L.active, drawn: L.drawn?.size ?? null, err: L.stats?.lastError ?? null } : null; });
       await step(`V1[${d}] the viewer draws the town (no page errors)`, async () => {
         let s; for (let i = 0; i < 120; i++) { s = await drawn(); if (s?.active && s.drawn > 300) break; await sleep(1000); }
         await sleep(5000);

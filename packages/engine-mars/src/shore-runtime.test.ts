@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { nativeShoreFixture } from './shore-runtime.ts';
 import { TakeRecorder } from '../../../mars/viewer/engine/take/recorder.ts';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
-import { hashOf } from '@sim/engine-contract';
+import { hashOf } from '@souls/engine-contract';
 import { Runtime } from '../../../mars/viewer/engine/runtime/runtime.ts';
 import { createRegistry } from '../../../mars/viewer/engine/api/registry.ts';
 import { SHORE_POLICY } from '../../../mars/viewer/engine/locomotion/shore.ts';

@@ -2,7 +2,7 @@
 // docs.typesafe.ai/cookbooks/function_calling: one Choice picks the goal, one
 // picks the target among code-listed candidates, a Noul checks a target is
 // actually named. Every option has contrastive criteria. Owner text is data.
-import { GOALS, type WireIntent } from '@sim/protocol';
+import { GOALS, type WireIntent } from '@souls/protocol';
 import { JEV_MODEL, optionKeys, type ChoiceA, type JevRequest, type JevResponse, type NoulA } from './jev.ts';
 
 export type Target = { id: string; name: string; kind: string; distance: string };

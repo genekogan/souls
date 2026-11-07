@@ -13,8 +13,8 @@ top=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null) && [ -n "$
 media_wanted=1
 for arg in "$@"; do [ "$arg" = --no-media ] && media_wanted=0; done
 
-log="${TMPDIR:-/tmp}/sim-session-start.log"
-state=node_modules/.cache/sim-session-start
+log="${TMPDIR:-/tmp}/souls-session-start.log"
+state=node_modules/.cache/souls-session-start
 if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum; }; else sha() { shasum -a 256; }; fi
 fingerprint() { git ls-files -s -- "$@" 2>/dev/null | sha | cut -c1-16; }
 stamp() { cat "$state/$1" 2>/dev/null; }

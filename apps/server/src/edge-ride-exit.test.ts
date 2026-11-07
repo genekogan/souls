@@ -2,7 +2,7 @@
 // minutes and every request failed actor.busy. Deterministic: force the landing while the engine's carrier step still holds
 // the body (the door stays taken), then check the request during landing, `leave`, the set-down within 30 s and the receipt.
 import test from 'node:test';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import assert from 'node:assert/strict';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import {Hono} from 'hono';import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';import {hashToken} from './auth.ts';import {EdgeLedger} from './edge/ledger/ledger.ts';import {mountEdgeRoutes,edgeSoulResolver} from './edge/routes.ts';
 const common=await retainedCommonsShoreFactory().then(nativeSleepSnapshotFactoryV1);

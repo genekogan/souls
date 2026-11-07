@@ -77,9 +77,15 @@ venue. A seated Soul still stands first; active movement and occupied support ke
 Direct `pose_v1` admission reads clearance at the actor's position, independently of the last paged ground window
 queried. Lying poses retain their larger clearance requirement.
 
+A reach's lean into a container and a stroke's step to a board go through `runtime/static-step.ts`, the walker's rule:
+a step that would put the body below the `collision.human-static` limit, and worse than where it stands, is not taken,
+and the hand works from where the body is. A stroke stays held for the rest of the stroke; a lean follows its path back
+out. Invariants run at the end of every tick, so a held step would have been a violation on that same tick (unless something
+later in that tick moved the obstacle), and every earlier step moves as it did. Other body steps owned by actions, such as a door handle's reach, do not go through it yet.
+
 ## Conformance
 
-`@sim/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
+`@souls/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
 different seeds diverge, snapshot/restore mid-action continues identically, `physicalHash` ignores labels, verbs
 describe with JSON Schema, an unknown verb fails cleanly. Both engines run it (`packages/engine-mars/src/mars.test.ts`,
 `packages/engine-toy/src/toy.test.ts`). (`packages/conformance` is a different gate: every core-library object bakes,

@@ -68,14 +68,14 @@ let ok = 0;
 for (const { d, i } of placed) {
   const p = await pose(`t${i}`); if (!p) continue;
   // wait until this entity's GLB (if any) has loaded
-  await page.waitForFunction((name) => { let ready = true; window.__simEntity.layer.group.traverse((o) => { if (o.name === name && !o.getObjectByName('asset') && !o.getObjectByName('asset missing')) ready = false; }); return ready; }, `mesh ${d.name}`, { timeout: 60_000 }).catch(() => {});
+  await page.waitForFunction((name) => { let ready = true; window.__soulsEntity.layer.group.traverse((o) => { if (o.name === name && !o.getObjectByName('asset') && !o.getObjectByName('asset missing')) ready = false; }); return ready; }, `mesh ${d.name}`, { timeout: 60_000 }).catch(() => {});
   // frame what is drawn now (animals wander and kin hover away from their resting pose): the object's live
   // position and yaw, the def's box for its size (the mesh half fits the model to it), seen from its
   // front-left (front = +z in its own frame). The page keeps its camera 2 m or more away and its own lens,
   // so the picture is cropped around the object's projection from a fresh render and scaled to 256 × 256.
   const [bw, bh, bd] = d.size.box, sc = p.s ?? 1;
   const shot = await page.evaluate(async ([id, fb]) => {
-    const s = window.__simEntity, dr = s.layer.drawn.get(id), o = dr && !dr.inst ? dr.obj : null;
+    const s = window.__soulsEntity, dr = s.layer.drawn.get(id), o = dr && !dr.inst ? dr.obj : null;
     const c = o ? [o.position.x, o.position.y + fb.h / 2, o.position.z] : fb.at, yaw = o ? o.rotation.y : fb.yaw;
     const dist = Math.max(2.4, fb.r * 2.6), k = fb.flat ? [-0.35, 1.1, 0.55] : [-0.55, 0.42, 0.8], n = Math.hypot(...k), cy = Math.cos(yaw), sy = Math.sin(yaw);
     const eye = [c[0] + (k[0] * cy + k[2] * sy) / n * dist, c[1] + k[1] / n * dist, c[2] + (-k[0] * sy + k[2] * cy) / n * dist];
