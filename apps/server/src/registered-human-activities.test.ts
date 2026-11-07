@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
-import {humanCapabilityRegistryV1Schema as registrySchema} from '@sim/engine-contract';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
+import {humanCapabilityRegistryV1Schema as registrySchema} from '@souls/engine-contract';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {Brain} from './brain.ts';
 import {IntentControlV2} from './intent-control.ts';
 import {readHumanCapabilitiesV1} from './human-capabilities.ts';
 import {installSocialEdenCardsV1} from './social-eden.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {WorldHost} from './world.ts';
 const factory=await retainedCommonsShoreFactory({socialEdenV1:true});
 async function setup(t:any,model?:(input:any)=>unknown){const f=fixture(':memory:',factory,{durableClockV1:true});f.souls.enableLifecycle();await accept<unknown>(f.host,new LivingWorld(f.host).install(['Residents may meet by the fire and talk.']));for(let i=0;i<4;i++)f.host.tickOnce();await invite(f,'alice');await invite(f,'bob');const alice=await accept(f.host,f.souls.create('dev:alice',{name:'Alice',description:'Synthetic registered activity owner'})),bob=await accept(f.host,f.souls.create('dev:bob',{name:'Bob',description:'Synthetic independently owned listener'}));await accept(f.host,f.host.installSocialEdenV1());await installSocialEdenCardsV1(f.host,f.brain);f.brain.quiesce();let compilerCalls=0;const brain=new Brain(f.host,f.db,{...f.brain.cfg,budgetUsdPerDay:model?.5:0},{clients:()=>0,onCall(){},onCamera(){},onTicker(){},onNarrative(){}},{intentV2Choices:true,compilerCall:async<T>(o:any)=>{compilerCalls++;if(!model)throw Error('exact registered option should not call a language service');return {out:model(JSON.parse(o.messages[0].content)) as T,ms:0,inputTokens:0,outputTokens:0,cachedTokens:0,costUsd:0,request:null,raw:{synthetic:true}};}}),service=new IntentControlV2(f.host,brain,f.souls,{closedGoalsV1:true,registeredActivitiesV1:true}),scope=service.ownerScope({userId:alice.owner,expiresAt:Number.MAX_SAFE_INTEGER},alice.id);t.after(()=>{brain.quiesce();f.host.stop();f.db.close();});const submit=async(words:string,id:string)=>{await accept(f.host,service.submit(scope,{contract:'soul-intent/2',op:'upsert',requestId:id,words}));await accept(f.host,service.settled());return service.lookup(scope,id);};return {...f,brain,service,scope,alice,bob,submit,compilerCalls:()=>compilerCalls};}

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hashOf } from '@sim/engine-contract';
-import { recordedTakeHistorySchema, recordedTakeChunkSchema, scenePublicationSchema, decodeSceneCapturePublication } from '@sim/protocol';
+import { hashOf } from '@souls/engine-contract';
+import { recordedTakeHistorySchema, recordedTakeChunkSchema, scenePublicationSchema, decodeSceneCapturePublication } from '@souls/protocol';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import { takeIdOf } from '../../../mars/viewer/engine/take/recorder.ts';
 import type { Take } from '../../../mars/viewer/engine/take/types.ts';

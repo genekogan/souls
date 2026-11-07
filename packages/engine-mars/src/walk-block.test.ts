@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {marsFactory,EDEN_SAFE_COMMONS_WORLD,GREEN_FIELD_WORLD} from './engine.ts';
 import {loadMars} from './load.ts';
 import {regionSlots} from '../../../mars/viewer/engine/social/slots.ts';
-import type {Engine,ProgramEvent} from '@sim/engine-contract';
+import type {Engine,ProgramEvent} from '@souls/engine-contract';
 
 async function blockedDeck(walkBlockV1:boolean|undefined,z=-1.7){
   const cfg={...EDEN_SAFE_COMMONS_WORLD,walkBlockV1},f=await marsFactory(cfg),m=await loadMars(),w=f.genesis('native-walk-block');

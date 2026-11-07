@@ -1,6 +1,6 @@
 // Optional authored LM visits are data-bound self-only walks and rest, never
 // actor/role programs or automatic assignments. Legacy worlds do not install it.
-import type {Program} from '@sim/engine-contract';
+import type {Program} from '@souls/engine-contract';
 import type {WorldHost} from '../world.ts';import type {EdgeSoul,EdgeCapability} from '../edge/contract.ts';
 import {inPoly} from '../edge/ledger/places.ts';import type {WorldPlans} from './mars-edge.ts';
 type Experience={id:string;place:string;at:[number,number];label:string;steps:Program['steps']};

@@ -17,7 +17,10 @@ export class WorldBodyModels{
  held=false;
  /** Lane B1: an uploaded body is retried after 2, 5 and 10 s on a network error or HTTP 408/429/5xx (a look's kit parts
   *  retry inside the kit); after that it stays failed: the stand-in, one notice, no more requests. */
- constructor(private loader:GLTFLoader,private problem:(message:string)=>void,private retry:RetryOptions={}){}
+ private loader:GLTFLoader;
+ private problem:(message:string)=>void;
+ private retry:RetryOptions;
+ constructor(loader:GLTFLoader,problem:(message:string)=>void,retry:RetryOptions={}){this.loader=loader;this.problem=problem;this.retry=retry;}
  sync(records:Readonly<Record<string,{kind:string;body?:unknown}>>,entities:Readonly<Record<string,SampledEntity>>){
   this.unresolved.clear();
   for(const [id,e] of Object.entries(entities)){const record=records[id];if(record?.kind!=='human')continue;const b=recordedBody(record.body,e.state);if(b?.family!=='humanoid')continue;

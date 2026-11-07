@@ -1,4 +1,4 @@
-import { nextFloat, seedRng } from '@sim/engine-contract';
+import { nextFloat, seedRng } from '@souls/engine-contract';
 import type { MidContext, MidDecision } from './mid.ts';
 
 export type Needs = { energy: number; hunger: number; company: number; restlessness: number };

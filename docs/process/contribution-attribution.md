@@ -25,5 +25,5 @@ For shared organization automation, prefer one repository-scoped GitHub App iden
 temporary worker. Keep the worker/tool details in the journal. Separate execution permissions from maintainer
 approval and production authority, and qualify that separation before adopting the identity.
 
-This is a recommendation tracked in [#580](https://github.com/genekogan/souls/issues/580), not a claim that an App is
+This is a recommendation tracked in [#580](https://github.com/soulsimulation/souls/issues/580), not a claim that an App is
 installed or new credentials are provisioned. Existing history is not rewritten for cosmetic attribution changes.

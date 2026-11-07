@@ -53,7 +53,7 @@ function inspectView() {
     fog:scene.fog?{color:scene.fog.color.toArray(),near:scene.fog.near??null,far:scene.fog.far??null,density:scene.fog.density??null}:null,
     lights,pixelRatio:renderer.getPixelRatio(),buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight],
     gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),
-    entityCount:globalThis.__simEntity?.layer?.entityCount??null,
+    entityCount:globalThis.__soulsEntity?.layer?.entityCount??null,
     sceneBinding:renderer.domElement.dataset.sceneBinding??null};
 }
 
@@ -82,7 +82,7 @@ export async function captureVisual({root,oldUrl,candidateUrl,poses,outDir,setHo
         page.on('pageerror',e=>report.errors.push({side,dpr,error:String(e).slice(0,400)}));
         page.on('response',r=>{if(r.status()>=400){const row={side,dpr,status:r.status(),url:r.url().replace(/\?.*/, '')};if(r.status()===404&&row.url.endsWith('/v1/worldmeta'))(report.optionalProbes??=[]).push(row);else report.errors.push(row);}});
         await page.goto(`${url}?shot=1&dpr=fixed`,{waitUntil:'domcontentloaded',timeout});
-        await page.waitForFunction(()=>globalThis.__parityView&&(globalThis.__simEntity?.layer?.active===true||document.querySelector('canvas')?.dataset.sceneBinding==='bound'),null,{timeout});
+        await page.waitForFunction(()=>globalThis.__parityView&&(globalThis.__soulsEntity?.layer?.active===true||document.querySelector('canvas')?.dataset.sceneBinding==='bound'),null,{timeout});
         await page.waitForSelector('.world-canvas-host[data-initial-revealed="true"]',{state:'visible',timeout});
         await page.waitForTimeout(3000);
         (report.readiness??=[]).push({side,dpr,state:await page.evaluate(inspectView)});

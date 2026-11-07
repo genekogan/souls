@@ -2,7 +2,7 @@
 // its own frame, halos refresh from known publishers without a scene walk, and a held door leaf is written only when its
 // depicted angle changes.
 import test from 'node:test';import assert from 'node:assert/strict';import * as THREE from 'three';import {registerHooks} from 'node:module';
-import {WorldModel,coreLibrary,applyBatch} from '@sim/world-compiler';
+import {WorldModel,coreLibrary,applyBatch} from '@souls/world-compiler';
 import {GodWorldLiving} from './world-env.ts';
 import {handActuatorFrame,HAND_OPEN_ANGLE,HAND_REACH_SECONDS,type HandActuatorMotion} from '../../../mars/viewer/engine/social/hand-actuator.ts';
 

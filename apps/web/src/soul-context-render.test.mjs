@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 const require=createRequire(import.meta.url);
-const dir=await mkdtemp(join(tmpdir(),'sim-soul-context-'));
+const dir=await mkdtemp(join(tmpdir(),'souls-soul-context-'));
 globalThis.location={origin:'https://sim.eden.art',pathname:'/w/eden/',hash:''};
 globalThis.sessionStorage={getItem:()=>null};
 const outfile=join(dir,'context.cjs');

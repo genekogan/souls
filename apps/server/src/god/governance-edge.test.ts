@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { fixture, invite, accept, factory } from '../../test/native-owner-fixture.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { GodMode } from './god.ts';
@@ -52,6 +52,9 @@ test('residents propose and support amendments on the edge; the god decides; arr
   const caps = edge.capabilities(ana);
   const propose = caps.find((c: any) => c.id === 'propose-amendment');
   assert.ok(propose?.available, caps.map((c: any) => c.id).join(' '));
+  // CTRL-1 (#1093): its id has no target, and the strict gate takes it by exact id; `text` is required, as its schema says
+  assert.equal(edge.offerGate(ana, { capability: 'propose-amendment', params: { text: 'x' } }), null);
+  assert.equal((propose as any).params.text.required, true);
   const p: any = await act(ana, 'propose-amendment', { text: 'Anyone may rest on the bench as long as they like.', title: 'Bench rest' });
   assert.equal(p.receipt.phase, 'completed', JSON.stringify(p));
   const id = p.result.amendment.id;

@@ -20,9 +20,9 @@
 // so nothing is left floating or buried. `preview: true` plans without committing and answers the same report: tiles,
 // how much ground rises and falls, which things move and by how much, the bounds before → after.
 import type { Context, Hono } from 'hono';
-import { applyBatch, boundsOf, type Entity, type WorldModel } from '@sim/world-compiler';
-import { TILE_M } from '@sim/ground';
-import { CREATION_LIMITS } from '@sim/generators';
+import { applyBatch, boundsOf, type Entity, type WorldModel } from '@souls/world-compiler';
+import { TILE_M } from '@souls/ground';
+import { CREATION_LIMITS } from '@souls/generators';
 import { godTokenLimiter } from './rate-limit.ts';
 import { ApiError } from '../souls.ts';
 import type { GodMode } from './god.ts';

@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import type {Api} from './useSim.ts';
+import type {Api} from './useSouls.ts';
 import './LocalIntegration.css';
 type Notes={integratedAt:string;changes:string[];knownGaps:string[]};
 const local=()=>['127.0.0.1','localhost'].includes(location.hostname);

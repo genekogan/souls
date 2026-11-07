@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { splitSnapshot } from '../../server/src/god/snapshot-wire.ts';
 import { diffSnapshots, fullDelta, SnapshotDecoder, type PlainSnapshot } from './snapshot-delta.ts';
-import { packColumnsV1, worldEntityOrderV1 } from '@sim/protocol';
+import { packColumnsV1, worldEntityOrderV1 } from '@souls/protocol';
 
 const E = (id: string, x: Record<string, unknown> = {}) => ({ id, def: 'core-barrel@1', in: { parent: 'world' }, p: [1, 0, 2], params: { wood: '#8c5f3a' }, ...x });
 const snap = (x: Partial<PlainSnapshot> = {}): PlainSnapshot => ({

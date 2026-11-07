@@ -1,5 +1,5 @@
 {
-  "name": "@sim/client",
+  "name": "@souls/client",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@sim/engine-contract": "workspace:*",
-    "@sim/protocol": "workspace:*"
+    "@souls/engine-contract": "workspace:*",
+    "@souls/protocol": "workspace:*"
   },
   "scripts": {
     "test": "pnpm --dir ../.. test:client"
