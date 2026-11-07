@@ -86,9 +86,15 @@ test('camera perf: plan a 60 s track at 10 Hz with 3 subjects in < 1 s', () => {
   const world = new CameraWorld(provingGround());
   const spec: ShotSpec = { kind: 'frameGroup', subjects: ['p1', 'p2', 'p3'], azimuth: Math.PI, elevation: 0.3 };
   planCameraTrack(spec, sampler, world, { duration: 5 }); // warm-up (JIT)
-  const t0 = performance.now();
-  const plan = planCameraTrack(spec, sampler, world, { duration: 60, hz: 10 });
-  const ms = performance.now() - t0;
+  // The budget is on the work, so it is CPU time, best of three: on a loaded CI host a process waits for a core, and wall
+  // time counts that wait (#1162: 527 ms hosted, 1364 ms on a host at load 33 of 48, with the same plan).
+  let ms = Infinity, plan!: ReturnType<typeof planCameraTrack>;
+  for (let i = 0; i < 3; i++) {
+    const before = process.cpuUsage();
+    plan = planCameraTrack(spec, sampler, world, { duration: 60, hz: 10 });
+    const used = process.cpuUsage(before);
+    ms = Math.min(ms, (used.user + used.system) / 1000);
+  }
   const r = plan.report;
   console.log(`  perf: 60 s @10 Hz, 3 subjects, ${plan.samples.length} samples → ${ms.toFixed(0)} ms; readable ${(r.readableFraction * 100).toFixed(0)}%, min ${r.minReadability.toFixed(2)}, cuts ${r.cuts.length}, invalid ${r.invalidSamples}`);
   assert.ok(ms < 1000, `${ms.toFixed(0)} ms`);
