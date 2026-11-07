@@ -11,6 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { join, relative } from "node:path";
 import { openMemoryFolder } from "../../edge-skill/memory-folder.mjs";
 import { buildBrief } from "./brief.mjs";
+import { SUMMARY } from "./consolidate.mjs";
 import { createPeople } from "./people.mjs";
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
@@ -20,7 +21,7 @@ const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 export const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
 /** `memory` fails closed: a line is the Soul's own only where nothing else writes. */
-const OWN_FILES = new Set(["self.md", "goals.md", "schedule.md"]), OWN_SECTION = /^(?:What I believe|What I have told them|Commitments|Judgments)\b/, OWN_JOURNAL = /^- \S+ (?:completed|failed): /;
+const OWN_FILES = new Set(["self.md", "goals.md", "schedule.md"]), OWN_SECTION = /^(?:What I believe|What I have told them|Commitments|Judgments|Noted more than once)\b/, OWN_JOURNAL = /^- \S+ (?:completed|failed): /;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/, TRAVELLER = /^[a-z0-9][a-z0-9-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const sha = (v) => createHash("sha256").update(typeof v === "string" ? v : JSON.stringify(v)).digest("hex");
 const clip = (v, max) => { const t = String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
@@ -55,6 +56,14 @@ function readLines(file, heading) {
   const end = lines.findIndex((l, i) => i > start && /^#{1,2} /.test(l));
   return lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trim()).filter(Boolean).slice(0, 12);
 }
+/** The newest summary consolidation wrote. Its lines are a model's reading of what worlds said, so the brief quotes them. */
+function lastSummary(file) {
+  let lines; try { lines = readFileSync(file, "utf8").split("\n"); } catch { return []; }
+  const start = lines.findLastIndex((l) => l.startsWith("## ") && l.endsWith(SUMMARY));
+  if (start < 0) return [];
+  const end = lines.findIndex((l, i) => i > start && l.startsWith("## "));
+  return lines.slice(start + 1, end < 0 ? undefined : end).filter((l) => l.startsWith("- ")).map((l) => l.slice(2)).slice(0, 3);
+}
 function pidAlive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } }
 
 /** `world` is this home's key for the world the Soul is in, `role` home or visiting. */
@@ -76,7 +85,9 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
   // fails closed.
   let records = null, travellers = {};
   let people = createPeople({ world });
-  const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false }); flushPeople(); return opened; };
+  // A day consolidation has summarized stays in the log, and its journal page doesn't come back.
+  const journalAfter = () => { try { return JSON.parse(readFileSync(join(soulDir, "memory", "consolidation.json"), "utf8")).through ?? null; } catch { return null; } };
+  const openRecords = () => { people = createPeople({ world }); const opened = openMemoryFolder(soulDir, { logs: join("memory", "log"), observe: (record) => people.apply(record), personFiles: false, journalAfter: journalAfter() }); flushPeople(); return opened; };
   // No people/ folder until there is someone in it; a record folded into another leaves no file behind.
   function flushPeople() {
     const { write, remove } = people.changes(), dir = join(soulDir, "memory", "people");
@@ -229,7 +240,7 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       let last = null, problem = null;
       withRecords((r) => {
         for (const e of wanted) {
-          const when = clockAt({ real: Number.isFinite(e.at) ? realTime(e.at, now) : now(), tick: e.tick, time: e.clock });
+          const when = clockAt({ real: Number.isFinite(e.at) ? realTime(Math.min(e.at, Date.parse(now())), now) : now(), tick: e.tick, time: e.clock });
           try {
             if (e.kind === "receipt") outcome(r, e.receipt, when);
             else if (e.kind === "arrive") arrived(r, when, e.where?.placeId ?? e.placeId, e.where?.place ?? e.placePath?.[0]);
@@ -334,16 +345,18 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
       presence = readPresence() ?? presence;   // another process may be the one watching the world
       const facts = withRecords((r) => ({ ...r.digest({ place: typeof presence.place === "string" && presence.place ? worldKey(world, presence.place) : null }), people: (presence.near ?? []).map((id) => people.view(id)).filter(Boolean), promises: people.promises() }));
       const pinned = readLines(join(soulDir, "SOUL.md"), /^## Pinned\b/).map((l) => l.replace(/^- /, "")), schedule = readLines(join(soulDir, "memory", "schedule.md"), /^# Schedule\b/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
-      return buildBrief({ ...facts, schedule, self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {});
+      return buildBrief({ ...facts, schedule, earlier: lastSummary(join(soulDir, "MEMORY.md")), self: pinned.length ? pinned : facts.self }, Number.isSafeInteger(bytes) && bytes >= 0 ? { bytes } : {});
     },
+    /** Consolidate under the log's lock is not needed: a pass reads projections and writes only its own files. Reopen after it. */
+    reopen() { records = null; },
     /** `memory <query>`: every projection line holding every word, each with where it came from. */
     search(query) {
       withRecords(() => {});   // opening regenerates the projections, and a torn log says so here
       const root = join(soulDir, "memory"), terms = String(query).toLowerCase().split(/\s+/).filter(Boolean), matches = [];
-      const walk = (dir) => readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? 1 : -1)).flatMap((d) => (d.isDirectory() ? (d.name === "log" ? [] : walk(join(dir, d.name))) : d.name.endsWith(".md") ? [join(dir, d.name)] : []));
+      const consolidated = join(soulDir, "MEMORY.md"), walk = (dir) => readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? 1 : -1)).flatMap((d) => (d.isDirectory() ? (d.name === "log" ? [] : walk(join(dir, d.name))) : d.name.endsWith(".md") ? [join(dir, d.name)] : []));
       const plain = (l) => l.replace(/\\(.)/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
       let more = 0;
-      for (const file of walk(root)) {
+      for (const file of [...walk(root), ...(existsSync(consolidated) ? [consolidated] : [])]) {
         let title = null, section = null;
         for (const raw of readFileSync(file, "utf8").split("\n")) {
           const line = plain(raw);
@@ -352,8 +365,8 @@ export function openSoulMemory(soulDir, { world, url = null, soul = null, role =
           if (!raw.trim() || !terms.every((t) => line.toLowerCase().includes(t))) continue;
           if (matches.length >= SEARCH_MAX) { more++; continue; }
           // A person's file is titled with a name a world gave them, so its title vouches for nothing.
-          const where = relative(root, file), from = where.startsWith("people") ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
-          const mine = OWN_FILES.has(where) || OWN_SECTION.test(section ?? "") || (where.startsWith("journal") && OWN_JOURNAL.test(raw) && !/untrusted/i.test(raw));
+          const where = file === consolidated ? "MEMORY.md" : relative(root, file), from = where.startsWith("people") ? section ?? "name" : [title, section].filter(Boolean).join(" / ");
+          const mine = OWN_FILES.has(where) || OWN_SECTION.test(section ?? "") || (where === "MEMORY.md" && !/untrusted/i.test(section ?? "")) || (where.startsWith("journal") && OWN_JOURNAL.test(raw) && !/untrusted/i.test(raw));
           matches.push({ text: line.replace(/^[-> ]+/, ""), file: where, provenance: from, untrusted: !mine });
         }
       }

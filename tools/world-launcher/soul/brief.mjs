@@ -18,7 +18,7 @@ const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{P
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
-/** `facts`: {people, place, promises, goals, schedule, recent, self}, each maybe empty. An empty memory is an empty brief. An episode is
+/** `facts`: {people, place, promises, goals, schedule, recent, earlier, self}, each maybe empty. An empty memory is an empty brief. An episode is
  *  the Soul's own words only with `own`: a world saying nothing about its trust is not a world to be trusted. Room goes first
  *  to what the Soul and its owner wrote, so a world's long names can't push a promise out. */
 export function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
@@ -33,6 +33,7 @@ export function buildBrief(facts, { bytes = BRIEF_BYTES } = {}) {
     { head: "This place", rank: 3, lines: facts.place ? [place(facts.place)] : [] },
     { head: "Open commitments", rank: 0, lines: open.map((l) => mine(l, OPEN_BYTES)) },
     { head: "Last episode", rank: 4, lines: (facts.recent ?? []).slice(-EPISODES).map((e) => (e.own ? mine(e.summary, EPISODE_BYTES) : quoted(e.summary, EPISODE_BYTES))) },
+    { head: "Earlier", rank: 5, lines: (facts.earlier ?? []).map((l) => quoted(l, EPISODE_BYTES)) },
     { head: "Self", rank: 1, lines: (facts.self ?? []).slice(0, SELF_MAX).map((l) => mine(l, SELF_BYTES)) },
   ];
   let used = size(WORLD_TEXT) + 1;

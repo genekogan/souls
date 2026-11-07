@@ -85,11 +85,12 @@ export function createPeople({ world = null } = {}) {
     const list = (head, lines) => (lines.length ? [`${level} ${head}`, ...lines, ""] : []);
     const place = (c) => [c.world, c.worldDay == null ? null : `day ${c.worldDay}`, c.time, c.at].filter(Boolean).join(", ") + (c.place ? ` at ${short(md(c.place), NAME_BYTES)}` : "");
     const last = (items, n = keep) => items.slice(-n).reverse();
-    const beliefs = row.beliefs.filter((b) => b.mine), said = row.beliefs.filter((b) => !b.mine), commitments = [...open(row).slice(-OPEN_MAX), ...[...row.commitments.values()].filter((c) => c.kept).slice(-keep)], what = keep > 2 ? LINE_BYTES : WHAT_BYTES;
+    // A note written twice is one note: the log keeps each, the record says how often.
+    const beliefs = [...row.beliefs.filter((b) => b.mine).reduce((m, b) => { const n = (m.get(b.text)?.n ?? 0) + 1; m.delete(b.text); return m.set(b.text, { ...b, n }); }, new Map()).values()], said = row.beliefs.filter((b) => !b.mine), commitments = [...open(row).slice(-OPEN_MAX), ...[...row.commitments.values()].filter((c) => c.kept).slice(-keep)], what = keep > 2 ? LINE_BYTES : WHAT_BYTES;
     return [
       // First, and every open one: it is what a mind has to be able to name, whatever a world has said since.
       ...list("Commitments", commitments.map((c) => `- ${promised(c)}: ${short(md(c.what), what)} [${md(c.id)}]${c.kept ? ` — kept, ${md(c.kept.evidence)}` : " — open"}`)),
-      ...list("What I believe", last(beliefs, Math.min(keep, BELIEFS)).map((b) => `- ${short(md(b.text))} — my judgment`)),
+      ...list("What I believe", last(beliefs, Math.min(keep, BELIEFS)).map((b) => `- ${short(md(b.text))} — my judgment${b.n > 1 ? `, noted ${b.n} times` : ""}`)),
       ...list("First met — place as a world named it, UNTRUSTED", row.first ? [`- ${place(row.first)}`] : []),
       ...list("Last contact — place as a world named it, UNTRUSTED", row.last ? [`- ${place(row.last)}`] : []),
       ...list("Episodes — a world's words, UNTRUSTED", last(row.episodes).map((x) => `- ${short(md(x.line))} — ${x.kind} ${short(md(x.ref), NAME_BYTES)}`)),

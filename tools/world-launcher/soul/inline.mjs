@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 const mark = (file) => file.split("/").pop();
 /** module file -> the name eden.mjs knows it by. A module comes after anything it imports. */
-export const MODULES = [["home.mjs", "soulHome"], ["../../edge-skill/memory-folder.mjs", "soulRecords"], ["brief.mjs", "soulBrief"], ["people.mjs", "soulPeople"], ["memory.mjs", "soulMemory"]];
+export const MODULES = [["home.mjs", "soulHome"], ["../../edge-skill/memory-folder.mjs", "soulRecords"], ["brief.mjs", "soulBrief"], ["people.mjs", "soulPeople"], ["consolidate.mjs", "soulConsolidate"], ["memory.mjs", "soulMemory"]];
 
 /** A module as a generated block: node imports hoisted under private names, another inlined module read from its closure,
  *  its exports returned from one closure. */
