@@ -32,7 +32,7 @@ try {
   await page.goto(base + '/w/eden?rewind=1');
   // VF1: arriving is one calm card (no warnings, no "Held"), gone once the first frame is drawn.
   const arrival = await page.waitForFunction(() => { const c = document.querySelector('.viewer-arrival[data-done="false"]'); return c && { card: c.textContent, status: document.querySelector('[data-viewer-status]')?.textContent, cls: document.querySelector('[data-viewer-status]')?.className, reasons: document.querySelectorAll('.viewer-reason').length, text: document.body.innerText }; }).then(h => h.jsonValue());
-  check('Arrival shows one loading card and a neutral pill, never Held or Reconnecting', /^Arriving in Eden/.test(arrival.card) && arrival.status === 'Loading…' && arrival.cls === 'loading' && arrival.reasons === 0 && !/Held|Reconnecting/.test(arrival.text));
+  check('Arrival shows one loading card and a neutral pill, never Held or Reconnecting', /^Loading Eden/.test(arrival.card) && arrival.status === 'Loading…' && arrival.cls === 'loading' && arrival.reasons === 0 && !/Held|Reconnecting/.test(arrival.text));
   await page.getByRole('button', { name: 'Your Soul', exact: true }).click();
   await page.waitForFunction(() => Number(document.querySelector('.viewer-history')?.getAttribute('data-viewer-tick')) > 0 && document.querySelector('.viewer-history')?.getAttribute('data-viewer-selection'));
   check('Typed handle ready and canonical selected Soul published', await page.locator('.viewer-history').getAttribute('data-viewer-ready') === 'true' && !!await page.locator('.viewer-history').getAttribute('data-viewer-selection'));

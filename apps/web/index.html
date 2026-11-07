@@ -30,10 +30,11 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- QA F12: a world page shows the arrival card from its first paint (main.css is in), not a blank page until its
-         JavaScript runs (old /w/eden on a 4G phone: ~4 s). It sits beside #root and goes once the app's own card or the
-         early poster is up (no blank flash between them), or once the app has drawn something else for 0.6 s. -->
-    <script>(function(){try{if(!/\/w\/[a-z][a-z0-9-]{0,31}(\/|$)/.test(location.pathname)||/[?&]shot=/.test(location.search))return;var d=document,r=d.getElementById('root'),b=d.createElement('div');b.id='boot-arrival';b.className='viewer-arrival';b.style.position='fixed';b.setAttribute('role','status');b.setAttribute('aria-live','polite');b.innerHTML='<div class="viewer-arrival-card"><span class="viewer-arrival-spinner" aria-hidden="true"></span><div><p class="viewer-arrival-title">Arriving</p><p class="viewer-arrival-stage">Loading the world\u2026</p></div></div>';d.body.appendChild(b);var t0=0,iv=setInterval(function(){var now=Date.now();if(d.querySelector('#root .viewer-arrival,.early-world-poster')||(r&&r.firstElementChild&&(t0=t0||now)&&now-t0>600)){clearInterval(iv);b.remove();}},50);}catch(e){}})()</script>
+    <!-- QA F12, #1166: a world page shows the arrival light from its first paint (main.css is in), not a blank page until
+         its JavaScript runs (old /w/eden on a 4G phone: ~4 s): black, a white disc, the words and an empty bar. It sits
+         beside #root and goes once the app's own light is up, or once the app has drawn something else for 0.6 s. It stays
+         over the early poster: the app's light takes over from it, so the world is never shown without a dissolve. -->
+    <script>(function(){try{if(!/\/w\/[a-z][a-z0-9-]{0,31}(\/|$)/.test(location.pathname)||/[?&]shot=/.test(location.search))return;var d=document,r=d.getElementById('root'),b=d.createElement('div');b.id='boot-arrival';b.className='viewer-arrival';b.setAttribute('role','status');b.setAttribute('aria-live','polite');b.innerHTML='<div class="arrival-disc" aria-hidden="true"></div><div class="arrival-text"><p class="viewer-arrival-title">Loading the world</p><div class="viewer-arrival-progress"><progress aria-label="World loading progress" max="1000" value="0"></progress><span></span></div></div>';d.body.appendChild(b);var t0=0,iv=setInterval(function(){var now=Date.now();if(d.querySelector('#root .viewer-arrival')||(r&&r.firstElementChild&&(t0=t0||now)&&now-t0>600)){clearInterval(iv);b.remove();}},50);}catch(e){}})()</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

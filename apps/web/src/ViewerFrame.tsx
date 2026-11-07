@@ -1,14 +1,15 @@
 import {NavbarMenu} from './NavbarMenu.tsx';
 import {FullscreenToggle} from './FullscreenToggle.tsx';
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import {ImportCredits} from './ImportCredits.tsx';
 import { createPortal } from 'react-dom';
 import type { ViewportInsets, WorldViewerHandle, WorldViewerState } from './WorldViewer.ts';
 import { arrivalMark } from './arrival-marks.ts';
 import { earlyArrival } from './early-arrival.ts';
-import { arrivalProgress, arrivalStage, assetDownloadProgress, heldLabel, initialPending } from './viewer-arrival.ts';
+import { arrivalProgress, assetDownloadProgress, heldLabel, initialPending } from './viewer-arrival.ts';
+import { ArrivalLight } from './ArrivalLight.tsx';
 import type { InitialWorldProgress } from './InitialWorldReadiness.ts';
-import { assetBytes, megabytes } from './asset-bytes.ts';
+import { assetBytes } from './asset-bytes.ts';
 import { hourLabel, setVisitorPreviewHour, subscribeVisitorHour, visitorPreviewHour } from './visitor-hour.ts';
 import { arrivalGate } from './gen-mesh/lazy-assets.ts';
 import { TouchHints } from './touch/hints.tsx';
@@ -95,8 +96,13 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
   const early = useSyncExternalStore(earlyArrival.subscribe, earlyArrival.shown, earlyArrival.shown);
   if (early) drawnOnce.current = true;
   const card = ((!early && (arriving || preparing)) || assetsNear) && initial?.stage !== 'failed';
-  const [arrivalShown, setArrivalShown] = useState(() => !earlyArrival.shown());   // P7d: a world already drawn before this page part came shows no card
-  useEffect(() => { if (card) { setArrivalShown(true); return; } arrivalMark('card-done'); const id = setTimeout(() => setArrivalShown(false), 300); /* lane W1: the .25 s fade (world-chrome.css), then gone */ return () => clearTimeout(id); }, [card]);
+  // #1166: the light always plays, even over a phone's world already drawn (early-render.ts), and only once: it never
+  // returns over a world it has dissolved into.
+  const [arrivalShown, setArrivalShown] = useState(true);
+  const lightGone = useRef(false);
+  const [shot] = useState(() => /[?&]shot=/.test(location.search));
+  useEffect(() => { if (card) { if (!lightGone.current) setArrivalShown(true); return; } arrivalMark('card-done'); }, [card]);
+  const arrivalGone = useCallback(() => { lightGone.current = true; setArrivalShown(false); }, []);
   // The bar counts bytes (asset-bytes.ts: every asset fetch, total known up front), never files; it only moves forward
   // and is full once the world is ready. Without a byte total yet, the older measures stand in.
   const bytes = useSyncExternalStore(assetBytes.subscribe.bind(assetBytes), () => assetBytes.snapshot());
@@ -180,12 +186,7 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
   </div>;
   return <>
     {!arriving && <TouchHints />}
-    {arrivalShown && !blocked && initial?.stage !== 'failed' && <div className="viewer-arrival" data-done={!card} role="status" aria-live="polite">
-      <div className="viewer-arrival-card"><span className="viewer-arrival-spinner" aria-hidden="true" />
-        <div><p className="viewer-arrival-title">Arriving in {worldName ?? 'the world'}</p>
-          <p className="viewer-arrival-stage">{arriving ? byByte ? 'Downloading the world…' : state?.assetDownloads?.pending ? `Downloading world assets · ${state.assetDownloads.loaded} of ${state.assetDownloads.total} ready` : `${arrivalStage(reason, connecting)}…` : preparing ? byByte && progress !== null && progress < 1 ? 'Downloading the world…' : 'Preparing the world…' : assetsNear ? byByte && progress !== null && progress < 1 ? 'Downloading the world…' : 'Preparing the world…' : 'Ready'}</p>
-          {progress !== null && <div className="viewer-arrival-progress"><progress aria-label="World loading progress" max={1000} value={Math.round(progress * 1000)} /><span>{inBytes ? megabytes({ loaded: Math.min(1, progress) * bytes.total, total: bytes.total }) : `${Math.round(progress * 100)}%`}</span></div>}</div></div>
-    </div>}
+    {arrivalShown && !blocked && initial?.stage !== 'failed' && <ArrivalLight title={`Loading ${worldName ?? 'the world'}`} progress={progress} done={!card} card={card} instant={shot} onGone={arrivalGone} />}
     {followCue && !arriving && <div className="viewer-follow-hint" role="status" aria-live="polite" data-cue={followCue}>{followCue === 'follow'
       ? coarse ? <>Following <b>{followName ?? 'a Soul'}</b> · swipe for the next Soul · tap the ground to take over</> : <>Following <b>{followName ?? 'a Soul'}</b> · drag to look around, scroll to zoom · press <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to look around freely</>
       : <>Your camera · <b>Return to Broadcast</b> is top left</>}</div>}
