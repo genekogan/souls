@@ -73,6 +73,8 @@ test('empty original media needs no God edits; source fixture and relevant rende
   const model = fixture(), owner = session(model), aligned = await alignQualityFixture(owner, snapshot(model), expected.facts);
   assert.deepEqual(await aligned.restore(), { changed: false, restored: true }); assert.equal(owner.edits.length, 0);
   for (const [path, pin] of Object.entries(expected.sourcePins)) assert.equal(qualityHash(readFileSync(new URL('../../' + path, import.meta.url))), pin, path);
+  // A pin is a reviewed candidate (quality-ground-cover-browser.mjs): a re-hashed pin that drifted from the retained baseline must say so in the receipt (#1171).
+  for (const [path, pin] of Object.entries(expected.sourcePins)) if (pin !== expected.baselineSourcePins[path]) assert.ok(expected.sourceExceptions.some(row => row.path === path && row.candidateSha256 === pin), path + ' differs from the baseline with no exception');
 });
 
 test('interrupted alignment response restores the original media through the ordinary God operation', async () => {
