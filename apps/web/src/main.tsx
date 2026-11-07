@@ -12,12 +12,13 @@ const PrivyAuth=lazy(()=>import('./PrivyAuth.tsx'));
 import { Shell, type AuthCtx } from './Shell.tsx';
 import './styles.css';
 import type { ClerkSatellite } from './clerk-satellite.ts';
-import {clerkNow,clerkOriginRoute,unsignedPreviewAuth} from './auth-ui.ts';
+import {clerkNow,clerkOriginRoute,clerkSatelliteSyncs,unsignedPreviewAuth} from './auth-ui.ts';
 // New worlds (world launcher, world engine): the launcher homepage and its sign-in. Old worlds never reach these.
 // P1 phones: the homepage (LauncherHome) and Clerk are lazy chunks, off a world page's critical path; a world's Clerk
 // loads once its arrival is over (ClerkWorld below).
 import type { LauncherList } from './god-ui/LauncherHome.tsx';
 import {whenArrivalCardGone} from './arrival-marks.ts';
+import {arrivalHold} from './arrival-hold.ts';
 import {countPage} from './visitor-counts.ts';
 const LauncherRoot=lazy(()=>import('./LauncherRoot.tsx'));
 const ClerkBridge=lazy(()=>import('./ClerkBridge.tsx'));
@@ -46,11 +47,15 @@ type Cfg = { clerkSatellite?:ClerkSatellite; authenticationOrigin?:string; authP
  *  The Shell is never remounted. */
 function ClerkWorld({cfg,publishableKey}:{cfg:Cfg;publishableKey:string}){
  const pending=useRef(false);
- const [now]=useState(()=>clerkNow(location.href,location.hash,document.cookie));
+ // #531: a satellite's first visit syncs with a navigation, so it starts at once and the world waits for it (arrival-hold.ts)
+ const [syncs]=useState(()=>!!cfg.clerkSatellite&&clerkSatelliteSyncs(location.href,document.cookie));
+ const [now]=useState(()=>syncs||clerkNow(location.href,location.hash,document.cookie));
  const [load,setLoad]=useState(now);
  const [auth,setAuth]=useState<AuthCtx>(()=>({mode:'clerk',ready:!now,authed:false,label:null,
   login:()=>{pending.current=true;setLoad(true);},logout:()=>{},getToken:async()=>null,
   debug:{privyUserId:null,accountIdentity:null,wallet:null,linked:[]}}));
+ useEffect(()=>syncs?arrivalHold.hold():undefined,[syncs]);
+ useEffect(()=>{if(auth.ready)arrivalHold.release();},[auth.ready]);
  useEffect(()=>{if(load)return;let live=true;void whenArrivalCardGone({timeoutMs:20_000,fadeMs:0}).then(()=>{if(live)setLoad(true);});return()=>{live=false;};},[load]);
  const takePendingLogin=useCallback(()=>{const p=pending.current;pending.current=false;return p;},[]);
  return <>
