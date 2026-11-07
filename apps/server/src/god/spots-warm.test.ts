@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { pointInObb, type OBB2 } from '../../../../mars/viewer/engine/core/math.ts';
 import { fixture, factory } from '../../test/native-owner-fixture.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';

@@ -1,5 +1,5 @@
 // Explicit fresh owned-world boundary; never installs or grants a pilot itself.
-import {hashOf,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine,EDEN_SAFE_COMMONS_WORLD,type MarsWorldConfig,type MarsPhysicalBinding} from './engine.ts';
 import {loadMars} from './load.ts';
 import {connectedCommonsBoatFixture} from './connected-boat.ts';

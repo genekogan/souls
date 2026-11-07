@@ -7,7 +7,7 @@
 //   - pick-up / put-on / put-down receipts: outcome.changed names what is now held or where it was put;
 //   - `put-down:here` (on the ground in front of you) while holding a god thing.
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
-import type { WorldModel } from '@sim/world-compiler';
+import type { WorldModel } from '@souls/world-compiler';
 import { groundPutDistance, groundPutNeed } from '../../../../mars/viewer/engine/items/actions.ts';
 
 type Ents = Record<string, any>;
@@ -26,6 +26,8 @@ export function installHeld(L: EdgeLedger, h: HeldHost) {
   const tog = (L as any).together, observe = tog.observe.bind(tog);
   // entry 41: a hand-over names the thing by its own name ("the lantern"), not its path under the body holding it
   tog.thingName = (id: string) => String(h.model.entities.get(id)?.name ?? ents()[id]?.label ?? id);
+  // PC05 (#684): a shared load's identity is its placed def ref with revision (null once the thing is gone)
+  tog.thingDef = (id: string) => h.model.entities.get(id)?.def ?? null;
   tog.observe = (soul: { entityId: string }) => {
     const o = observe(soul);
     if (!o.holding) { const all=ents(),gripped=all[soul.entityId]?.human?.grip?.entity; const x = heldGodThing(all, soul.entityId) ?? (typeof gripped==='string'&&all[gripped]?.tags?.includes('entity-world')?all[gripped]:null); if (x) o.holding = { id: x.id, kind: 'item', name: name(x.id) }; }

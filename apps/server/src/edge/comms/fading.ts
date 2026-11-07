@@ -66,6 +66,11 @@ export class Fading {
     for (const l of this.listeners) { try { l(c); } catch { /* ledger listener faults never block the rule */ } }
   }
 
+  /** PC09 (#688): what keeps a Soul's body at work in the world although its mind is gone (a running shared carry), or
+   *  null. Only the words differ: such a body neither reclines on fading nor lands at a starting place on return. */
+  private kept: ((soulId: string) => string | null)[] = [];
+  addKept(k: (soulId: string) => string | null) { this.kept.push(k); }
+  private keptBy(soulId: string): string | null { for (const k of this.kept) { try { const r = k(soulId); if (r) return r; } catch { /* a fault never keeps */ } } return null; }
   private away: ((soulId: string) => boolean)[] = [];
   /** Travel (M3): a Soul whose body is in another world stays faded here; its acts never reclaim it. */
   addAway(a: (soulId: string) => boolean) { this.away.push(a); }
@@ -107,7 +112,8 @@ export class Fading {
       this.set(soulId, now, 'green', now);
       if (prior?.colour === 'gone') {
         const c: FadeChange = {soulId, colour: 'green', change: 'reclaimed', idleSeconds: 0};
-        this.announce(c, 'You are back: you land on your feet at a starting place.');
+        const kept = this.keptBy(soulId);
+        this.announce(c, kept ? `You are back, where your body is: it is still in ${kept}, and you are free once that ends.` : 'You are back: you land on your feet at a starting place.');
         this.steward.narrate({soulId, what: 'reclaimed', data: {after: 'fading'}});
       }
     });
@@ -125,7 +131,7 @@ export class Fading {
       if (colour === r.colour || r.colour === 'gone' || colour === 'green') return;
       this.set(soulId, r.last_at, colour);
       const c: FadeChange = {soulId, colour, change: colour === 'gone' ? 'removed' : 'warn', idleSeconds: Math.floor(idle / 1000)};
-      if (colour === 'gone') { this.announce(c, 'A light comes down; you recline, rise and fade from the world. Act again to return.'); this.steward.narrate({soulId, what: 'faded', data: {idleSeconds: c.idleSeconds}}); }
+      if (colour === 'gone') { const kept = this.keptBy(soulId); this.announce(c, kept ? `Your mind has been away too long, so you fade; your body stays in ${kept} until it ends safely. Act again to return.` : 'A light comes down; you recline, rise and fade from the world. Act again to return.'); this.steward.narrate({soulId, what: 'faded', data: {idleSeconds: c.idleSeconds}}); }
       else this.announce(c, colour === 'yellow' ? 'You have been idle 30 minutes. Act within 30 more to stay.' : 'Mist gathers; you fade at 60 minutes idle. Act now to stay.');
     });
   }

@@ -6,7 +6,7 @@
 #   tools/world-launcher/deploy/run-laptop.sh --print production|staging [<release dir>]   # print the command only
 #
 # <release dir>: an assembled launcher release (release.sh --local <dir>, then pnpm install --offline --frozen-lockfile
-# --filter @sim/server... inside it). Default: the dir named in $RUNTIME/<stage>.release (one line; the lead writes it
+# --filter @souls/server... inside it). Default: the dir named in $RUNTIME/<stage>.release (one line; the lead writes it
 # when releasing, so a restart never silently picks up another release).
 #
 # The Soul CLI 1.9 + body look (sha 40cc21a6…) and its guides come from the release's own tools/world-launcher/soul/ (pinned copies;
@@ -25,7 +25,7 @@ case "$STAGE" in
 esac
 if [ -z "$REL" ] && [ -f "$RUNTIME/$STAGE.release" ]; then REL="$(head -1 "$RUNTIME/$STAGE.release")"; fi
 [ -n "$REL" ] && [ -f "$REL/tools/world-launcher/launcher.mjs" ] || { echo "no launcher release at '${REL}'" >&2; exit 1; }
-[ -d "$REL/node_modules" ] || { echo "$REL has no node_modules: run pnpm install --offline --frozen-lockfile --filter @sim/server... there" >&2; exit 1; }
+[ -d "$REL/node_modules" ] || { echo "$REL has no node_modules: run pnpm install --offline --frozen-lockfile --filter @souls/server... there" >&2; exit 1; }
 CMD=("$NODE" tools/world-launcher/launcher.mjs --base /worlds --port "$PORT" --range "$RANGE" --data "$DATA" ${EXTRA[@]+"${EXTRA[@]}"}
   --max-worlds "$MAXW" --max-running "$MAXR" --world-heap-mb 768 --create-limit 6 --mars-web "$REL/mars-web")
 if [ "$PRINT" = 1 ]; then printf 'cd %q && ' "$REL"; printf '%q ' "${CMD[@]}"; echo; exit 0; fi

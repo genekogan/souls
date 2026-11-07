@@ -2,7 +2,7 @@
 // lettering of fx/neon.ts on the face listed in make.args.faces ({neon: true, at, w, h}). The words are entity state
 // `text` (the owner's), else the def's default. A sign this viewer saw off and then lit strikes and stutters; one
 // already lit when the viewer arrives is steady at once.
-import { kitArgs } from '@sim/generators';
+import { kitArgs } from '@souls/generators';
 import { buildKit } from '../kit.mesh.ts';
 import { registerMesh } from '../registry.ts';
 import { bindMotionModel, nightOf } from '../motion.ts';

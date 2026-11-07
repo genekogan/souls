@@ -101,7 +101,7 @@ afterwards) without changing `bench.mjs`.
 - `meetup/meetup.mjs`: the runner. `meetup/report.mjs`: `REPORT.md` against #443's initial objectives.
 
 ```bash
-pnpm --filter @sim/web build && pnpm build:viewer      # once per checkout: the worlds refuse genesis without them
+pnpm --filter @souls/web build && pnpm build:viewer      # once per checkout: the worlds refuse genesis without them
 node tools/bench/capacity/meetup/meetup.mjs --profile even,meetup [--repeats 2] [--browser] [--short] [--quiet-host] \
   [--host-class <neutral label>] [--port 4400] [--out .local/bench/meetup/<name>]
 ```
@@ -186,7 +186,7 @@ root (so `systemd-run` may drop to the bench user) and give that user write acce
 the CW2 baseline:
 
 ```bash
-gh run download <run> --repo genekogan/souls -D .local/qualify/<run>
+gh run download <run> --repo soulsimulation/souls -D .local/qualify/<run>
 node tools/bench/capacity/meetup/compare.mjs .local/qualify/<baseline>/capacity-qualify-<baseline> .local/qualify/<run>/capacity-qualify-<run> [--out <file>]
 ```
 

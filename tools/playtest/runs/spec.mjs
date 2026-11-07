@@ -11,6 +11,7 @@ import { validateDiagnostics } from './diagnostics.mjs';
 import { RECORD_SIZES } from '../observer/browser.mjs';
 import { RECORD_STARTS } from '../lib/arrival.mjs';
 import { worldTimeRequest } from './setup.mjs';
+import { SCORER } from './controllability.mjs';
 
 export const SPEC_VERSION = 1;
 const CAMERAS = ['wide', 'free'];
@@ -153,7 +154,7 @@ export function validateSpec(spec, { specPath = null, cwd = process.cwd(), serve
   if (policy?.required?.length && controllers.allowLiveModels !== true) fail('controllers.live-model', `this run needs live model providers (${policy.required.join(', ')}) for ${[...controllerList.map((c) => `${c.id}:${c.adapter}`), ...(policy.claude && !controllerList.length ? ['director/reviewer'] : [])].join(', ')}; set controllers.allowLiveModels only with explicit authorization, or use cast "none" with a scripted director and deterministic review`);
   if (errors.length) return { ok: false, errors };
 
-  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), ...(diag.effective ? { diagnostics: diag.effective } : {}) };
+  const effective = { soulRun: SPEC_VERSION, name: spec.name ?? `${scenario.name}${cast === 'none' ? '-world' : ''}`, scenario: { path: scenarioPath, sha256: sha256(scenarioText), name: scenario.name }, cast, world: { port: effectiveScenario.world.port, slug: effectiveScenario.world.slug ?? null, genesis: effectiveScenario.world.genesis ?? null, snapshot: effectiveScenario.world.snapshot ?? null, time: worldTime.time, source: { kind: sourceKey, path: sourceRel, sha256: sha256(readFileSync(sourcePath)) } }, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches: batches.map(({ id, path, sha256: h, ops }) => ({ id, path, sha256: h, ops: ops.length })) } : null, durationSec: effectiveScenario.durationSec ?? null, observer, limits, controllers, retention, ...(evaluation ? { evaluation: { questions } } : {}), scorer: { id: SCORER.id, version: SCORER.version, path: SCORER.path, sha256: sha256(readFileSync(new URL('./controllability.mjs', import.meta.url))) }, ...(diag.effective ? { diagnostics: diag.effective } : {}) };
   return { ok: true, errors: [], effective, scenario: effectiveScenario, controllers: controllerList, policy, setup: setup ? { maxWallSec: setup.maxWallSec ?? 120, batches } : null };
 }
 

@@ -128,9 +128,9 @@ approval to a different candidate silently.
 
 ## Integrate, ship and hand off
 
-Review qualified PRs and queue merges only within existing authority. T3/T4 maintainer approvals, proof requirements
-and release limits remain binding. The coordinator either serves as explicitly appointed release owner or hands
-ready changes to that owner; there is only one owner of an active release head. A worker cannot launch a paid gate
+Review qualified PRs and queue merges only within the [approval matrix](agent-workflow.md#the-merge-train).
+Proof requirements and release limits remain binding. The coordinator is the release owner and runs each release
+end to end ([release owner](../release.md#release-owner)); there is only one owner of an active release head. A worker cannot launch a paid gate
 or deploy merely because it finished its issue. Follow [release](../release.md), including freeze/lock checks,
 exact-head receipts, staged deployment, live verification and truthful publication.
 
@@ -154,6 +154,11 @@ It reads GitHub only. Worker liveness and private state still come from the coor
 Keep PR journals and changelog fragments consistent with actual acceptance, proof and release receipts. Link visual
 evidence where available and appropriate; never convert a merged-but-unreleased feature into a shipped claim or
 overwrite failed evidence. The coordinator owns completeness and publication review; workers supply the entries.
+
+For a planned switch (for example a provider's usage limit), follow the
+[coordinator-handoff skill](../../.claude/skills/coordinator-handoff/SKILL.md): it winds the workers down to
+checkpoints, writes the private packet and ends with a takeover prompt. That prompt is a migration: it authorizes the
+incoming coordinator to resume the named agenda at once, unlike the orientation-only starter below.
 
 Before replacing the coordinator, leave the agenda checkpoint, PR/head refs, evidence, failures, active jobs,
 remaining authority and exact next action. Confirm the old owner stopped before takeover. Preserve ongoing gates

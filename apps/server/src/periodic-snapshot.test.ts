@@ -1,9 +1,9 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate as turn } from 'node:timers/promises';
-import { toyFactory } from '@sim/engine-toy';
-import type { Engine, EngineFactory, EngineSnapshot } from '@sim/engine-contract';
-import { kernelHash } from '@sim/kernel';
+import { toyFactory } from '@souls/engine-toy';
+import type { Engine, EngineFactory, EngineSnapshot } from '@souls/engine-contract';
+import { kernelHash } from '@souls/kernel';
 import { Db } from './db.ts';
 import { WorldHost, type SnapshotBody } from './world.ts';
 

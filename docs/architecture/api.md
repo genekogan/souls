@@ -10,7 +10,10 @@ the original worlds. The server strips the world path (`WORLD_PATH`) before rout
   failures are 500 `{ code: 'internal' }`.
 - **Bodies.** `/v1/*` bodies are limited to 64 KB (larger: 413 `too-large`). Photo routes accept 360 KB; body and art
   uploads have their own limits. While the world's clock is halted, requests answer 503 `world-unavailable`.
-- **Headers.** Every response sets `X-Robots-Tag: noindex` and refuses framing.
+- **Headers.** Every response refuses framing. Every response except the world page (`/`) and its public guides
+  (`/SKILL.md`, `/skill.md`, `/instructions.md`, `/llms.txt`, `/cards.md`, GET or HEAD without a query string) sets
+  `X-Robots-Tag: noindex, nofollow`. The launcher adds it to every response of an unlisted world, every `/__sim`
+  answer and every root path it hands to whichever world is running, and serves `/robots.txt` and `/sitemap.xml` (`tools/world-launcher/crawl.mjs`): public pages and listed worlds only.
 - **Auth**, three kinds:
   - **User:** `Authorization: Bearer <session token>` from the web app's sign-in. Production uses Clerk
     (`AUTH_PROVIDER=clerk` with `CLERK_PUBLISHABLE_KEY`, `CLERK_ISSUER_URL`, `CLERK_AUTHORIZED_PARTIES`,

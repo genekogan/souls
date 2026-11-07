@@ -21,7 +21,7 @@
 //   children); `x-moderation-version` tells the viewer which veto state it saw.
 // - `GET /v1/world/seq`: carries `moderation: {version, hidden}`, so open viewers redraw within one heartbeat.
 import type { Context, Hono } from 'hono';
-import { definitionRefs } from '@sim/world-compiler';
+import { definitionRefs } from '@souls/world-compiler';
 import { moderationFor, targetSha, type ModerationStore, type RawDb } from './store.ts';
 
 export type ModerationDeps = {

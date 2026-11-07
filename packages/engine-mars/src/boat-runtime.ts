@@ -1,6 +1,6 @@
 // Explicit new fixture version. Existing shore and living factories stay intact.
 import { readFileSync } from 'node:fs';
-import { hashOf,nativeShoreSceneV1Schema,shoreAppearanceSourceV1Schema,SHORE_APPEARANCE_SOURCE_V1,type RenderScene } from '@sim/engine-contract';
+import { hashOf,nativeShoreSceneV1Schema,shoreAppearanceSourceV1Schema,SHORE_APPEARANCE_SOURCE_V1,type RenderScene } from '@souls/engine-contract';
 import { loadMars } from './load.ts';
 import { nativeShoreFixture } from './shore-runtime.ts';
 import { createWaterGeometryProbe } from './water-geometry.ts';

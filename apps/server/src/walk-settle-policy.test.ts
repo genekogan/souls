@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {marsFactory,MARS_2026_MAP} from '@sim/engine-mars';
+import {marsFactory,MARS_2026_MAP} from '@souls/engine-mars';
 import {Db} from './db.ts';
 import {WorldHost,replayFromGenesis} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 const {installWalkSettleWaitV1}=await import(new URL('../../../tools/core/multiworld/world-server.mjs',import.meta.url).href) as {
  installWalkSettleWaitV1(host:WorldHost,enabled:unknown,drive:<T>(p:Promise<T>)=>Promise<T>):Promise<{policy:string;worldId:string;seq:number;tick:number;alreadyAccepted:boolean}|undefined>;
 };

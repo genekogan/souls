@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{{TITLE}}</title>
+    <meta name="description" content="{{DESCRIPTION}}" />
+    {{ROBOTS}}
+    <link rel="canonical" href="{{CANONICAL}}" />
+    <link rel="alternate" type="text/markdown" href="{{TWIN}}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Souls" />
+    <meta property="og:title" content="{{TITLE}}" />
+    <meta property="og:description" content="{{DESCRIPTION}}" />
+    <meta property="og:url" content="{{CANONICAL}}" />
+    <meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101110" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">{{JSONLD}}</script>
+    <!-- A public docs page (#896): docs/site/<page>.md rendered at build time (src/docs-site.ts). No script. Tokens and type
+         follow the changelog page (changelog.html). The same page as Markdown: the "View as markdown" link. -->
+    <style>
+      :root { color-scheme: light dark; --bg: #fafaf7; --fg: #1b1b18; --dim: #77776f; --line: #d8d8cf; --accent: #0b6e4f; --code: #f0efe8; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #101110; --fg: #e4e4dc; --dim: #8b8b82; --line: #2b2c29; --accent: #6fd6a8; --code: #1a1b19; } }
+      html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      a { color: var(--accent); }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 48px max(24px, env(safe-area-inset-left)); box-sizing: border-box; }
+      .top { display: flex; gap: 18px; align-items: baseline; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 2vh 0 28px; }
+      .top a { color: var(--dim); text-decoration: none; } .top a:hover { color: var(--fg); text-decoration: underline; }
+      .top .md { margin-left: auto; }
+      .grid { display: grid; grid-template-columns: 210px minmax(0, 720px); gap: 0 40px; }
+      nav h2 { font: 600 11px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 6px; }
+      nav section { margin: 0 0 22px; } nav ul { list-style: none; margin: 0; padding: 0; } nav li { font-size: 13.5px; margin: 0 0 4px; }
+      nav a { color: var(--fg); text-decoration: none; } nav a:hover { text-decoration: underline; } nav a[aria-current] { color: var(--accent); font-weight: 600; }
+      .soon { color: var(--dim); font-size: 11px; }
+      article h1 { font-size: 30px; line-height: 1.2; margin: 0 0 18px; }
+      article h2 { font-size: 20px; margin: 34px 0 10px; } article h3 { font-size: 16px; margin: 24px 0 8px; }
+      article p, article li { max-width: 68ch; } article li { margin: 0 0 6px; }
+      article code { font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+      article pre { background: var(--code); padding: 12px 14px; border-radius: 6px; overflow-x: auto; } article pre code { padding: 0; background: none; }
+      article table { border-collapse: collapse; margin: 12px 0; font-size: 14px; } article th, article td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px 12px 6px 0; vertical-align: top; }
+      article blockquote { margin: 12px 0; padding: 0 14px; border-left: 3px solid var(--line); color: var(--dim); }
+      .soon-note { color: var(--dim); border: 1px dashed var(--line); padding: 8px 12px; border-radius: 6px; }
+      @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } nav { order: 2; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 30px; } .top { flex-wrap: wrap; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top"><a href="{{HOME}}">← Worlds</a><a href="{{DOCS}}">Docs</a><a class="md" href="{{TWIN}}">View as markdown</a></header>
+      <div class="grid">
+        <nav aria-label="Docs">{{NAV}}</nav>
+        <article>
+{{ARTICLE}}
+        </article>
+      </div>
+    </div>
+  </body>
+</html>

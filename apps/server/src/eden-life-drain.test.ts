@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fixture,accept} from '../test/native-owner-fixture.ts';
-import {commonsLifeReaderFactory,marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
+import {commonsLifeReaderFactory,marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
 import {drainEdenThought} from './eden-bootstrap.ts';
 const factory=commonsLifeReaderFactory(await marsFactory({...EDEN_SAFE_COMMONS_WORLD,safeCrewRemoval:true}));
 async function setup(t:any){const f=fixture(':memory:',factory);t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});await accept(f.host,f.host.installCommonsProvisionsV1());f.host.paused=true;return f;}

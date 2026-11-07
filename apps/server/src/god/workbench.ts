@@ -1,7 +1,7 @@
 // W1: owner-only, world-free kit admission and never-placed trial cleanup.
 import type { Context, Hono } from 'hono';
-import { batchSchema, correctKitDefines, creationInputFailure, definitionRefs, plan, type StoredDef } from '@sim/world-compiler';
-import { CREATION_LIMITS } from '@sim/generators';
+import { batchSchema, correctKitDefines, creationInputFailure, definitionRefs, plan, type StoredDef } from '@souls/world-compiler';
+import { CREATION_LIMITS } from '@souls/generators';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ApiError } from '../souls.ts';

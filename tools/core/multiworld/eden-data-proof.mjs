@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {copySqliteReadOnly} from './copy-sqlite.mjs';
 import {DatabaseSync} from 'node:sqlite';
 export async function proveEdenData({input,descriptor,sourceDb,dataFile,port=4954,output,restartOnly=false}){
- const dir=mkdtempSync(join(tmpdir(),'sim-eden-data-'));let app;
+ const dir=mkdtempSync(join(tmpdir(),'souls-eden-data-'));let app;
  try{
   const d=JSON.parse(readFileSync(resolve(descriptor),'utf8')),flags=d.flags??{};
   const target=join(dir,'sim.db');

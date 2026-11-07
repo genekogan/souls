@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lane BUDGET (2026-10-22): the web bundle size is a release-gate invariant. The gate step V3-bundle
-// (bundle-gate.test.mjs) measures the candidate's own `pnpm --filter @sim/web build` (apps/web/dist, made by V2-build-root)
+// (bundle-gate.test.mjs) measures the candidate's own `pnpm --filter @souls/web build` (apps/web/dist, made by V2-build-root)
 // and fails when any chunk or the total grew by THRESHOLD_PCT or more over the checked-in, reviewed baseline.json, or when
 // a new chunk of NEW_CHUNK_BYTES or more appears that the baseline does not know. Changing the baseline is an explicit,
 // reviewed commit of baseline.json, never a side effect of a gate run:
@@ -25,7 +25,7 @@ export const HERE = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = resolve(HERE, '../../..');
 export const DIST = join(ROOT, 'apps/web/dist');
 export const BASELINE = join(HERE, 'baseline.json');
-export const BUILD = ['pnpm', ['--filter', '@sim/web', 'build']]; // exactly the gate's V2-build-root
+export const BUILD = ['pnpm', ['--filter', '@souls/web', 'build']]; // exactly the gate's V2-build-root
 export const THRESHOLD_PCT = 10;
 export const SLACK_BYTES = 4096;
 export const NEW_CHUNK_BYTES = 100 * 1024;
@@ -34,7 +34,7 @@ export const SCHEMA = 'bundle-budget/1';
 export const HEADER = [
   'Reviewed web bundle baseline for the release-gate step V3-bundle (tools/test-harness/bundle-budget/budget.mjs has the rules).',
   'Update ONLY as its own reviewed commit: node tools/test-harness/bundle-budget/budget.mjs --build --write (or --from <gate>/candidate/out/suite/bundle/current.json --write).',
-  'The gate never writes this file. Sizes are of a plain `pnpm --filter @sim/web build`, as the gate builds it.',
+  'The gate never writes this file. Sizes are of a plain `pnpm --filter @souls/web build`, as the gate builds it.',
   '2026-10-22 (lane BUDGET): written from main 41a5b530e (live 3.62). Lane DEPS is removing the ~460 KB viem chunk (assets/toViemAccount-moo9TJem.js) in parallel; the integrator (STACK) re-runs --write as its own reviewed commit after DEPS merges, so the smaller sizes become the budget.',
 ];
 

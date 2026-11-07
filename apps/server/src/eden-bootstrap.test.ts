@@ -6,14 +6,14 @@ import {tmpdir} from 'node:os';
 import {setImmediate} from 'node:timers/promises';
 import {spawn,type ChildProcess} from 'node:child_process';
 import WebSocket from 'ws';
-import {PROTO,type LogEvent} from '@sim/protocol';
-import {marsFactory,GREEN_FIELD_WORLD} from '@sim/engine-mars';
+import {PROTO,type LogEvent} from '@souls/protocol';
+import {marsFactory,GREEN_FIELD_WORLD} from '@souls/engine-mars';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {edenCoreRequested,edenHistoryFactory,installEdenCore} from './eden-bootstrap.ts';
 import {config} from './config.ts';
 import {Db} from './db.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 const legacy=await marsFactory(GREEN_FIELD_WORLD);
 async function until(predicate:()=>boolean|Promise<boolean>){for(let i=0;i<150;i++){if(await predicate())return;await new Promise(r=>setTimeout(r,20));}throw Error('owned local condition did not settle');}
 

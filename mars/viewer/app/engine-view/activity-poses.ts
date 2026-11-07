@@ -9,7 +9,7 @@ import {seesawAngle, swingAngle} from './play-motion.ts';
 // roots, contacts, seats and hands stay the engine's; engine hand points / grips always win over this layer.
 
 /** Overlay ids drawn on top of their base posture (sit / idle / sit-ground). */
-export const ACTIVITY_OVERLAYS: ReadonlySet<string> = new Set(['row', 'ride', 'read', 'browse', 'write', 'play-piano', 'play-music', 'paint', 'eat', 'drink', 'cook', 'play-game', 'craft', 'post-letter', 'wave', 'operate', 'use-computer', 'sing', 'listen', 'fish', 'feed', 'garden', 'swing', 'seesaw', 'picnic', 'tell-story', 'bow', 'clap', 'nod', 'shake-head', 'cheer', 'point', 'pick-up', 'put-down', 'hug', 'handshake', 'high-five', 'give', 'take']);
+export const ACTIVITY_OVERLAYS: ReadonlySet<string> = new Set(['row', 'ride', 'read', 'browse', 'write', 'play-piano', 'play-music', 'paint', 'eat', 'drink', 'cook', 'play-game', 'craft', 'post-letter', 'wave', 'operate', 'use-computer', 'sing', 'listen', 'fish', 'feed', 'garden', 'chalk', 'swing', 'seesaw', 'picnic', 'tell-story', 'bow', 'clap', 'nod', 'shake-head', 'cheer', 'point', 'pick-up', 'put-down', 'hug', 'handshake', 'high-five', 'give', 'take']);
 /** Whole-body ids: the body point stays put and the viewer lays the body out from it along pose.yaw. */
 export const LYING: ReadonlySet<string> = new Set(['lie', 'nap', 'situps', 'bench-press', 'hammock', 'stargaze']);
 export const FACE_DOWN: ReadonlySet<string> = new Set(['pushups']);
@@ -144,6 +144,9 @@ export function activityFrame(activity: string, base: string, seconds: number, i
       f.hands = [[0.3, -0.12, -0.12 + 0.06 * bite], [0.34 + 0.22 * cast, 0.1, -0.02 + 0.26 * cast - 0.16 * bite]]; f.lean = 0.08 + 0.1 * cast; f.look = 0.2; return f; }
     case 'feed': { const k = (t * 0.55) % 1, scoop = k < 0.4 ? S(k / 0.4) : 0, toss = k >= 0.4 && k < 0.7 ? S((k - 0.4) / 0.3) : 0, rest = k >= 0.7 ? S((k - 0.7) / 0.3) : 0;
       f.hands = [[0.28, -0.12, -0.3 + 0.1 * scoop], [0.3 - 0.1 * scoop + 0.34 * toss - 0.2 * rest, 0.04 + 0.12 * toss, -0.38 + 0.26 * scoop + 0.1 * toss - 0.2 * rest]]; f.lean = 0.12 + 0.12 * toss; f.look = 0.3; return f; }
+    // #430: stooped low over the pavement in front, the chalk hand drawing small loops near the ground, the other on a knee
+    case 'chalk': { const a = t * 2.4, k = tri(t * 0.17);
+      f.hands = [[0.2, -0.16, -0.62], [0.5 + 0.07 * Math.cos(a) + 0.05 * k, 0.04 + 0.07 * Math.sin(a), -1.08]]; f.lean = 0.88; f.feetOut = 0.17; f.look = 0.55; return f; }
     case 'garden': { const dig = Math.sin(t * 3.2), k = tri(t * 0.2);
       f.hands = [[0.42, -0.06, -0.62 + 0.02 * k], [0.46 + 0.08 * dig, 0.05, -0.64 + 0.06 * Math.abs(dig)]]; f.lean = 0.62 + 0.06 * dig; f.feetOut = 0.17; f.look = 0.2; return f; }
     // leisure: holding the swing's chains at shoulder height, leaning back as it goes forward; the see-saw's handle in
