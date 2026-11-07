@@ -40,13 +40,19 @@ test('notebook words resolve only where a notebook is offered', () => {
   // what the words name decides, in order: a target's name, then a label's noun; "from" and "your" name nothing
   assert.equal(resolve('cross out my name in the notebook', all), nbUnpin.id, 'the notebook is named, whatever "name" says');
   assert.equal(resolve('cross out my name on the notice board', all), unpin.id);
-  assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin]), 'unknown', 'no sheet here: the board keeps her note');
-  assert.equal(resolve('cross out my name from the notebook', [pin, unpin]), 'unknown');
+  assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin]), 'capability.unknown', 'no sheet here: the board keeps her note');
+  assert.equal(resolve('cross out my name from the notebook', [pin, unpin]), 'capability.unknown');
   assert.equal(resolve('cross out', [nbPin, nbUnpin]), nbUnpin.id, 'nothing else to cross out');
   // a thing named beats a label's noun, and a blocked offer answers for itself
   assert.equal(resolve('cross off my name from the notice board', all), unpin.id);
   assert.equal(resolve('strike off my name from the board', all), unpin.id);
   const noLine = {...nbUnpin, available: false, blocked: {code: 'object.not-yours', reason: 'You have no line in this notebook.'}};
   assert.equal(resolve('cross out my line in the notebook', [sign, unsign, nbPin, noLine]), noLine.id, 'the notebook says why not');
-  assert.equal(resolve('cross out my note on the sheet', [pin, unpin]), 'unknown', 'a sheet that is not here');
+  assert.equal(resolve('cross out my note on the sheet', [pin, unpin]), 'capability.unknown', 'a sheet that is not here');
+  // bare words at something blocked get its reason; words for a thing that isn't here do nothing
+  assert.equal(resolve('cross out', [nbPin, noLine]), noLine.id, 'the notebook says why not');
+  assert.equal(resolve('cross out my note in the notebook', [pin, unpin]), 'capability.unknown', 'the board keeps her note');
+  assert.equal(resolve('cross out my line on the board', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('cross out my name from the notice board', [sign, unsign]), 'capability.unknown', 'the sheet keeps her name');
+  assert.equal(resolve('cross out my name in the notebook', [sign, unsign]), 'capability.unknown');
 });

@@ -73,7 +73,7 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  for(const [text,why] of [['','required'],['x'.repeat(61),'too long'],['two\nlines','one line'],['bell\u0007','control']]){const b=await act(ana,`object:${id('notebook')}:pin`,{text},false);assert.equal(b.code,'capability.params',why);}
  const none=await act(ana,`object:${id('notebook')}:unpin`,undefined,false);assert.equal(none.code,'object.state');
  // interrupted before the stroke ends: nothing written
- const cut=await act(ana,`object:${id('notebook')}:pin`,{text:'never finished'});for(let n=0;n<500&&!body(ana).human?.handActuator?.stroke;n++)await tick(1);await tick(15);
+ const cut=await act(ana,`object:${id('notebook')}:pin`,{text:'never finished'});assert.equal(cut.result?.action,'pin',JSON.stringify(cut).slice(0,200));assert.equal(cut.result?.set,undefined,'the answer to writing carries no page');for(let n=0;n<500&&!body(ana).human?.handActuator?.stroke;n++)await tick(1);await tick(15);
  await accept(f.host,edge.act(ana,{capability:'stand:here'}));await tick(80);assert.equal(state('notebook').text,'','an interrupted stroke writes nothing');assert.notEqual(edge.receipt(ana.soulId,cut.receipt.id).phase,'completed');
  // three Souls write: each line appears only at the end of its stroke, signed, in order; the hand works on the sloped page
  const runs=[];
