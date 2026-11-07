@@ -6,6 +6,7 @@ import { anonymousHello } from '../../packages/client/src/hello.ts';
 import { PWA_MANIFEST, pwaHeadTags, pwaManifest, type PwaIcons } from './src/pwa-manifest.ts';
 import { changelogHtml } from './src/changelog-page.ts';
 import { buildDocs } from './src/docs-site.ts';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -120,7 +121,8 @@ function changelogPage(): Plugin {
 // docs/<slug>/index.html and its Markdown twin docs/<slug>.md (/docs: docs/index.html and docs.md), llms.txt, llms-full.txt,
 // docs/pages.json (the launcher's sitemap) and changelog.md (the changelog page's own source). Static files, no script, no
 // chunk: the viewer bundle is untouched. SIM_SITE_ORIGIN (default https://soul.game) is the origin canonical URLs and
-// llms.txt name. docs/site/WRITING.md is the writing guide, not a page.
+// llms.txt name. docs/site/WRITING.md is the writing guide, not a page. #898: the reference pages' generated part is not
+// in the tree; tools/docs/generate.mjs writes it here from the server's own modules, and a build it can't serve in full fails.
 function docsSite(): Plugin {
   let base = '/';
   const dir = fileURLToPath(new URL('../../docs/site', import.meta.url)), template = fileURLToPath(new URL('./docs-template.html', import.meta.url));
@@ -133,7 +135,8 @@ function docsSite(): Plugin {
     configResolved(c) { base = c.base; },
     generateBundle() {
       const t0 = performance.now();
-      const { pages, out } = buildDocs({ files: files(dir).map((f) => relative(dir, f)), read: (r) => readFileSync(join(dir, r), 'utf8'), template: readFileSync(template, 'utf8'),
+      const generated: Record<string, string> = JSON.parse(execFileSync(process.execPath, [fileURLToPath(new URL('../../tools/docs/generate.mjs', import.meta.url)), '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+      const { pages, out } = buildDocs({ files: files(dir).map((f) => relative(dir, f)), read: (r) => generated[r] ?? readFileSync(join(dir, r), 'utf8'), template: readFileSync(template, 'utf8'),
         changelog: readFileSync(changelog, 'utf8'), base, origin });
       for (const [fileName, source] of out) this.emitFile({ type: 'asset', fileName, source });
       this.info(`docs: ${pages.length} pages (${pages.filter((p) => !p.stub).length} published) in ${(performance.now() - t0).toFixed(0)} ms`);

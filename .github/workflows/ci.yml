@@ -158,7 +158,7 @@ jobs:
               bash tools/test-harness/web-suite.sh
               ;;
             docs-reference)
-              # #898: the generated reference pages (docs/site actions, api, mcp) still match the server's code
+              # #898: the generator of the reference pages (docs/site actions, api, mcp) runs, and writes all the server answers
               node --test --test-concurrency=1 tools/docs/generate.test.mjs
               ;;
             launcher)

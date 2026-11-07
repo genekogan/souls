@@ -5,7 +5,7 @@
 // and nothing is written outside DATA_DIR (config.ts creates it when imported). The MCP handler is asked over a loopback
 // server on an ephemeral port that only this process uses, closed before it exits.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -107,8 +107,11 @@ for (const t of mcp.filter((m) => m.name.startsWith('eden_'))) {
 
 // Refusal codes the edge source names (EdgeError(status, 'code', ...) and { code: 'family.reason' } literals), and the rule
 // that gives a failed body act `alternatives` (a fresh dry run of the same intent), read from intents.ts as written.
-// tracked files only, so an untracked scratch file on a laptop cannot change the page
-const files = execFileSync('git', ['ls-files', 'apps/server/src/edge'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.ts$/.test(f) && !/\.test\.ts$|fixture/.test(f)).sort();
+// tracked files only, so an untracked scratch file on a laptop cannot change the page; a build outside a checkout has only the tree
+const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+let tracked;
+try { tracked = execFileSync('git', ['ls-files', 'apps/server/src/edge'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n'); } catch { tracked = walk('apps/server/src/edge'); }
+const files = tracked.filter((f) => /\.ts$/.test(f) && !/\.test\.ts$|fixture/.test(f)).sort();
 const codes = new Map();
 const CODE = "'([a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)+)'";
 // EdgeError(status, 'code', ...), { code: 'code' } literals, and the ledger's refuse('code', ...) / fail('code') helpers
