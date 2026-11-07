@@ -62,6 +62,10 @@ node tools/test-harness/bundle-budget/budget.mjs --build --write     # accept a 
 
 The gate never writes the baseline; only a reviewed commit does.
 
+The comparison runs in two places: the CI job `types-web`, on the build it already makes, so growth fails `ci-ok` on the
+PR that causes it; and V3-bundle in the release gate. A PR that changes only the baseline or the budget tool also selects
+`types-web`.
+
 ## Conformance
 
 `packages/conformance` bakes, places and furnishes every core library def revision at its parameter endpoints and
@@ -130,6 +134,11 @@ is behind main can still leave with `needs:rebase`. The decision is `windowFor` 
 loaded laptop. It is picked by its own paths (`tools/soul-actions`, `apps/server`, `packages/world-compiler`,
 `packages/engine-*`) and by every full-scope run, including each push to main, and a failure blocks through `ci-ok`. It
 is not a gate step, so the gate's suite tree and cached baseline don't change.
+
+**Soul runtime and trace tests.** `tools/soul-runtime/*.test.mjs` and `tools/soul-trace/*.test.mjs` run as the CI job
+`soul-tools`, about 17 s measured on a loaded laptop. It is picked by its own paths (`tools/soul-runtime`,
+`tools/soul-trace`, `tools/world-launcher/soul`, `apps/server`) and by every full-scope run, and a failure blocks through
+`ci-ok`. Like `soul-actions`, it is not a gate step.
 
 **Self-hosted runners.** The heavy `qualify` legs run on the runners named by the repository variable
 `CI_HEAVY_RUNNER` when it is set (one label, such as `souls-ci`), else on GitHub-hosted runners. The browser `smoke` leg

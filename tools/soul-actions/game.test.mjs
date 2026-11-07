@@ -53,6 +53,8 @@ test('noughts and crosses: turns, third player, taken square, win, wipe, read, l
  await mark(cy,'5');assert.equal(state('game').text,'....X....');assert.equal(state('game').players,'Cy');
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);assert.equal(restored.get('game').state.text,'....X....');
  assert.deepEqual(f.host.engine.runtime.violations,[]);
+ // the runtime waits out a live courtesy step-aside for any verb (runtime admit, make-way-wait.test.ts; #424 F7): never retried
+ assert.equal(makeWayRetries,0,'no body program failed on another body\'s step-aside');
  const report={status:'pass',hereBytes:{absent:JSON.stringify(absent).length,distant100Games:JSON.stringify(far).length,nearby:JSON.stringify(near).length},reasons,label,read,retries,makeWayRetries,checks:['turns enforced (out of turn refused)','a third Soul refused while a game is on','taken square refused','win detected; marking after a win refused','read offer names the state only; the read names players, state and grid','wipe starts a new game; the next marker plays X','the whiteboard keeps its own write offer (own kind)','100 distant games in play: +0 bytes, no offers','snapshot persistence','zero native violations']};
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/summary.json`,JSON.stringify(report,null,2));}console.log(JSON.stringify(report));
 });
