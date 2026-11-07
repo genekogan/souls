@@ -32,7 +32,7 @@ const INIT = `(() => {
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) P.longtasks.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch {}
   const tick = (t) => { if (P.recording) P.frames.push(t); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
   const poll = setInterval(() => {
-    const w = window.__simEntity;
+    const w = window.__soulsEntity;
     if (w && P.renderer !== w.renderer) {
       P.renderer = w.renderer; P.installs = (P.installs || 0) + 1;
       const r = w.renderer, orig = r.render.bind(r), gl = r.getContext();
@@ -57,7 +57,7 @@ const INIT = `(() => {
 })();`;
 
 const sceneStats = () => {
-  const w = window.__simEntity, r = w.renderer, P = window.__perf;
+  const w = window.__soulsEntity, r = w.renderer, P = window.__perf;
   let meshes = 0, visibleMeshes = 0, casters = 0, instanced = 0, instances = 0, skinned = 0, lights = 0, shadowLights = [];
   w.scene.traverse((o) => {
     if (o.isMesh) { meshes++; let v = true; for (let p = o; p; p = p.parent) if (!p.visible) { v = false; break; } if (v) { visibleMeshes++; if (o.castShadow) casters++; } if (o.isInstancedMesh) { instanced++; instances += o.count; } if (o.isSkinnedMesh) skinned++; }
@@ -92,7 +92,7 @@ try {
     let lastTri = -1, stableSince = Date.now(), settledAt = null;
     for (;;) {
       await page.waitForTimeout(250);
-      const s = await page.evaluate(() => ({ active: !!window.__simEntity?.layer?.active, tri: window.__perf.lastInfo?.triangles ?? -1, marks: window.__perf.marks }));
+      const s = await page.evaluate(() => ({ active: !!window.__soulsEntity?.layer?.active, tri: window.__perf.lastInfo?.triangles ?? -1, marks: window.__perf.marks }));
       if (s.tri !== lastTri) { lastTri = s.tri; stableSince = Date.now(); }
       if (s.active && s.tri > 0 && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
       if (Date.now() - tNav > settleMax * 1000) break;

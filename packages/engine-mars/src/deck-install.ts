@@ -22,21 +22,28 @@ export const JOIST_END = 'joist-end', JOIST_SEAT = 'joist-seat', SHEET_BEARING =
 const SEAT_TOL = 0.05;
 /** The part lies on the ground at most this far (horizontally) from where it goes (m): a joist under its bay, a sheet
  *  beside it (it cannot come up through the joists it goes onto, so it is lifted over from the side). */
-const STAGED_NEAR = { joist: 1.5, plywood: 3.5 };
+const STAGED_NEAR: Record<Kind, number> = { joist: 1.5, plywood: 3.5, flight: 3, tread: 3 };
+/** PC16 (#695): each kind's diagnostic prefix and its codes for a host that cannot carry it, a seat missing, a seat taken. */
+const CODES: Record<Kind, { pre: string; host: string; seat: string; taken: string }> = {
+  joist: { pre: 'joist', host: 'joist.beam-unsupported', seat: 'joist.no-beams', taken: 'joist.occupied' },
+  plywood: { pre: 'plywood', host: 'plywood.support-unsupported', seat: 'plywood.too-few-supports', taken: 'plywood.overlap' },
+  flight: { pre: 'stair', host: 'stair.beam-unsupported', seat: 'stair.no-seat', taken: 'stair.occupied' },
+  tread: { pre: 'tread', host: 'tread.no-stair', seat: 'tread.index', taken: 'tread.already-installed' },
+};
 
-type Socket = NonNullable<AssetDef['sockets']>[number];
-const tryDef = (id: string): AssetDef | undefined => { try { return def(id); } catch { return undefined; } };
-const socketsOf = (e: Entity | undefined): Socket[] => (e && tryDef(e.def)?.sockets) || [];
-const ofKind = (e: Entity | undefined, kind: string) => socketsOf(e).filter((s) => s.kind === kind).sort((a, b) => a.local[0] - b.local[0] || (a.id < b.id ? -1 : 1));
-const takenBy = (e: Entity, socket: string) => (e.connections ?? []).find((c) => c.socket === socket);
-const item = (e: Entity | undefined): e is Entity => !!e && e.kind !== 'human' && tryDef(e.def)?.category === 'item';
+export type Socket = NonNullable<AssetDef['sockets']>[number];
+export const tryDef = (id: string): AssetDef | undefined => { try { return def(id); } catch { return undefined; } };
+export const socketsOf = (e: Entity | undefined): Socket[] => (e && tryDef(e.def)?.sockets) || [];
+export const ofKind = (e: Entity | undefined, kind: string) => socketsOf(e).filter((s) => s.kind === kind).sort((a, b) => a.local[0] - b.local[0] || (a.id < b.id ? -1 : 1));
+export const takenBy = (e: Entity, socket: string) => (e.connections ?? []).find((c) => c.socket === socket);
+export const item = (e: Entity | undefined): e is Entity => !!e && e.kind !== 'human' && tryDef(e.def)?.category === 'item';
 /** A loose part with two joist ends. */
 export const isJoistPart = (e: Entity | undefined): e is Entity => item(e) && ofKind(e, JOIST_END).length === 2;
 /** A loose sheet with two or more bearing connectors. */
 export const isSheetPart = (e: Entity | undefined): e is Entity => item(e) && ofKind(e, SHEET_BEARING).length >= 2;
-const label = (e: Entity) => `${tryDef(e.def)?.label ?? e.def} ${e.id}`;
+export const label = (e: Entity) => `${tryDef(e.def)?.label ?? e.def} ${e.id}`;
 const f2 = (v: number) => v.toFixed(2);
-const fail = (code: string, message: string, subjects: string[]): { ok: false; diagnostic: Diagnostic } => ({ ok: false, diagnostic: { code, message, subjects } });
+export const fail = (code: string, message: string, subjects: string[]): { ok: false; diagnostic: Diagnostic } => ({ ok: false, diagnostic: { code, message, subjects } });
 
 /** Why a beam cannot carry a joist now ([] = it can): seated at both ends in frames held up by a crew or standing on their own. */
 export function beamProblems(w: WorldState, b: Entity | undefined): string[] {
@@ -53,9 +60,15 @@ export function joistProblems(w: WorldState, j: Entity | undefined): string[] {
   return ofKind(j, JOIST_END).flatMap((s) => { const c = takenBy(j, s.id); return c ? beamProblems(w, w.entities[c.to]) : [`${j.id} ${s.id} rests on nothing`]; });
 }
 
-type Pair = { host: string; seat: string };
-type Prog = { ends: string[]; pairs: Pair[]; target: Pose; stations: { p: Vec2; yaw: number; level: number }[]; path: Pose[]; duration: number };
-type Kind = 'joist' | 'plywood';
+export type Pair = { host: string; seat: string };
+export type Prog = { ends: string[]; pairs: Pair[]; target: Pose; stations: { p: Vec2; yaw: number; level: number }[]; path: Pose[]; duration: number };
+/** PC16 (#695): a stair flight and a tread go in by the same programme. */
+export type Kind = 'joist' | 'plywood' | 'flight' | 'tread';
+/** Where a part goes when its connectors are on the seat points `qs` (PC16: a flight or a tread is placed by its host's
+ *  geometry, not by two of its own points), or why it cannot. */
+export type Place = (part: Entity, qs: Vec3[], hosts: Entity[]) => { pose: Pose; ends: string[] } | { ok: false; diagnostic: Diagnostic };
+/** Where the crew stands to work (PC16): the points they stand near, and the box they stay out of. */
+export type Stand = (part: Entity, target: Pose) => { points: Vec2[]; obb: { c: Vec2; half: Vec2; yaw: number }; y: number; y0: number };
 export type SeatExec = {
   p: { crew: string[] }; part: string; kind: Kind; prog: Prog; id: string; phase: 'approach' | 'lift'; children?: Children; t: number; from: Pose; to: Pose; start: Pose;
   path?: Pose[]; duration: number; crew: string[]; item: string; slots?: string[]; stall?: number; lowering?: true;
@@ -75,15 +88,16 @@ function fit(part: Entity, ends: Socket[], qs: Vec3[]): { pose: Pose; miss: numb
 
 /** Geometry and preconditions for setting `part` (its connectors of `endKind`) into the seats `pairs`, in either order. */
 export function planSeat(rt: Runtime, kind: Kind, crew: string[], partId: string, pairs: Pair[], endKind: string, seatKind: string,
-  hostProblems: (w: WorldState, h: Entity | undefined) => string[]): { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic } {
-  const w = rt.world, part = w.entities[partId]!, code = (c: string) => `${kind}.${c}`;
-  if (new Set(pairs.map((p) => p.host)).size !== pairs.length) return fail(code('no-beams'), `${label(part)} rests on ${pairs.length} different ${kind === 'joist' ? 'beams' : 'joists'}`, [partId]);
+  hostProblems: (w: WorldState, h: Entity | undefined) => string[], o: { place?: Place; stand?: Stand; crew?: [number, number] } = {}): { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic } {
+  const w = rt.world, part = w.entities[partId]!, C = CODES[kind], code = (c: string) => `${C.pre}.${c}`;
+  if (new Set(pairs.map((p) => p.host)).size !== pairs.length) return fail(C.seat, `${label(part)} rests on ${pairs.length} different ${kind === 'joist' ? 'beams' : 'joists'}`, [partId]);
   for (const { host } of pairs) {
     const h = w.entities[host], why = hostProblems(w, h);
-    if (why.length) return fail(kind === 'joist' ? 'joist.beam-unsupported' : 'plywood.support-unsupported', `${label(part)} cannot rest on ${host}: ${why.join('; ')}`, [partId, host]);
+    if (why.length) return fail(C.host, `${label(part)} cannot rest on ${host}: ${why.join('; ')}`, [partId, host]);
   }
   if (new Set(crew).size !== crew.length) return fail('crew.duplicate', `crew for ${label(part)} lists someone twice`, crew);
-  if (crew.length !== 2) return fail(code('crew'), `${kind === 'joist' ? 'setting a joist' : 'laying a sheet'} needs exactly two people, one at each end`, crew);
+  const [cmin, cmax] = o.crew ?? [2, 2];
+  if (crew.length < cmin || crew.length > cmax) return fail(code('crew'), cmin === cmax ? `${({ joist: 'setting a joist', plywood: 'laying a sheet', flight: 'setting a stair flight', tread: 'setting a tread' })[kind]} needs exactly two people, one at each end` : `setting a tread takes one or two people`, crew);
   for (const c of crew) {
     if (w.entities[c]?.kind !== 'human') return fail('entity.unknown', `no person "${c}"`, [c]);
     const d = holdingDiagnostic(w, c); if (d) return { ok: false, diagnostic: d };
@@ -91,28 +105,40 @@ export function planSeat(rt: Runtime, kind: Kind, crew: string[], partId: string
   const qs: Vec3[] = [];
   for (const { host, seat } of pairs) {
     const h = w.entities[host]!, s = socketsOf(h).find((x) => x.id === seat && x.kind === seatKind);
-    if (!s) return fail(kind === 'joist' ? 'joist.no-beams' : 'plywood.too-few-supports', `${label(h)} has no ${seatKind} ${seat}`, [host]);
-    const t = takenBy(h, seat); if (t) return fail(kind === 'joist' ? 'joist.occupied' : 'plywood.overlap', `${seat} of ${label(h)} already holds ${t.to}`, [host, t.to]);
+    if (!s) return fail(C.seat, `${label(h)} has no ${seatKind} ${seat}`, [host]);
+    // PC16 (#695): a seat takes what its def says: an older beam's ledge has no room for a stair hook
+    if (s.mates && !s.mates.includes(endKind)) return fail(C.seat, `${seat} of ${label(h)} does not take a ${endKind}`, [host, partId]);
+    const t = takenBy(h, seat); if (t) return fail(C.taken, `${seat} of ${label(h)} already holds ${t.to}`, [host, t.to]);
     qs.push(worldPoint(h, s.local));
   }
   const ends = ofKind(part, endKind);
-  if (ends.length !== pairs.length) return fail(kind === 'joist' ? 'joist.no-beams' : 'plywood.too-few-supports', `${label(part)} bears on ${ends.length} supports; ${pairs.length} named`, [partId]);
+  if (ends.length !== pairs.length) return fail(C.seat, `${label(part)} bears on ${ends.length} supports; ${pairs.length} named`, [partId]);
+  let target: Pose, goodEnds: string[];
+  if (o.place) {
+    const pl = o.place(part, qs, pairs.map((p) => w.entities[p.host]!));
+    if ('ok' in pl) return pl;
+    target = pl.pose; goodEnds = pl.ends;
+  } else {
   // either way round; the one that turns it least where it lies, so it does not spin in the air
   const fits = [fit(part, ends, qs), fit(part, [...ends].reverse(), qs)].map((f, i) => ({ ...f, ends: i ? [...ends].reverse() : ends }))
     .sort((a, b) => Math.abs(angleDelta(part.pose.yaw, a.pose.yaw)) - Math.abs(angleDelta(part.pose.yaw, b.pose.yaw)));
   const good = fits.find((f) => f.miss <= SEAT_TOL);
   if (!good) return fail(kind === 'joist' ? 'joist.no-beams' : 'plywood.span', `${label(part)} does not fit those seats: one of its ends would be ${f2(Math.min(...fits.map((f) => f.miss)))} m from its seat (at most ${SEAT_TOL} m)`, [partId, ...pairs.map((p) => p.host)]);
-  const target = good.pose, floor = part.pose.p[1], top = Math.max(...qs.map((q) => q[1]));
+  target = good.pose; goodEnds = good.ends.map((e) => e.id);
+  }
+  const floor = part.pose.p[1], top = Math.max(...qs.map((q) => q[1]));
   if (part.support?.kind !== 'ground' || part.phase !== 'staged' || part.reservedBy || part.connections?.length || hypot(part.pose.p[0] - target.p[0], part.pose.p[2] - target.p[2]) > STAGED_NEAR[kind])
     return fail(code('not-staged'), `${label(part)} must be lying on the ground within ${STAGED_NEAR[kind]} m of where it goes (carry it to the bay first)`, [partId]);
   if (top - floor > STANDING_REACH) return fail('reach.too-high', `a seat at ${f2(top - floor)} m exceeds standing reach (${STANDING_REACH} m)`, [partId, ...crew]);
   const lift = sweptLiftPath(rt, part, part.pose, target, { ignore: pairs.map((p) => p.host), what: label(part) });
   if (!lift.ok) return lift;
-  // one at each end of it where it goes, as the native installs stand them (deck.ts anchors)
+  // one at each end of it where it goes, as the native installs stand them (deck.ts anchors); PC16: a flight's crew
+  // either side of it, a tread's worker beside the flight
   const size = def(part.def).size, u = rot2([size[0] * 0.45, 0], target.yaw), c: Vec2 = [target.p[0], target.p[2]];
-  const st = findStations(rt, crew, [[c[0] - u[0], c[1] - u[1]], [c[0] + u[0], c[1] + u[1]]], { label: label(part), obb: { c, half: [size[0] / 2, size[2] / 2], yaw: target.yaw }, y: target.p[1] + size[1], y0: target.p[1] });
+  const where = o.stand?.(part, target) ?? { points: [[c[0] - u[0], c[1] - u[1]], [c[0] + u[0], c[1] + u[1]]] as Vec2[], obb: { c, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: target.yaw }, y: target.p[1] + size[1], y0: target.p[1] };
+  const st = findStations(rt, crew, where.points.slice(0, crew.length), { label: label(part), obb: where.obb, y: where.y, y0: where.y0 });
   if (!st.ok) return st.diagnostic.code === 'reach.too-high' ? st : fail(code('station-unreachable'), st.diagnostic.message, st.diagnostic.subjects ?? crew);
-  return { ok: true, program: { ends: good.ends.map((e) => e.id), pairs, target, stations: st.stations.map((s) => ({ p: s.p, yaw: s.yaw, level: s.level })), path: lift.path.poses, duration: liftDuration(lift.path, kind === 'joist' ? 2.0 : 3.0) } };
+  return { ok: true, program: { ends: goodEnds, pairs, target, stations: st.stations.map((s) => ({ p: s.p, yaw: s.yaw, level: s.level })), path: lift.path.poses, duration: liftDuration(lift.path, ({ joist: 2.0, plywood: 3.0, flight: 3.0, tread: 1.5 })[kind]) } };
 }
 
 /** The lift so far, backwards: from where the part is now to where it lay (beam-connect.ts backPath). */
@@ -147,11 +173,12 @@ function sheetPickup(rt: Runtime, crew: string[], part: Entity, to: Pose): { mov
 }
 
 /** The shared programme of both verbs: walk to it and take hold, check again, lift along the path, set it into its seats. */
-function seatAction<P extends { crew: string[] }>(o: { verb: string; kind: Kind; description: string; schema: z.ZodType<P>; part: (p: P) => string; hosts: (p: P) => string[];
-  plan: (rt: Runtime, p: P) => { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic } }): ActionDef<P, Prog, SeatExec> {
+export function seatAction<P extends { crew: string[] }>(o: { verb: string; kind: Kind; description: string; schema: z.ZodType<P>; part: (p: P) => string; hosts: (p: P) => string[];
+  plan: (rt: Runtime, p: P) => { ok: true; program: Prog } | { ok: false; diagnostic: Diagnostic }; seats?: (w: WorldState, p: P) => string[] }): ActionDef<P, Prog, SeatExec> {
   return {
     verb: o.verb, description: o.description, schema: o.schema, resumable: true,
-    reservations: (w, p) => [...p.crew.map((c) => ({ resource: `actor:${c}`, mode: 'exclusive' as const })), { resource: `entity:${o.part(p)}`, mode: 'exclusive' as const }],
+    // PC16 (#695): a seat two workers could both be lifting into is reserved too (a tread into its flight)
+    reservations: (w, p) => [...p.crew.map((c) => ({ resource: `actor:${c}`, mode: 'exclusive' as const })), { resource: `entity:${o.part(p)}`, mode: 'exclusive' as const }, ...(o.seats?.(w, p) ?? []).map((s) => ({ resource: `seat:${s}`, mode: 'exclusive' as const }))],
     plan: o.plan,
     start(rt, p, prog, id) {
       const part = rt.world.entities[o.part(p)]!;
@@ -243,7 +270,7 @@ export const laySheetV1: ActionDef<SP, Prog, SeatExec> = withParams(seatAction<S
   part: (p) => p.sheet, hosts: (p) => p.joists, plan: planSheetV1,
 }));
 /** The exec keeps its own params, so the lift's second plan reads exactly what was asked. */
-function withParams<P extends { crew: string[] }>(a: ActionDef<P, Prog, SeatExec>): ActionDef<P, Prog, SeatExec> {
+export function withParams<P extends { crew: string[] }>(a: ActionDef<P, Prog, SeatExec>): ActionDef<P, Prog, SeatExec> {
   return { ...a, start(rt, p, prog, id) { const ex = a.start(rt, p, prog, id); return Object.assign(ex, { params: structuredClone(p) }); } };
 }
 

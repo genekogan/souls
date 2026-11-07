@@ -1,5 +1,5 @@
 {
-  "name": "@sim/brain",
+  "name": "@souls/brain",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "test": "node --test src/*.test.ts"
   },
   "dependencies": {
-    "@sim/engine-contract": "workspace:*",
-    "@sim/protocol": "workspace:*",
+    "@souls/engine-contract": "workspace:*",
+    "@souls/protocol": "workspace:*",
     "zod": "^4.6.7",
-    "@sim/kernel": "workspace:*"
+    "@souls/kernel": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19"

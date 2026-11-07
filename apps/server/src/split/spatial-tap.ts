@@ -14,7 +14,7 @@ import { WorldHost } from '../world.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { hereFrame, Perception } from '../edge/perception/here.ts';
 import { GodMode } from '../god/god.ts';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import type { StaticExportV1 } from '../../../../mars/viewer/engine/spatial/service.ts';
 import type { ReplicaBody, FixtureRow } from './spatial-replica.ts';
 

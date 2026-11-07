@@ -23,7 +23,8 @@ export const EXISTING_WORLDS = Object.freeze(['eden', 'mars', 'littlemartians', 
  * `/w` holds worlds; `/ops` the private overview; the rest app/static content, snapshots and redirects.
  */
 export const TAKEN_PREFIXES = Object.freeze(['/w', '/l', '/assets', '/__sim', '/v1', '/mcp', '/ws', '/browser', '/modular', '/engine', '/models',
-  '/history', '/2020', '/data', '/mars-assets', '/world-assets', '/lab', '/studio', '/buildings', '/skill.md', '/healthz', '/ops']);
+  '/history', '/2020', '/data', '/mars-assets', '/world-assets', '/lab', '/studio', '/buildings', '/skill.md', '/healthz', '/ops',
+  '/docs', '/changelog', '/llms.txt', '/llms-full.txt', '/robots.txt', '/sitemap.xml']);   // #894/#896: the public site's own paths
 
 /** True when a slug could be routed to the existing release by a `/w/<key>*` path glob. */
 export const shadowsExisting = (slug) => EXISTING_WORLDS.some((k) => slug === k || slug.startsWith(k));

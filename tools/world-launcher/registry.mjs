@@ -7,7 +7,7 @@ import { shadowsExisting } from './production.mjs';
 
 export const SLUG_RE = /^[a-z][a-z0-9-]{0,31}$/;
 /** Names the server or the proxy already use for something else. */
-export const RESERVED = new Set(['toy', 'mars', 'littlemartians', 'eden', 'assets', 'world-assets', 'mars-assets', 'api', 'new', 'sim', 'god', 'launcher']);
+export const RESERVED = new Set(['toy', 'mars', 'littlemartians', 'eden', 'assets', 'world-assets', 'mars-assets', 'api', 'new', 'sim', 'god', 'launcher', 'docs']);
 
 /**
  * A URL-safe, unique slug for a human name ("Gene's Valley" → genes-valley, then genes-valley-2 …).

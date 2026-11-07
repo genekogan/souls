@@ -3,8 +3,8 @@
 // def's own mesh half (any kit tree, rock or flower) instead of a built-in species. Exclusions
 // come from the model: solids (footprints), roads/paths/plazas/pitches (surfaces), buildings.
 // Owner: L3.
-import { centreLine, orchardPoints, paletteOf, queryOf, scatter2Points, type ScatterPoint } from '@sim/generators';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import { centreLine, orchardPoints, paletteOf, queryOf, scatter2Points, type ScatterPoint } from '@souls/generators';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import * as THREE from 'three';
 import { meshFor, registerMesh, type MeshCtx } from './registry.ts';
 import { blockTest, type BlockCells, type BlockShape } from './block-test.ts';

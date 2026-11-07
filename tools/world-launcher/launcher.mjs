@@ -17,6 +17,7 @@
 //   GET  /__sim/launcher         children, ports, pids, restarts (diagnostics; direct local requests only)
 //   GET  /__sim/healthz          {ok, build, worlds, running, caps, memAvailableMb} (also /healthz); clientErrorsNew = error kinds
 //                                pages first reported since this build went live (client-errors.mjs)
+//   GET  /__sim/glitches         loopback: every world's recoveries and halts by rule and rung; ?world=<slug>[&limit=N] adds its records
 //   GET  /__sim/health           the site owner's health page (health-dash.mjs): a data-free shell; ?json=1 = build, host, every
 //                                world, backups, arrivals, new errors, alerts, for loopback or a site owner's Clerk session
 //   POST /__sim/client-errors    a page's error beacon (apps/web/src/client-errors.ts); GET: the operator's summary (direct
@@ -95,6 +96,7 @@ const WORLD_AGENT = new Agent({ keepAlive: false });
 const hopless = (h) => { const { connection: _c, 'keep-alive': _k, ...rest } = h; return rest; };
 import { clientErrors } from './client-errors.mjs';
 import { healthDash } from './health-dash.mjs';
+import { readGlitches } from './glitches.mjs';
 import { ownerOverview } from './owner-overview.mjs';
 import { connect } from 'node:net';
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -162,6 +164,29 @@ export const eyesAgent = (ua) => typeof ua === 'string' && EYES_UA.test(ua);
 const PASSIVE_READ = /\/w\/[a-z][a-z0-9-]{0,31}\/(?:healthz|v1\/config|v1\/god\/status|v1\/world\/souls)\/?$/;
 export const SOUL = { controllerCli: join(here, 'soul/eden.mjs'), cli: join(here, 'soul/eden-agent.mjs'), skill: join(here, 'soul/skill.md'), instructions: join(here, 'soul/instructions.md') };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8' };
+/** #896: does this Accept header prefer Markdown? text/markdown with q > 0 and above text/html's q (a tie goes to the one
+ *  listed first); media types are case-insensitive. Browsers never name text/markdown, so they get HTML. */
+export function wantsMarkdown(accept = '') {
+  let md = null, html = null;
+  for (const [i, part] of String(accept).toLowerCase().split(',').entries()) {
+    const [type, ...params] = part.split(';').map((s) => s.trim());
+    const qp = params.find((p) => p.startsWith('q=')), q = qp ? Number(qp.slice(2)) : 1;
+    if (!Number.isFinite(q)) continue;
+    if (type === 'text/markdown' && md === null) md = { q, i };
+    if ((type === 'text/html' || type === 'application/xhtml+xml') && (html === null || q > html.q)) html = { q, i };
+  }
+  if (!md || md.q <= 0) return false;
+  return !html || md.q > html.q || (md.q === html.q && md.i < html.i);
+}
+/** #896: the web-build file for a docs or changelog path: /docs, /docs/<page>[/] -> its HTML (docs[/<page>]/index.html) or, at
+ *  <path>.md or when the Accept header prefers Markdown (wantsMarkdown), its Markdown twin; /changelog.md -> changelog.md. */
+export function docFile(path, accept = '') {
+  const md = wantsMarkdown(accept);
+  if (path === '/changelog.md' || (md && (path === '/changelog' || path === '/changelog/'))) return 'changelog.md';
+  const m = /^\/docs((?:\/[a-z0-9-]+)*)(\.md|\/)?$/.exec(path);
+  if (!m) return null;
+  return m[2] === '.md' || md ? `docs${m[1]}.md` : `docs${m[1]}/index.html`;
+}
 const json = (res, status, body, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': NOINDEX, ...headers }).end(JSON.stringify(body)); };
 const BUILD = (() => { try { return readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../BUILD'), 'utf8').trim(); } catch { return 'dev'; } })();
 /** Direct requests from this machine (not through a reverse proxy, which adds x-forwarded-for). */
@@ -611,6 +636,13 @@ export async function openLauncher(cfg = {}) {
   // the client hung up while we waited (a world booting, a retry, a hand-back): nothing is sent on its behalf, or a
   // long-poll listen would reach the world as a ghost and could supersede the agent's real listener
   const clientGone = (req, res) => res.destroyed || req.socket.destroyed;
+  /** #896: the published docs pages the build lists (docs/pages.json), for the sitemap; re-read when the build changes. */
+  let docsList = { at: -1, pages: [] };
+  function docsPages() {
+    const f = join(webDir, 'docs', 'pages.json'); let m = -1; try { m = statSync(f).mtimeMs; } catch { return []; }
+    if (m !== docsList.at) { try { docsList = { at: m, pages: JSON.parse(readFileSync(f, 'utf8')).pages.map((p) => p.url).filter((u) => /^\/docs(\/[a-z0-9-]+)*$/.test(u)) }; } catch { docsList = { at: m, pages: [] }; } }
+    return docsList.pages;
+  }
   /** #894: every response of an unlisted world says noindex, whatever the world sent (listing read per response, so
    *  listing or unlisting a world applies at once); a listed world's own headers pass unchanged. */
   function robotsOf(slug, headers) { const w = slug ? registry.get(slug) : null; return w && isUnlisted(w) ? { ...headers, 'x-robots-tag': NOINDEX } : headers; }
@@ -1015,10 +1047,17 @@ export async function openLauncher(cfg = {}) {
       }
       // lane L7: Prometheus text for the worlds and the launcher (LOAD-CONTRACT §5), loopback only
       if (path === '/__sim/metrics' && req.method === 'GET') { if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; } serveMetrics(res, { launcher: { build: BUILD, maxRunning: prod.maxRunning, maxWorlds: MAX_WORLDS, memAvailableMb: memAvailableMb() }, clientErrors: errors, worlds: registry.worlds.map((w) => ({ slug: w.slug, ...pool.status(w.slug), refused: ceilings.refused(w.slug), listenHeld: ceilings.held(w.slug), ...(readStats.has(w.slug) ? { read: { ...readStats.get(w.slug) } } : {}), live: readLive(registry.worldDir(w.slug)) })) }); return; }
+      // #1150: every world's recoveries and halts from its own store, asleep or not; ?world= adds that world's records. Loopback only.
+      if (path === '/__sim/glitches' && req.method === 'GET') {
+        if (!direct(req)) { json(res, 404, { ok: false, code: 'not-found' }); return; }
+        const one = url.searchParams.get('world'), limit = Math.min(1000, Math.max(0, Number(url.searchParams.get('limit')) || 50)), worlds = {};
+        for (const w of registry.worlds) { if (one && w.slug !== one) continue; const g = readGlitches(join(registry.worldDir(w.slug), 'sim.db'), { limit: one ? limit : 0 }); if (g?.total) worlds[w.slug] = g; }
+        json(res, 200, { ok: true, worlds }); return;
+      }
       if ((path === '/__sim/healthz' || path === '/healthz') && (req.method === 'GET' || req.method === 'HEAD')) {
         const running = registry.worlds.filter((w) => pool.status(w.slug).status === 'running').length;
         const host = hostHealth(dataDir); // deploy/host-health.mjs (timer): `hostOk` (+ short `hostCodes` when not ok) public, the numbers loopback-only
-        // lane L1: the guard's findings now, not at the timer's next run: wedged, held, crashloop, bootSlow (codes public, texts loopback)
+        // lane L1: the guard's findings now, not at the timer's next run: wedged, held, crashloop, bootSlow, halted (codes public, texts loopback)
         const worldProblems = pool.problems(), wcodes = [...new Set(worldProblems.map((x) => x.code))];
         const hostOk = (host ? host.ok : true) && !wcodes.length, hostCodes = [...new Set([...(host && !host.ok ? host.codes ?? [] : []), ...wcodes])];
         json(res, 200, { ok: true, service: 'world-launcher', build: BUILD, auth: auth ? 'clerk' : 'dev', worlds: registry.worlds.length, running, maxWorlds: MAX_WORLDS, maxRunning: prod.maxRunning, ...(host || wcodes.length ? { hostOk, ...(hostOk ? {} : { hostCodes }) } : {}), ...(direct(req) && worldProblems.length ? { worldProblems } : {}), clientErrorsNew: errors.newSinceRelease(), clientErrorsRate10m: errors.rate10m(), refused: refusedByWorld(), ...(direct(req) ? { memAvailableMb: memAvailableMb(), ...(host ? { host } : {}) } : {}) }); return;
@@ -1040,10 +1079,18 @@ export async function openLauncher(cfg = {}) {
         // #894: what crawlers are told (crawl.mjs); answered here, no world is woken. The sitemap is read from the registry
         // per request, so a world listed or unlisted appears or drops out at once.
         if (path === '/robots.txt') { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' }).end(req.method === 'HEAD' ? undefined : robotsTxt({ origin: publicOrigin, base: B })); return; }
-        if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : sitemapXml({ origin: publicOrigin, base: B, worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; }
-        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @sim/web build'); return; }
+        if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : sitemapXml({ origin: publicOrigin, base: B, pages: docsPages(), worlds: publicWorlds(registry.worlds.filter((w) => !closing.has(w.slug))) })); return; }
+        if (path === '/' || path === '/index.html') { if (serveFile(res, join(webDir, 'index.html'), 'no-cache')) return; res.writeHead(500, { 'content-type': 'text/plain' }).end('The web app is not built: pnpm --filter @souls/web build'); return; }
+        // #896: the docs, llms.txt and the changelog's Markdown twin, all built into the web build (apps/web/src/docs-site.ts).
+        // A page answers as HTML, or as its Markdown twin at <path>.md or for `Accept: text/markdown`.
+        if (path === '/llms.txt' || path === '/llms-full.txt') { if (serveFile(res, join(webDir, path.slice(1)), 'no-cache', req)) return; }
+        const doc = docFile(path, req.headers.accept), negotiated = /^\/docs(?:\.md$|\/|$)|^\/changelog(?:\/|\.md)?$/.test(path);
+        if (negotiated) res.setHeader('vary', 'Accept');
+        if (doc && serveFile(res, join(webDir, doc), 'no-cache', req)) return;
         // #388/#584: build-time changelog HTML, no script/API collection; reviewed optional journal media can load separately.
         if ((path === '/changelog' || path === '/changelog/') && serveFile(res, join(webDir, 'changelog.html'), 'no-cache', req)) return;
+        // #896: the site's own paths end here: a miss is a plain 404, never handed to a world (which could wake it)
+        if (negotiated || path === '/llms.txt' || path === '/llms-full.txt') { res.removeHeader('vary'); json(res, 404, { ok: false, code: 'docs.not-found' }); return; }
         // lane P4: the installable-app manifest beside the world list (apps/web/src/pwa-manifest.ts)
         if (path === '/manifest.webmanifest' && serveFile(res, join(webDir, 'manifest.webmanifest'), 'public, max-age=3600', req)) return;
         if (path.startsWith('/assets/')) { const f = inside(webDir, path); if (f && serveFile(res, f, 'public, max-age=31536000, immutable', req)) return; }  // P1: req = ETag/304 + precompressed .br/.gz

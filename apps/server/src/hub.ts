@@ -6,13 +6,13 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
 import {randomUUID} from 'node:crypto';
 import { COLUMNS_V1,packColumnsV1,joinTableOrderV1, PROTO, publicEvent,TAKE_BOUNDARY_WIRE_V1,stringifyTakeBoundaryWireV1,TAKE_ENTITIES_WIRE_V1,TAKE_ENTITIES_JOIN_V1,TakeEntitiesEncoderV1,TAKE_CHUNKS_WIRE_V1,TakeChunksEncoderV1,kernelRestV1,stationHelloCapabilitiesV1Schema,negotiateStationContractV1,meLiveDescriptorV1Schema,meLiveViewV1Schema,
-  type StationLiveContract,type BrainCall, type ClientMsg, type Me, type ServerMsg, type ServerStats } from '@sim/protocol';
+  type StationLiveContract,type BrainCall, type ClientMsg, type Me, type ServerMsg, type ServerStats } from '@souls/protocol';
 import type { Auth } from './auth.ts';
 import type { Brain } from './brain.ts';
 import type { Db } from './db.ts';
 import { type WorldHost } from './world.ts';
 import type { Souls } from './souls.ts';
-import { isLooseCarryAsset } from '@sim/engine-mars';
+import { isLooseCarryAsset } from '@souls/engine-mars';
 import type {CandidateStationV1} from './station.ts';
 import type {CandidateStationV2} from './station-v2.ts';
 

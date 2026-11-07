@@ -27,7 +27,7 @@ before(async () => {
     `SIM_TEST_JWKS_FILE=${join(dir, 'jwks.json')}`, `NODE_OPTIONS=--import=${preload}`, ''].join('\n'));
   delete process.env.CATALOG_GENE_OWNER_ID;
   mkdirSync(join(dir, 'data'), { recursive: true });
-  writeFileSync(join(dir, 'data', 'owner-overview.json'), JSON.stringify(projectRecords({ issues: [{ number: 556, title: 'PRIVATE STATUS SENTINEL', url: 'https://github.com/genekogan/souls/issues/556', state: 'OPEN', updatedAt: new Date().toISOString(), assignees: [], comments: [], labels: [] }], observedAt: new Date().toISOString() })));
+  writeFileSync(join(dir, 'data', 'owner-overview.json'), JSON.stringify(projectRecords({ issues: [{ number: 556, title: 'PRIVATE STATUS SENTINEL', url: 'https://github.com/soulsimulation/souls/issues/556', state: 'OPEN', updatedAt: new Date().toISOString(), assignees: [], comments: [], labels: [] }], observedAt: new Date().toISOString() })));
   L = await openLauncher({ port: PORT, range: RANGE, dataDir: join(dir, 'data'), templatesDir, authEnvFile: envFile, publicOrigin: ORIGIN, eager: 0, log: () => {} });
 });
 after(async () => { await L?.close(); delete process.env.SIM_SITE_OWNERS; rmSync(dir, { recursive: true, force: true }); });

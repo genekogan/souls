@@ -4,7 +4,7 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, checkersCellOf, checkersSquare, checkersStatus, checkersRows, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@sim/world-compiler';
+import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, checkersCellOf, checkersSquare, checkersStatus, checkersRows, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@souls/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, keepsLeftBy, boardTextProblem, enumParamProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';

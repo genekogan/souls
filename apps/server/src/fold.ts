@@ -1,22 +1,22 @@
-import {soulProfileFactV1Schema} from '@sim/protocol';
-import {authoredBoundariesDeclarationV1Schema} from '@sim/engine-contract';
+import {soulProfileFactV1Schema} from '@souls/protocol';
+import {authoredBoundariesDeclarationV1Schema} from '@souls/engine-contract';
 // The fold: applying one logged event to the world. The world has two parts:
 //   the KERNEL (meaning: things, links, vocabulary, decks), which replays from
 //   the log alone, and the ENGINE (depiction: bodies, motion), which replays the
 //   programs that decisions started. Models never appear here.
 // Used identically by the live loop, the restart fast-forward and replay tests.
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 import {
   applyAll, bind, changesOf, emptyKernel, kernelHash, seedVocabulary, sweep, whyNot, BASE_MANNERS,
   type Change, type KState, type Thing,
-} from '@sim/kernel';
-import { intentReceivedPayloadV2Schema, intentHistoryFactV2, intentAdmissionFactV2, intentControllerFactV2, intentArrivalFactV1, type BirthPayload, type DecisionPayload, type DeckPayload, type LogEvent, type MintPayload, type PlayPayload, type PlayView } from '@sim/protocol';
+} from '@souls/kernel';
+import { intentReceivedPayloadV2Schema, intentHistoryFactV2, intentAdmissionFactV2, intentControllerFactV2, intentArrivalFactV1, type BirthPayload, type DecisionPayload, type DeckPayload, type LogEvent, type MintPayload, type PlayPayload, type PlayView } from '@souls/protocol';
 import {foldMandate} from './mandate.ts';
-import {intentSleepStopV1Schema} from '@sim/protocol';
-import {bodyAssignmentV1Schema} from '@sim/protocol';
-import {renderPlatformsDeclarationV1Schema} from '@sim/engine-contract';
-import {officeStairGuardsDeclarationV1Schema} from '@sim/engine-contract';
-import { isStationFactV1, parseStationFactV1 } from '@sim/protocol';
+import {intentSleepStopV1Schema} from '@souls/protocol';
+import {bodyAssignmentV1Schema} from '@souls/protocol';
+import {renderPlatformsDeclarationV1Schema} from '@souls/engine-contract';
+import {officeStairGuardsDeclarationV1Schema} from '@souls/engine-contract';
+import { isStationFactV1, parseStationFactV1 } from '@souls/protocol';
 
 /**
  * The words a world began with (kinds, link kinds, manners, base cards), as written into its log.
@@ -220,13 +220,13 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
         for(const a of engine.anchors())if(!k.things[a.id]){const r=applyAll(k,[{op:'appear',id:a.id,kind:a.kind==='region'?'region':'place',name:a.name,at:a.in??null,traits:{...(a.entity?{entity:a.entity}:{}),...(a.point?{point:a.point}:{})}}],'world');if(!r.ok)throw Error('commons-kitchen.anchor:'+r.message);}}
       if(e.payload?.commonsProvisions){if(Object.keys(e.payload).length!==1||!engine.adoptCommonsProvisionsV1)throw Error('commons-provisions.reader-required');engine.adoptCommonsProvisionsV1(e.payload.commonsProvisions);
         for(const a of engine.anchors())if(!k.things[a.id]){const r=applyAll(k,[{op:'appear',id:a.id,kind:a.kind==='region'?'region':'place',name:a.name,at:a.in??null,traits:{...(a.entity?{entity:a.entity}:{}),...(a.point?{point:a.point}:{})}}],'world');if(!r.ok)throw Error('commons-provisions.anchor:'+r.message);}}
-      const crew=(e.payload as {crewRemovalTransition?:import('@sim/engine-contract').CrewRemovalTransitionV1}|null)?.crewRemovalTransition;
+      const crew=(e.payload as {crewRemovalTransition?:import('@souls/engine-contract').CrewRemovalTransitionV1}|null)?.crewRemovalTransition;
       if(crew){
         if(Object.keys(e.payload).length!==1)throw Error('crew-removal-transition.mixed-payload');
         if(!engine.adoptCrewRemovalTransitionV1)throw Error('crew-removal-transition.reader-unavailable');
         engine.adoptCrewRemovalTransitionV1(crew);
       }
-      const transition=(e.payload as {commonsTransition?:import('@sim/engine-contract').CommonsTransitionV1}|null)?.commonsTransition;
+      const transition=(e.payload as {commonsTransition?:import('@souls/engine-contract').CommonsTransitionV1}|null)?.commonsTransition;
       if(transition){
         if(!engine.adoptCommons)throw new Error('commons-transition.reader-unavailable');
         const preview=engine.previewCommonsTransition?.();
@@ -240,7 +240,7 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
           if(!result.ok)throw new Error(`commons-transition.anchor:${result.message}`);
         }
       }
-      const expansion=(e.payload as {campExpansion?:import('@sim/engine-contract').CampExpansionV1}|null)?.campExpansion;
+      const expansion=(e.payload as {campExpansion?:import('@souls/engine-contract').CampExpansionV1}|null)?.campExpansion;
       if(expansion){
         if(!engine.adoptCampExpansionV1)throw new Error('camp-expansion.reader-unavailable');
         const preview=engine.previewCampExpansionV1?.();if(!preview?.ok)throw new Error('camp-expansion.preview-unavailable');
@@ -283,7 +283,7 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
       if(reroute){const fn=(engine as unknown as {rerouteCarrierV1?:(s:unknown)=>boolean}).rerouteCarrierV1;if(!fn)throw Error('carrier.reader-required');fn.call(engine,reroute);}
       const carrier=(e.payload as {carrierV1?:unknown}|null)?.carrierV1;
       if(carrier){const install=(engine as unknown as {installCarrierV1?:(s:unknown)=>boolean}).installCarrierV1;if(!install)throw Error('carrier.reader-required');install.call(engine,carrier);}
-      const rules = e.payload as { runtimePolicy?: {sleepBlockTicks:number;quietSeatCourtesy?:boolean}; dayConfig?: { origin: number; dayTicks: number }; quiet?: boolean; compact?: boolean; adoptCamp?: boolean; restockCamp?: boolean; anchors?: import('@sim/engine-contract').Anchor[]; soulId?: string; character?: string };
+      const rules = e.payload as { runtimePolicy?: {sleepBlockTicks:number;quietSeatCourtesy?:boolean}; dayConfig?: { origin: number; dayTicks: number }; quiet?: boolean; compact?: boolean; adoptCamp?: boolean; restockCamp?: boolean; anchors?: import('@souls/engine-contract').Anchor[]; soulId?: string; character?: string };
       if (rules?.runtimePolicy) {
         if (!engine.configureRuntimePolicy) throw Error('runtime-policy.unsupported');
         engine.configureRuntimePolicy(rules.runtimePolicy);
@@ -324,7 +324,7 @@ export function foldEvent(engine: Engine, k: KState, e: LogEvent, counts: Record
 /** Pure replay of the log from genesis. The legacy default stops before inputs
  * at untilTick. Opt-in includeHeadEvents folds those inputs without stepping
  * beyond the tick, matching a host after drainInputs/boot at the same head. */
-export function replayFromGenesis(factory: { genesis(seed: string): unknown; create(world: any): Engine; restore?(snap: import('@sim/engine-contract').EngineSnapshot): Engine }, seed: string, events: LogEvent[], untilTick: number, options:{includeHeadEvents?:boolean}={}): { engine: Engine; kernel: KState; counts: Record<string, number> } {
+export function replayFromGenesis(factory: { genesis(seed: string): unknown; create(world: any): Engine; restore?(snap: import('@souls/engine-contract').EngineSnapshot): Engine }, seed: string, events: LogEvent[], untilTick: number, options:{includeHeadEvents?:boolean}={}): { engine: Engine; kernel: KState; counts: Record<string, number> } {
   const repairs=events.filter(e=>e.tick<=untilTick && e.kind==='rules' && e.payload?.recovery), repair=repairs.at(-1);
   let engine: Engine, kernel: KState, counts: Record<string,number>, suffix=events;
   if (repair) {

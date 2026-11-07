@@ -58,7 +58,7 @@ const log = (...a) => { const s = `[${new Date().toISOString().slice(11, 19)}] $
 
 // ------------------------------------------------------------------ preflight: what the worlds need to boot
 const MARS_WEB = join(ROOT, 'mars/viewer/dist'), KIT = join(ROOT, 'apps/web/dist/kit-contract.json');
-for (const [p, fix] of [[MARS_WEB, 'pnpm build:viewer'], [KIT, 'pnpm --filter @sim/web build']]) if (!existsSync(p)) throw new Error(`missing ${rel(p)}: run \`${fix}\` in the checkout (templates with kit contract 2 refuse genesis without it)`);
+for (const [p, fix] of [[MARS_WEB, 'pnpm build:viewer'], [KIT, 'pnpm --filter @souls/web build']]) if (!existsSync(p)) throw new Error(`missing ${rel(p)}: run \`${fix}\` in the checkout (templates with kit contract 2 refuse genesis without it)`);
 
 // ------------------------------------------------------------------ host and process facts (no names, users or paths)
 const CLK_TCK = Number(sh('getconf', ['CLK_TCK']) ?? 100) || 100;

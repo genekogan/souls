@@ -3,7 +3,7 @@
 //   node --test apps/web/src/gen-mesh/sound-plan.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { componentsSchema } from '@sim/world-compiler';
+import { componentsSchema } from '@souls/world-compiler';
 import { ambienceAt, condition, DEFAULT_SETTINGS, distanceTo, emittersOf, exposureAt, impliedSpecs, treeIndex, treesOf, loadSettings, Movement, saveSettings, SETTINGS_KEY, specsOf, variantOf, VARIANTS, KINDS, MASTER_DEFAULT, QueuedNotes } from './sound-plan.ts';
 
 test('a def may carry one sound or a list; unknown kinds are dropped; the schema accepts both', () => {

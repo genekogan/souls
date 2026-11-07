@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
@@ -78,7 +78,10 @@ test('#1120: after an engine halt the world answers 503 world-unavailable and cl
   await once(ws, 'open');
   const greeting = once(ws, 'message', { signal: AbortSignal.timeout(2000) }); ws.send(JSON.stringify({ t: 'hello', proto: 1 })); await greeting;
   host.tickOnce(); host.tickOnce();
-  assert.equal((await fetch(`http://${base}/healthz`)).status, 200, 'served before the halt');
+  const served = await fetch(`http://${base}/healthz`);
+  assert.equal(served.status, 200, 'served before the halt');
+  const health = await served.json() as { halted: boolean; glitches: unknown };
+  assert.deepEqual([health.halted, health.glitches], [false, { total: 0, byRule: {} }], 'the count is there from the start');
   const closed = once(ws, 'close', { signal: AbortSignal.timeout(2000) });
   control.fault = new Error('fixture.unrepairable');
   host.tickOnce();
@@ -87,5 +90,8 @@ test('#1120: after an engine halt the world answers 503 world-unavailable and cl
   assert.deepEqual([code, String(reason)], [1013, 'world unavailable'], 'the viewer socket is closed as for other clock failures');
   const response = await fetch(`http://${base}/healthz`);
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { ok: false, code: 'world-unavailable', message: 'World temporarily unavailable.' });
+  assert.deepEqual(await response.json(), { ok: false, code: 'world-unavailable', message: 'World temporarily unavailable.', halted: true, glitches: { total: 1, byRule: { 'engine.thrown': { halt: 1 } } } }, 'counts only: the fault text and the bodies stay private (#1150)');
+  const other = await fetch(`http://${base}/v1/world`);
+  assert.equal(other.status, 503);
+  assert.deepEqual(await other.json(), { ok: false, code: 'world-unavailable', message: 'World temporarily unavailable.' }, 'only /healthz says why');
 });

@@ -1,5 +1,5 @@
 {
-  "name": "@sim/conformance",
+  "name": "@souls/conformance",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "test": "node --test src/*.test.ts"
   },
   "dependencies": {
-    "@sim/world-compiler": "workspace:*",
-    "@sim/generators": "workspace:*"
+    "@souls/world-compiler": "workspace:*",
+    "@souls/generators": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19"

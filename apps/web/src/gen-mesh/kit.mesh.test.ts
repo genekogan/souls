@@ -3,11 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import * as THREE from 'three';
-import { kitArgs, kitPhysics, KIT_PRIMITIVES, type KitProgramArgs } from '@sim/generators';
+import { kitArgs, kitPhysics, KIT_PRIMITIVES, type KitProgramArgs } from '@souls/generators';
 import { buildKit, parseKitArgs } from './kit.mesh.ts';
 import { MaterialLib } from './materials.ts';
 import { animate, bindMotionModel, setClockNight, quantizeGlow } from './motion.ts';
-import { WorldModel, applyBatch, defSchema, type Entity, type StoredDef } from '@sim/world-compiler';
+import { WorldModel, applyBatch, defSchema, type Entity, type StoredDef } from '@souls/world-compiler';
 import examples from '../../../../tools/god-skill/scripts/gallery-language-examples.json' with { type: 'json' };
 
 const square = [[-2, -2], [2, -2], [2, 2], [-2, 2]];

@@ -9,7 +9,7 @@ test('setup bounds use physical position and wrap headings; missing evidence fai
   assert.equal(checkStart({}, { pos: [0, 0], heading: 0, posture: ['standing'] }).length, 3);
 });
 test('setup cannot pass refused/incomplete acts and does not send owner requests', async () => {
-  const runDir = mkdtempSync(join(tmpdir(), 'sim-setup-'));
+  const runDir = mkdtempSync(join(tmpdir(), 'souls-setup-'));
   for (const data of [{ accepted: false }, { accepted: true, receipt: { phase: 'running' } }]) {
     const r = await runFixtureSetup({ runDir, requestKey: 'a', setup: { steps: ['walk:plaza'] }, seat: { chain: Promise.resolve(), cliJson: async args => { assert.ok(args.includes('none')); return { ok: true, data }; } } });
     assert.equal(r.ok, false);
@@ -42,7 +42,7 @@ test('setup refuses malformed or nonfinite position and heading',()=>{
 });
 
 test('measurement setup uses frozen transport, leaving the model served CLI unchanged', async()=>{
- const runDir=mkdtempSync(join(tmpdir(),'sim-setup-')); let calls=0;
+ const runDir=mkdtempSync(join(tmpdir(),'souls-setup-')); let calls=0;
  const r=await runFixtureSetup({runDir,requestKey:'frozen',setup:{steps:[{verb:'turn',heading:90}],expect:{heading:90}},seat:{chain:Promise.resolve(),cliJson:async()=>{throw Error('baseline model CLI must not run setup');},fixtureCliJson:async args=>{calls++;return {ok:true,data:args[0]==='act'?{accepted:true,receipt:{phase:'completed'}}:{me:{heading:90}}};}}});
  assert.equal(r.ok,true);assert.equal(calls,3,'resolve, act, here');
 });

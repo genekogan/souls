@@ -11,16 +11,16 @@ import { productionSettings } from './production.mjs';
 import { slugFor } from './registry.mjs';
 import { ownerOverview, overviewShell } from './owner-overview.mjs';
 const at = '2026-11-02T10:00:00.000Z';
-const cp = { at, state: 'active', changed: 'A focused result', next: 'Owner checkpoint', eta: { range: 'unknown', confidence: 'unknown', basis: 'Final validation not measured' }, sha: 'a'.repeat(40), proofs: [{ url: 'https://github.com/genekogan/souls/pull/600', outcome: 'candidate', environment: 'local' }] };
-const comment = (v = cp) => ({ body: '```ops-checkpoint\n' + JSON.stringify(v) + '\n```', updatedAt: at, author: { login: 'worker' }, authorAssociation: 'COLLABORATOR', url: 'https://github.com/genekogan/souls/issues/556#issuecomment-123' });
-const issue = (n = 556, comments = [comment()]) => ({ number: n, title: 'Performance <img onerror="bad()">', url: `https://github.com/genekogan/souls/issues/${n}`, updatedAt: at, state: 'OPEN', assignees: [{ login: 'actual-owner' }], comments, labels: [] });
+const cp = { at, state: 'active', changed: 'A focused result', next: 'Owner checkpoint', eta: { range: 'unknown', confidence: 'unknown', basis: 'Final validation not measured' }, sha: 'a'.repeat(40), proofs: [{ url: 'https://github.com/soulsimulation/souls/pull/600', outcome: 'candidate', environment: 'local' }] };
+const comment = (v = cp) => ({ body: '```ops-checkpoint\n' + JSON.stringify(v) + '\n```', updatedAt: at, author: { login: 'worker' }, authorAssociation: 'COLLABORATOR', url: 'https://github.com/soulsimulation/souls/issues/556#issuecomment-123' });
+const issue = (n = 556, comments = [comment()]) => ({ number: n, title: 'Performance <img onerror="bad()">', url: `https://github.com/soulsimulation/souls/issues/${n}`, updatedAt: at, state: 'OPEN', assignees: [{ login: 'actual-owner' }], comments, labels: [] });
 const snapshot = () => projectRecords({ issues: [issue()], observedAt: at });
 
 test('projection separates observation, checkpoint, merge, release and live qualification; links stay source journals', () => {
-  const p = { number: 600, title: 'Change', url: 'https://github.com/genekogan/souls/pull/600', state: 'MERGED', mergedAt: at, headRefName: 'agent/556-perf', headRefOid: 'b'.repeat(40), closingIssuesReferences: [{ number: 556 }] };
+  const p = { number: 600, title: 'Change', url: 'https://github.com/soulsimulation/souls/pull/600', state: 'MERGED', mergedAt: at, headRefName: 'agent/556-perf', headRefOid: 'b'.repeat(40), closingIssuesReferences: [{ number: 556 }] };
   let s = projectRecords({ issues: [issue()], pulls: [p], observedAt: at });
   assert.equal(s.items[0].lifecycle, 'source issue only'); assert.equal(s.items[0].relatedLifecycle, 'merged'); assert.equal(s.items[0].group, 'Now'); assert.equal(s.items[0].sha, p.headRefOid);
-  const release = { name: '4.14', html_url: 'https://github.com/genekogan/souls/releases/tag/4.14', published_at: at, body: 'Included #600' };
+  const release = { name: '4.14', html_url: 'https://github.com/soulsimulation/souls/releases/tag/4.14', published_at: at, body: 'Included #600' };
   s = projectRecords({ issues: [issue()], pulls: [p], releases: [release], observedAt: at });
   assert.equal(s.items[0].lifecycle, 'source issue only'); assert.equal(s.items[0].relatedLifecycle, 'released'); assert.equal(s.items[0].group, 'Now');
   const open = { ...p, number: 601, mergedAt: null, state: 'OPEN' };
@@ -31,8 +31,8 @@ test('projection separates observation, checkpoint, merge, release and live qual
   assert.deepEqual(s.items[0].owner, ['actual-owner']);
   assert.equal(recordUrl('https://cdn.example/private.mp4?token=secret'), null);
   assert.equal(recordUrl('javascript:alert(1)'), null);
-  assert.equal(recordUrl('https://github.com/genekogan/souls/pull/600?token=x'), null);
-  assert.equal(recordUrl('https://user:password@github.com/genekogan/souls/pull/600'), null);
+  assert.equal(recordUrl('https://github.com/soulsimulation/souls/pull/600?token=x'), null);
+  assert.equal(recordUrl('https://user:password@github.com/soulsimulation/souls/pull/600'), null);
 });
 
 test('malformed, future or missing checkpoints stay missing; timestamps are not refresh time', () => {
@@ -147,7 +147,7 @@ test('collector lists each population label (open only, bounded) and collects th
     };
     const s = await collectOverview(file, run, () => at);
     assert.deepEqual(s.items.map(i => i.number), [...DEFAULT_ISSUES, 521, 902]); // needs:gene, then epics newest first (556 already in)
-    for (const label of POPULATION_LABELS) assert.ok(calls.includes(`issue list --repo genekogan/souls --state open --label ${label} --limit ${MAX_ITEMS} --json number`), label);
+    for (const label of POPULATION_LABELS) assert.ok(calls.includes(`issue list --repo soulsimulation/souls --state open --label ${label} --limit ${MAX_ITEMS} --json number`), label);
     assert.equal(calls.filter(c => c.startsWith('issue view 556 ')).length, 1, 'an initial record that is also an epic is fetched once');
     assert.equal(s.items.find(i => i.number === 902).domain, 'Dev flow');
     assert.equal(s.items.find(i => i.number === 521).group, 'Needs you');
