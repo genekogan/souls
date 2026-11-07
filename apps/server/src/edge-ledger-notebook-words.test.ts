@@ -67,4 +67,15 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my line in the journal', [log, journal]), journal.id, 'her line in the visitors log stays');
   const market = mk('e_gggg0007', 'unpin', 'Take down your note from the notice board (market-board)', ''), hall = {...mk('e_hhhh0008', 'unpin', 'Take down your note from the notice board (noticeboard)', ''), available: false, blocked: {code: 'object.not-yours', reason: 'You have no note here.'}};
   assert.equal(resolve('cross out my note on the noticeboard', [market, hall]), hall.id, 'her note on the market board stays');
+  // a board and a notebook together: the word that names one never takes the other's
+  const both = [pin, unpin, nbPin, nbUnpin];
+  assert.notEqual(resolve('cross out my note in the journal', both), unpin.id, 'the note stays on the board');
+  assert.notEqual(resolve('cross out my line on the noticeboard', both), nbUnpin.id, 'the line stays in the notebook');
+  assert.notEqual(resolve('remove my note from the journal', both), unpin.id);
+  assert.notEqual(resolve('take down my line from the noticeboard', both), nbUnpin.id);
+  // nor for a thing that isn't here, in any spelling
+  assert.equal(resolve('remove my line from the guestbook', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('take down my line from the guest book', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('cross out my line in the visitors book', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('take down my note from the notebook', [pin, unpin]), 'capability.unknown');
 });

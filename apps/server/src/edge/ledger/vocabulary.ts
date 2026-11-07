@@ -588,7 +588,7 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   if (notebookOffered && NOTEBOOK_WORDS[verb] && !ctx.caps.some(c => c.verb === verb)) verb = NOTEBOOK_WORDS[verb];
   else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
     // the second meaning when it can happen and the first can't, or when the words name its target
-    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), said = tokens(rest).filter(w => !LABEL_FILLER.has(w)), ws = said.map(w => THING_ALIASES[w] ?? w);
+    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), said = tokens(rest.replace(/\b(?:guest|visitors?)\s+book\b/gi, 'guestbook')).filter(w => !LABEL_FILLER.has(w)), ws = said.map(w => THING_ALIASES[w] ?? w);
     // what the words name decides (#990): the thing first (its names, the "in the notebook" and "(notebook)" of its label),
     // then a label's noun ("your line"), never its "from" or "your". Words for a thing that isn't here do nothing at all, so a
     // note is not taken down for the notebook they name. Words naming nothing take what there is to cross out, and a blocked
@@ -597,15 +597,16 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const thing = (c: EdgeCapability) => [...ctx.target(c).names, ...[...c.label.matchAll(/\b(?:in|on|off|from)\s+the\s+([^()]+)|\(([^)]*)\)/g)].map(m => m[1] ?? m[2])].join(' ');
     const name = (c: EdgeCapability) => hits(thing(c)), noun = (c: EdgeCapability) => hits(c.label);
     const first = ctx.caps.filter(c => c.action === primary), second = alt ? ctx.caps.filter(c => c.action === alt) : [];
-    if (alt) {
-      const here = tokens([...first, ...second].map(thing).join(' ')), gone = said.find(w => THING_WORDS.has(w) && !tokenHit(w, here) && !tokenHit(THING_ALIASES[w] ?? w, here));
+    const crossing = !!alt || primary === 'unpin', here = crossing ? tokens([...first, ...second].map(thing).join(' ')) : [];
+    if (crossing && first.length + second.length) {
+      const gone = said.find(w => THING_WORDS.has(w) && !tokenHit(w, here) && !tokenHit(THING_ALIASES[w] ?? w, here));
       if (gone) return {kind: 'unknown', code: 'capability.unknown', reason: `There is no ${gone} here to cross anything out of, so nothing was done.`, didYouMean: []};
     }
     const altFits = !!alt && (second.length
       ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && (!!can(alt).length || !first.length)
       : !verbs.has(primary) && verbs.has(alt));
     verb = altFits ? alt : primary;
-    if (alt || primary === 'unpin') rest = said.join(' ');   // the label filler stays out of the match below too
+    if (crossing) rest = said.map(w => tokenHit(w, here) ? w : THING_ALIASES[w] ?? w).join(' ');   // no filler in the match below; a thing's own word kept
   }
   // A real fire is a qualifier of the existing fire request, not a new seat name.
   // Keep explicit/named IDs intact and require an offered actual fire before dropping it.
