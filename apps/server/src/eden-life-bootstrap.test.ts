@@ -7,8 +7,8 @@ import {edenHistoryFactory,installEdenCore,installEdenLifeV1,settleEmptyEden} fr
 import {WorldHost} from './world.ts';
 import {Brain} from './brain.ts';
 import {Souls} from './souls.ts';
-import {marsFactory,GREEN_FIELD_WORLD,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import {kernelHash} from '@sim/kernel';
+import {marsFactory,GREEN_FIELD_WORLD,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import {kernelHash} from '@souls/kernel';
 const sink={clients:()=>0,onCall(){},onCamera(){},onTicker(){},onNarrative(){}};
 // The finite delivery installs only at a resumable boundary. Alice's autonomous choice (seeded by her random soul id) can
 // hold one off: 22 of 330 seeds walk and reach for 1,341 ticks first (403 and 404 alike); release 404's gate drew a
@@ -23,5 +23,5 @@ for(const legacy of [false,true])test('production life composition keeps '+(lega
 });
 
 test('existing retained shore/social/resource history selects its keeper and is never read as a fresh dry commons',async t=>{
- const {retainedCommonsShoreFactory}=await import('@sim/engine-mars'),factory=await retainedCommonsShoreFactory({foodDeliveryV1:true,socialEdenV1:true}),f=fixture(':memory:',factory);t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});await accept(f.host,f.host.installCommonsProvisionsV1());await accept(f.host,f.host.installCommonsKitchenV1());await accept(f.host,f.host.installSocialEdenV1());await accept(f.host,f.host.installRetainedCommonsShoreV1());await accept(f.host,f.host.installCommonsFoodDeliveryV1('existing-keeper-finite'));f.brain.quiesce();f.host.saveSnapshot(true);const prefix=JSON.stringify(f.db.events(f.host.worldId)),head=f.host.engine.stateHash(),keeper=await edenHistoryFactory(f.db,f.host.worldId,{lifeV1:true}),h=new WorldHost(f.db,keeper,f.host.seed,1e9,f.host.worldId);h.boot();assert.equal(h.engine.stateHash(),head);assert.deepEqual(await installEdenCore(h,{applyCrew:false,applyCommons:false}),[]);assert.equal(JSON.stringify(f.db.events(f.host.worldId)),prefix);assert.equal(h.engine.world.base.campus,'eden-commons-shore/1');h.stop();
+ const {retainedCommonsShoreFactory}=await import('@souls/engine-mars'),factory=await retainedCommonsShoreFactory({foodDeliveryV1:true,socialEdenV1:true}),f=fixture(':memory:',factory);t.after(()=>{f.brain.quiesce();f.host.stop();f.db.close();});await accept(f.host,f.host.installCommonsProvisionsV1());await accept(f.host,f.host.installCommonsKitchenV1());await accept(f.host,f.host.installSocialEdenV1());await accept(f.host,f.host.installRetainedCommonsShoreV1());await accept(f.host,f.host.installCommonsFoodDeliveryV1('existing-keeper-finite'));f.brain.quiesce();f.host.saveSnapshot(true);const prefix=JSON.stringify(f.db.events(f.host.worldId)),head=f.host.engine.stateHash(),keeper=await edenHistoryFactory(f.db,f.host.worldId,{lifeV1:true}),h=new WorldHost(f.db,keeper,f.host.seed,1e9,f.host.worldId);h.boot();assert.equal(h.engine.stateHash(),head);assert.deepEqual(await installEdenCore(h,{applyCrew:false,applyCommons:false}),[]);assert.equal(JSON.stringify(f.db.events(f.host.worldId)),prefix);assert.equal(h.engine.world.base.campus,'eden-commons-shore/1');h.stop();
 });

@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {mkdtempSync, mkdirSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {WorldModel} from '@sim/world-compiler';
+import {WorldModel} from '@souls/world-compiler';
 import {tmpdir} from 'node:os';
 const {build} = createRequire(new URL('../../../mars/viewer/package.json', import.meta.url))('esbuild');
 

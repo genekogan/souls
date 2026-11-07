@@ -1,4 +1,4 @@
-import type {EngineFactory,EngineSnapshot} from '@sim/engine-contract';
+import type {EngineFactory,EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine,marsFactory,EDEN_SAFE_COMMONS_WORLD} from './engine.ts';
 import {commonsProvisions} from './commons-provisions.ts';
 export async function commonsProvisionsFactory():Promise<EngineFactory>{

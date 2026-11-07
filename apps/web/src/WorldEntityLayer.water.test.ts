@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groundSchema, pointInPoly, waterLevelAt, type Ground, type Water } from '@sim/ground';
+import { groundSchema, pointInPoly, waterLevelAt, type Ground, type Water } from '@souls/ground';
 import { waterLevel } from './WorldEntityLayer.ts';
 
 const ground = (waters: Water[], seaLevel?: number): Ground => groundSchema.parse({

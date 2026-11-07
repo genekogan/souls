@@ -1,4 +1,4 @@
-import {commonsNewcomerResourcesV1Schema,hashOf,type CommonsNewcomerResourcesV1,type Engine,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import {commonsNewcomerResourcesV1Schema,hashOf,type CommonsNewcomerResourcesV1,type Engine,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 import {commonsNewcomerResourcesV1} from './newcomer-resources.ts';
 /** Explicit opt-in reader over the exact existing origin, never a fresh genesis. */

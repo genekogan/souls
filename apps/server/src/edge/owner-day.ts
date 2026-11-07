@@ -60,7 +60,7 @@ const PLAIN_REASON: Record<string, string> = {
   'not-still': 'still moving: stand still first', 'no-room': 'no room there', 'hands.full': 'hands full: put something down first',
   'hands.empty': 'nothing in hand to do that with', 'walk.stuck': 'got stuck on the way', 'walk.obstacle': 'something was in the way',
   'walk.goal-occupied': 'someone was already standing there', 'slot.none-free': 'no free spot there', 'slot.none': 'no free spot there',
-  'seat.too-high': 'the seat is too high', 'traffic.person': 'gave way to someone passing', 'traffic.vehicle': 'gave way to a vehicle',
+  'traffic.person': 'gave way to someone passing', 'traffic.vehicle': 'gave way to a vehicle',
   'traffic.yield': 'gave way to someone passing', 'soul.faded': 'it had faded', 'conversation.out-of-range': 'too far away to talk',
   'gesture.partner-unavailable': 'the other one was not there', 'follow.unavailable': 'nobody there to follow',
   'place.ambiguous': 'not sure which place was meant', 'entity.unknown': 'could not find that here', 'capability.unknown': 'not something it can do here',

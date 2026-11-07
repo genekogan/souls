@@ -11,9 +11,10 @@
 //              message ends while its receipt is still open keeps checking that receipt (`receipt <id>` every 2 s) for the rest
 //              of its window (#832); the message is handled on the next turn. A step that is refused or fails
 //              stops the rule, unless the step ends with an options object {"onRefused": "continue"} (default "fail"):
-//              then the refusal is recorded and the next step runs (#828). "{{prev.<path>}}" in an argument is replaced
-//              from the previous step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}"; a placeholder
-//              that does not resolve fails its step without running it.
+//              then the refusal is recorded and the next step runs (#828). A refused final step still fails the request:
+//              there is no next step to recover with. "{{prev.<path>}}" in an argument is replaced from the previous
+//              step's JSON output (a refusal's too), e.g. "{{prev.did_you_mean[0].id}}", reading own properties only; a
+//              placeholder that does not resolve fails its step without running it, and that skipped step leaves no JSON.
 //   close      "done" (default): `result <id> done|failed` from the steps' outcome. "open": leave the request open (the
 //              activity continues in the world) until a later rule supersedes it or the run ends.
 //   supersede  text for `result <old> failed "<text>"` on every request still open when this rule fires (owner redirection)
@@ -66,12 +67,12 @@ export const stepArgs = (s) => (stepOptions(s) ? s.slice(0, -1) : s);
 /** The previous step's JSON (stdout, else stderr), or null. */
 export function stepJson(r) { for (const t of [r?.stdout, r?.stderr]) { try { const d = JSON.parse(t); if (d && typeof d === 'object') return d; } catch { /* not JSON */ } } return null; }
 /** bindPrev(args, prev) → {args} with every {{prev.<path>}} replaced, or {error} naming the first that does not resolve
- *  to a string or number. */
+ *  to a string or number. Own properties only: a path never reaches the prototype chain (`prev.constructor.name`). */
 export function bindPrev(args, prev) {
   let error = null;
   const out = args.map((a) => a.replace(PREV, (m, path) => {
     let v = prev;
-    for (const k of path.match(/[^.[\]]+/g) ?? []) v = v == null ? undefined : v[k];
+    for (const k of path.match(/[^.[\]]+/g) ?? []) v = v !== null && typeof v === 'object' && Object.hasOwn(v, k) ? v[k] : undefined;
     if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) return String(v);
     error ??= `unresolved ${m}${prev ? '' : ' (the previous step printed no JSON)'}`;
     return m;
@@ -124,11 +125,22 @@ export function waitWindowSec(args) {
   const i = args.indexOf('--wait'), n = /^\d+$/.test(args[i + 1] ?? '') ? Number(args[i + 1]) : 60;
   return Math.min(60, Math.max(1, n));
 }
+/** How much of one CLI output a tool result keeps (#371): all of it up to this many characters. It was 4000, which cut
+ *  `around` (its route) and `map` (its flags) mid-JSON, so the scorer read output the Soul really got as a broken string. */
+export const OUTPUT_KEEP = 1024 * 1024;
+/** The tool-result content of one output: whole up to OUTPUT_KEEP; past it the head, an explicit marker line and
+ *  `truncated: true`, so a scorer tells a cut output from a short one. */
+export function keptOutput(s, keep = OUTPUT_KEEP) {
+  const t = String(s ?? '');
+  return t.length <= keep ? { content: t } : { content: `${t.slice(0, keep)}\n[scripted-owner: output truncated: ${keep} of ${t.length} characters kept]`, truncated: true };
+}
 const firstLine = (s) => String(s ?? '').split('\n').find((l) => l.trim())?.slice(0, 120) ?? '';
 const clip = (s) => String(s).slice(0, 140);
 
 /** turn({cwd, text, script, maxWallSec}) → the same record shape as the model adapters, with zero usage. */
-export async function turn({ cwd, text, script, maxWallSec = 240 }) {
+export async function turn({ cwd, text, script, maxWallSec = 240, diagnostics = null }) {
+  // Opt-in passive trace (#752 → #733 tap): the preload and its env are added to this seat's CLI processes only.
+  const tr = diagnostics?.trace, pre = tr ? ['--import', tr.tap] : [], env = tr ? { SOUL_TRACE_FILE: tr.file, SOUL_TRACE_RUN: tr.run, SOUL_TRACE_SEAT: tr.seat } : undefined;
   const t0 = Date.now(), end = t0 + maxWallSec * 1000;
   const stream = [{ type: 'harness_user', text, _rx: t0 }];
   let n = 0, timedOut = false;
@@ -137,9 +149,9 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     const id = `so_${++n}`, left = end - Date.now();
     const command = `node eden.mjs ${args.map((a) => (/^[\w./:@-]+$/.test(a) ? a : JSON.stringify(a))).join(' ')}`;
     stream.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }, _rx: Date.now() });
-    const r = left > 0 ? await run('node', ['eden.mjs', ...args], { cwd, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
+    const r = left > 0 ? await run('node', [...pre, 'eden.mjs', ...args], { cwd, env, maxWallMs: left }) : { code: null, stdout: '', stderr: 'turn wall reached' };
     if (r.timedOut || left <= 0) timedOut = true;
-    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: (r.stdout || r.stderr || '').slice(0, 4000), is_error: r.code !== 0 }] }, _rx: Date.now() });
+    stream.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, ...keptOutput(r.stdout || r.stderr || ''), is_error: r.code !== 0 }] }, _rx: Date.now() });
     return r;
   };
   const errs = validateScript(script);
@@ -186,11 +198,11 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
     }
     if (id) await cli(['ack', id, clip(rule.ack ?? 'On it.')]);
     let failed = null, prev = null;
-    for (const step of rule.do) {
+    for (const [i, step] of rule.do.entries()) {
       const args = stepArgs(step), onRefused = stepOptions(step)?.onRefused ?? 'fail';
       const bound = bindPrev(args.map((a) => (id ? a.replaceAll('{id}', id) : a)), prev);
       let o;
-      if (bound.error) o = { ok: false, why: bound.error };
+      if (bound.error) { o = { ok: false, why: bound.error }; prev = null; }
       else {
         const waited = args.includes('--wait'), until = Date.now() + waitWindowSec(args) * 1000;
         let r = await cli(bound.args); prev = stepJson(r);
@@ -209,7 +221,7 @@ export async function turn({ cwd, text, script, maxWallSec = 240 }) {
         o = stepOutcome(r, { waited });
       }
       if (o.ok) continue;
-      if (onRefused === 'continue') { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
+      if (onRefused === 'continue' && i < rule.do.length - 1) { say(`[scripted-owner] ${args[0]} refused, continuing: ${o.why}`); continue; }
       failed = `${args[0]}: ${o.why}`; break;
     }
     if (!id) return;

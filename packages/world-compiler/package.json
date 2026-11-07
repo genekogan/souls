@@ -1,5 +1,5 @@
 {
-  "name": "@sim/world-compiler",
+  "name": "@souls/world-compiler",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -15,9 +15,9 @@
     "test": "node --test src/*.test.ts src/core-kit/*.test.ts"
   },
   "dependencies": {
-    "@sim/ground": "workspace:*",
+    "@souls/ground": "workspace:*",
     "zod": "^4.6.7",
-    "@sim/generators": "workspace:*"
+    "@souls/generators": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.19"

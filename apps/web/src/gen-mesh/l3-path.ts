@@ -1,6 +1,6 @@
 // Shared picture helpers for L3's path meshes: stations along a centre line, (s, t) → world
 // mapping, bridge decks (stone arch, timber trestle, steel), rails with posts. Owner: L3.
-import { arcLengths, deckAt, frames, type Span } from '@sim/generators';
+import { arcLengths, deckAt, frames, type Span } from '@souls/generators';
 import { Soup, h01, rgb, scale, type RGB, type V3 } from './soup.ts';
 
 export type Line = { c: [number, number][]; s: number[]; f: { t: [number, number]; n: [number, number] }[]; total: number };

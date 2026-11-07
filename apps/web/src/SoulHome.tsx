@@ -10,9 +10,9 @@ import { DeckPanel, HeardPanel, SentencesPanel } from './Grammar.tsx';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 // OWNER-DAY: the "Today" timeline is its own chunk, loaded only on a Soul's home view.
 const SoulDay = lazy(() => import('./SoulDay.tsx').then((m) => ({ default: m.SoulDay })));
-import { GOALS, type BrainCall, type MandateRule } from '@sim/protocol';
+import { GOALS, type BrainCall, type MandateRule } from '@souls/protocol';
 import type { AuthCtx } from './Shell.tsx';
-import type { Api, Sim } from './useSim.ts';
+import type { Api, Souls } from './useSouls.ts';
 import { Call } from './BrainPanels.tsx';
 import { steerReceipt, type SteerReceipt } from './steer-receipt.ts';
 
@@ -21,7 +21,7 @@ type Dash = { status: any; agent: { attached: boolean; label: string | null; sin
 type TL = { seq: number; tick: number; at: number; kind: string; text: string; why: string | null; mood: string | null; fallback: boolean; call: number | null };
 const ago = (ms: number | null) => { if (!ms) return 'never'; const s = Math.max(0, (Date.now() - ms) / 1000); return s < 60 ? `${Math.round(s)} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 
-type HomeProps = { sim: Sim; auth: AuthCtx; api: Api; selected: string | null; onSelect(id: string | null): void; pairCode: string | null; clearPair(): void; base: string; allowCreate?: boolean; active?: boolean; worldId?: string; arrivalEnabled?:boolean; onArrivalReady?(id:string):void };
+type HomeProps = { sim: Souls; auth: AuthCtx; api: Api; selected: string | null; onSelect(id: string | null): void; pairCode: string | null; clearPair(): void; base: string; allowCreate?: boolean; active?: boolean; worldId?: string; arrivalEnabled?:boolean; onArrivalReady?(id:string):void };
 export function SoulHome(props: HomeProps) {
   // Session changes replace all private child state, even while the panel is hidden.
   const identity = props.auth.debug.privyUserId ?? props.auth.label ?? props.sim.me?.userId ?? 'public';
@@ -126,7 +126,7 @@ function Create({ api, first, done, cancel }: { api: Api; first: boolean; done(i
 }
 
 
-function Dashboard({ sim, api, soul, isAdmin, base, refresh, onGone, active }: { sim: Sim; api: Api; soul: MySoul; isAdmin: boolean; base: string; refresh(): void; onGone(): void; active: boolean }) {
+function Dashboard({ sim, api, soul, isAdmin, base, refresh, onGone, active }: { sim: Souls; api: Api; soul: MySoul; isAdmin: boolean; base: string; refresh(): void; onGone(): void; active: boolean }) {
   const [d, setD] = useState<Dash | null>(null); const [tl, setTl] = useState<TL[]>([]);
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const sending = useRef(false);
   const [replies, setReplies] = useState<{ text: string; reply: string; ok: boolean; receipt?: SteerReceipt }[]>([]);

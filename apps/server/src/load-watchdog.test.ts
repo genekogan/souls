@@ -9,7 +9,7 @@ import {join} from 'node:path';
 const here = new URL('.', import.meta.url).pathname;
 
 test('a main thread busy for 4 s: live.json keeps being rewritten and the worker /healthz answers, showing the stuck turn', {timeout: 30_000}, async t => {
-  const dir = mkdtempSync(join(realpathSync(tmpdir()), 'sim-watchdog-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), 'souls-watchdog-')); t.after(() => rmSync(dir, {recursive: true, force: true}));
   const script = `
     import {startWatchdog} from ${JSON.stringify(join(here, 'load/watchdog.ts'))};
     import {bootPhase} from ${JSON.stringify(join(here, 'load/boot-progress.ts'))};
