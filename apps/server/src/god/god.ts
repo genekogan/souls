@@ -118,6 +118,8 @@ export class GodMode {
   private eventSeq = 0;
 
   readonly db: Db; readonly opts: GodOptions;
+  /** #1198: what the world holds contained, with the god's own things named (the engine bridge's). */
+  contained?: () => { rule: string; subjects: string[]; things: { id: string; path: string }[] }[];
   // Existing diff-only embedders remain source compatible; new consumers can explicitly accept both feeds.
   constructor(db: Db, opts: Omit<GodOptions, 'emit'> & { emit: (m: WorldDiffMessage) => void });
   constructor(db: Db, opts: GodOptions);

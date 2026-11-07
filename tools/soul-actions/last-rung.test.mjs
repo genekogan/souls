@@ -180,8 +180,12 @@ test('L4 what still fires is contained: counted once, no second fault, gone when
   w.f.host.factory.restore = w.factory.restore;
   await w.tick(20);
   assert.equal(host.paused, false); assert.deepEqual(eng().world.containedV1, [{code: 'support.floating', subjects: ['g-standing']}]); assert.equal(byRung(host).rewind, 1, 'counted once');
+  assert.deepEqual(w.god.contained(), [{rule: 'support.floating', subjects: ['g-standing'], things: []}], '#1198: its god can read it');
   firing = false; await w.tick(3);
-  assert.equal('containedV1' in eng().world, false, 'off the list, and no key'); ok(await act(w, Ada, {capability: 'walk:shed'}));
+  assert.equal('containedV1' in eng().world, false, 'off the list, and no key'); assert.deepEqual(w.god.contained(), [], '#1198: and sees it go');
+  ok(w.god.act({ops: [{op: 'place', def: 'core/table@1', name: 'stall', p: [w.f.host.engine.world.entities[Ada.entityId].pose.p[0] + 6, 0]}]})); const id = w.god.model.get('stall').id;
+  eng().world.containedV1 = [{code: 'support.floating', subjects: [id, 'h_someone']}];
+  assert.deepEqual(w.god.contained(), [{rule: 'support.floating', subjects: [id, 'h_someone'], things: [{id, path: 'stall'}]}], '#1198: the god\'s own thing by its path'); delete eng().world.containedV1; ok(await act(w, Ada, {capability: 'walk:shed'}));
 });
 
 for (const [why, arrange] of [['with no baseline', (h) => { h.recoveryBaseline = null; h.recoveryCapture = null; }], ['soon after the last one', (h) => { h.lastRewindTick = h.engine.world.tick; }]])

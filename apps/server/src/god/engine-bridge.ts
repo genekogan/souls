@@ -346,6 +346,7 @@ export class EngineBridge {
       onClockUnavailable: () => this.failProjection(new Error('bridge.readiness.clock-unavailable')),
       onStop: () => this.failProjection(new Error('bridge.readiness.stopped')),
     });
+    if (!R) this.god.contained = () => ((this.engine.world as { containedV1?: { code: string; subjects: string[] }[] }).containedV1 ?? []).map((c) => ({ rule: c.code, subjects: [...c.subjects], things: c.subjects.filter((id) => this.model.entities.has(id)).map((id) => ({ id, path: this.model.pathOf(id) })) }));
     reachProviders.set(this.god.model, (from, to) => this.reach(from, to));
     if (!R) syncProviders.set(this.god.model, () => { this.flush(); return this.physics?.hash === this.engine.world.entityPhysicsV1?.hash; });
     seatProviders.set(this.god.model, (id) => { const f = (this.engine as unknown as { seatOccupantsV1?: (id: string) => { slot: string; body: string }[] }).seatOccupantsV1; return f ? f.call(this.engine, id).map((x) => ({ slot: x.slot, soul: this.soulName(x.body) })) : []; });
