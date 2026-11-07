@@ -44,6 +44,7 @@ import { IntentObservations } from './intent-observations.ts';
 import { foldStationFactV1, stationGenesisIdV1, type StationHistoryV1 } from './station-history.ts';
 import { initialStationHistoryV2,foldStationFactV2,type StationHistoryV2 } from './station-history-v2.ts';
 import { bootPhase, bootTick } from './load/boot-progress.ts';
+import { countGlitch, faultFacts, glitchLine, type GlitchCountsV1, type GlitchRecordV1, type GlitchRung } from './glitch.ts';
 export { replayFromGenesis, replayKernel } from './fold.ts';
 
 
@@ -622,7 +623,7 @@ export class WorldHost {
             if (p.journal!(e) !== true) throw new TypeError('acceptance journal must synchronously return true');
           }, {immediate: true});
         } catch (error) { p.reject!(error); continue; }
-      } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
+      } else if(arrival){this.db.db.exec('BEGIN IMMEDIATE');try{this.db.appendEvent(this.worldId,e);this.db.appendEvent(this.worldId,arrival);journalIntentArrivalV1(this,arrival);this.db.db.exec('COMMIT');}catch(error){this.db.db.exec('ROLLBACK');this.clockFailure=error;this.paused=true;this.stop();this.recordGlitch('halt',error,{rule:'durability.arrival'});for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{}throw error;}}else this.db.appendEvent(this.worldId, e);
       this.seq = arrival?.seq ?? stationEra?.seq ?? admission?.seq ?? e.seq;
       let recovered = false;
       let result: FoldResult | undefined;
@@ -1453,10 +1454,11 @@ export class WorldHost {
       const edge=plan.edge?{...plan.edge,...this.rewoundPoses(plan.edge, all)}:undefined;
       const recipe: RecoveryRecipe={baseline:structuredClone(baseline),events,untilTick,faults:{...faults},excluded:[...plan.excluded],reason:String(error).slice(0,800),...(edge?{edge}:{})};
       try { this.restoreRecovery(recipe); }
-      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults'); throw replayError; } continue; }
+      catch (replayError) { if (attempt===plans.length-1) { if (this.edgeRecovery()) return this.haltOnFault(replayError, 'recovery replay still faults', error, untilTick); throw replayError; } continue; }
       this.seq=originalSeq;
       const e: LogEvent={seq:++this.seq,tick:untilTick,kind:'rules',author:'world:recovery',payload:{recovery:recipe},at:Date.now()};
       this.db.appendEvent(this.worldId,e); this.resetAcc(); this.acc.log.push(e); this.ring=[];
+      this.recordGlitch('recovery', error, {tick:untilTick, bodies:[...(edgeHint?.entityId?[edgeHint.entityId]:[]),...(plan.edge?.stopActors??[])], evidence:{seq:e.seq, plan:attempt+1, plans:plans.length, excluded:plan.excluded, ...(plan.edge?{stopActors:plan.edge.stopActors, excludedSeqs:plan.edge.excludedSeqs, souls:plan.edge.souls}:{})}});
       if(this.durableClockV1)this.persistClockFrontier();
       for (const m of this.minds.values()) this.acc.dirty.add(m.soulId);
       for (const l of this.listeners) l.onApplied?.(e);
@@ -1528,9 +1530,10 @@ export class WorldHost {
     return out.filter((p, i) => p.stopActors.length + p.excludedSeqs.length > 0 && out.findIndex(q => JSON.stringify(q) === JSON.stringify(p)) === i);
   }
   /** Last resort for edge worlds: keep the process up, the world paused and the fault reported (never a crash loop). */
-  private haltOnFault(error: unknown, why: string) {
+  private haltOnFault(error: unknown, why: string, fault: unknown = error, tick?: number) {
     console.error(`[world] engine fault could not be recovered (${why}); the world is paused, the process stays up:`, String(error).slice(0, 800));
     this.paused = true; this.engineFault = String(error).slice(0, 800);
+    this.recordGlitch('halt', fault, {tick, evidence:{why, ...(error===fault?{}:{last:String(error).slice(0,800)})}});
     // A failed recovery leaves the host half-replayed: its seq can sit behind the log (a plan skipped the newest decisions) and its
     // state need not match any logged prefix (#1120). Nothing durable may be written from it, so every later tick, drain and
     // snapshot refuses, naming this fault; a restart boots from the log. The process stays up, as before.
@@ -1542,6 +1545,24 @@ export class WorldHost {
   }
   /** The fault that paused this world (edge worlds), if any. */
   engineFault: string | null = null;
+  private glitchCounts: GlitchCountsV1 | null = null;
+  /** Every recovery and halt this world has had, by rule and rung (#1150). Public on /healthz: see GlitchCountsV1. */
+  get glitches(): GlitchCountsV1 {
+    if (this.glitchCounts) return this.glitchCounts;
+    try { return this.glitchCounts = this.db.glitchCounts(this.worldId); }
+    catch { return this.glitchCounts = {total: 0, byRule: {}}; }   // the store's own failure is reported where it happens
+  }
+  /** One record per recovery and per halt. Never throws and writes nothing to the log: whatever called it goes on as before. */
+  private recordGlitch(rung: GlitchRung, fault: unknown, o: {rule?: string; tick?: number; bodies?: string[]; evidence?: Record<string, unknown>}) {
+    try {
+      const facts = faultFacts(fault), rule = o.rule ?? facts.rule, counts = this.glitches;
+      const g: GlitchRecordV1 = {rung, rule, bodies: facts.bodies.length ? facts.bodies : [...new Set(o.bodies ?? [])].sort(), tick: o.tick ?? this.engine.world.tick, at: Date.now(),
+        evidence: {...o.evidence, reason: String(fault).slice(0, 800), ...(facts.rules.length > 1 ? {rules: facts.rules} : {})}};
+      countGlitch(counts, rule, rung);
+      console.warn(glitchLine(g));
+      this.db.appendGlitch(this.worldId, g);
+    } catch (failure) { console.error('[world] glitch record not written:', String(failure).slice(0, 200)); }
+  }
 
   setClockRate(rate: number, author: string, why: string) {
     this.clockRate = this.baseRate = rate; this.db.setClockRate(this.worldId, rate);
@@ -1843,6 +1864,7 @@ export class WorldHost {
     console.error('[snapshot] periodic checkpoint failed', error);
     this.recoveryCapture = null;
     this.clockFailure = error instanceof Error ? error : new Error('periodic checkpoint failed', { cause: error }); this.paused = true; this.stop();
+    this.recordGlitch('halt', error, {rule: 'durability.checkpoint'});
     for (const listener of this.listeners) try { listener.onClockUnavailable?.(); } catch { /* preserve checkpoint fault */ }
   }
   /** Superseding snapshots, recovery and stop must not leave a writer scheduled
@@ -1866,6 +1888,7 @@ export class WorldHost {
       this.clockFrontiers.write(frontier);
     }catch(error){
       this.clockFailure=error;this.paused=true;this.stop();
+      this.recordGlitch('halt',error,{rule:'durability.clock-frontier'});
       for(const listener of this.listeners)try{listener.onClockUnavailable?.();}catch{/* The durable fault remains the cause. */}
       throw error;
     }

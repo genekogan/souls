@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { migrate } from './migrations.ts';
+import { countGlitch, type GlitchCountsV1, type GlitchRecordV1, type GlitchRung } from './glitch.ts';
 import type { BrainCall, LogEvent, NarrativeView, TalkLine } from '@sim/protocol';
 import {recordedTakeChunkSchema} from '@sim/protocol';
 import {stableStringify,parseRenderSceneCapture,type RenderSceneCaptureV1} from '@sim/engine-contract';
@@ -158,6 +159,16 @@ export class Db {
   hasVocabulary(worldId: string): boolean { return !!this.db.prepare("SELECT 1 FROM events WHERE world_id = ? AND kind = 'rules' AND author <> 'world:recovery' AND json_type(payload, '$.vocabulary') = 'object' LIMIT 1").get(worldId); }
   lastSeq(worldId: string): number { return ((this.db.prepare('SELECT MAX(seq) AS s FROM events WHERE world_id = ?').get(worldId) as any)?.s as number) ?? 0; }
   countEvents(worldId: string): number { return (this.db.prepare('SELECT COUNT(*) AS c FROM events WHERE world_id = ?').get(worldId) as any).c; }
+
+  // #1150: glitch records (operations data; replay never reads them)
+  appendGlitch(worldId: string, g: GlitchRecordV1): void {
+    this.db.prepare('INSERT INTO glitches_v1 (world_id, at, tick, rung, rule, bodies, evidence) VALUES (?,?,?,?,?,?,?)').run(worldId, g.at, g.tick, g.rung, g.rule, JSON.stringify(g.bodies), JSON.stringify(g.evidence));
+  }
+  glitchCounts(worldId: string): GlitchCountsV1 {
+    const out: GlitchCountsV1 = {total: 0, byRule: {}};
+    for (const r of this.db.prepare('SELECT rule, rung, COUNT(*) AS n FROM glitches_v1 WHERE world_id = ? GROUP BY rule, rung').all(worldId) as {rule: string; rung: GlitchRung; n: number}[]) countGlitch(out, r.rule, r.rung, r.n);
+    return out;
+  }
 
   // snapshots
   saveSnapshot(worldId: string, s: { tick: number; seq: number; stateHash: string; physicalHash: string; rulesVersion: string; body: unknown }) {
