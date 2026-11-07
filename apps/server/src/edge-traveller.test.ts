@@ -55,7 +55,7 @@ test('a conversation stays readable after leaving it, up to the turn you left', 
   assert.equal(after.body.turns.length, seen, 'nothing said after she left');
   assert.doesNotMatch(JSON.stringify(after.body.turns), /She has gone/);
   assert.match(JSON.stringify((await read(b)).body.turns), /She has gone/, 'those still here read on');
-  assert.equal(after.body.conversation.left, true); assert.equal(after.body.conversation.members, undefined, 'no one\'s presence now');
+  assert.equal(after.body.conversation.left, true); assert.deepEqual(after.body.conversation.members, [], 'no one\'s presence now');
   // back and gone again: what was said while she was away stays unread
   assert.equal((await post(a, {op: 'ask', conversation})).body.accepted, true);
   assert.equal((await post(b, {op: 'accept', conversation, soul: a.soulId})).body.accepted, true);
