@@ -5,14 +5,14 @@ import { assetBytes } from './asset-bytes.ts';
 const DISC_RADIUS = 146;   // arrival-light.ts; repeated so the first chunk doesn't carry the shader
 
 export function followBootLight(): void {
-  const boot = document.getElementById('boot-arrival');
-  const disc = boot?.querySelector<HTMLElement>('.arrival-disc'), bar = boot?.querySelector('progress'), label = boot?.querySelector('.viewer-arrival-progress span');
-  if (!boot || !disc || !bar || !label) return;
   let peak = 0;
+  // This entry can run before the body's script has made the boot light, so it is looked up at each change.
   const off = assetBytes.subscribe(() => {
-    if (!boot.isConnected || boot.dataset.fill) return off();
+    const boot = document.getElementById('boot-arrival');
+    if (boot?.dataset.fill) return off();
+    const disc = boot?.querySelector<HTMLElement>('.arrival-disc'), bar = boot?.querySelector('progress'), label = boot?.querySelector('.viewer-arrival-progress span');
     const { loaded, total, known } = assetBytes.snapshot();
-    if (!known || !total) return;
+    if (!disc || !bar || !label || !known || !total) return;
     const next = Math.max(peak, Math.min(1, loaded / total));
     if (next - peak < 0.005 && peak) return;
     peak = next; bar.value = Math.round(peak * 1000); label.textContent = `${Math.round(peak * 100)}%`;
