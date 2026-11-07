@@ -673,6 +673,14 @@ export class EdgeLedger implements EdgeLedgerHooks {
   }
   /** #1214: is this capability's act still open for this body? */
   actOpen(entityId: string, capability: string) {return this.rows("capability=? AND phase IN ('waiting','started')", capability).some(r => this.host.minds.get(r.soul_id)?.entityId === entityId);}
+  /** #1214: end this body's open act, failed by name, and stop its programme with a logged stop, so replay is exact. */
+  actFail(entityId: string, capability: string, why: {code: string; reason: string}) {
+    for (const r of this.rows("capability=? AND phase IN ('waiting','started')", capability)) {
+      if (this.host.minds.get(r.soul_id)?.entityId !== entityId) continue;
+      this.update(r.receipt_id, {phase: 'failed', code: why.code, reason: why.reason});
+      if (r.program_id) try {void this.host.enqueue('edge-stop', `edge:${r.soul_id}`, {soulId: r.soul_id, entityId, programId: r.program_id, why: why.code}).catch(() => {/* best effort */});} catch {/* clock not ready */}
+    }
+  }
   private onProgram(ev: {id: string; kind: string; code?: string; message?: string}) {
     if (ev.kind === 'step') return;
     const r = this.rows("program_id=? AND phase IN ('waiting','started')", ev.id)[0]; if (!r) return;

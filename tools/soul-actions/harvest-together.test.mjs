@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
+import {mkdtempSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {Hono} from '../../apps/server/node_modules/hono/dist/index.js';
 import {fixture, invite, accept, factory} from '../../apps/server/test/native-owner-fixture.ts';
 import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
@@ -13,11 +16,11 @@ import {createHarvest} from '../../apps/server/src/god/harvest.ts';
 // holds what was picked and the planter moved on a stage. Otherwise it fails with a named code. Ana and Ben start apart from
 // the table as they did in the Soul Run that found this, with the basket and the vase on it 0.5 m apart.
 const ENDED = ['completed', 'failed', 'cancelled', 'replaced'];
-async function garden(t, ops, ben = [0.6, 0.7]) {
- const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+async function garden(t, ops, ben = [0.6, 0.7], path = ':memory:') {
+ const f = fixture(path, factory, {durableClockV1: true}); f.brain.quiesce();
  const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
  const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
- t.after(() => { comms.close(); f.host.stop(); f.db.close(); });
+ let closed = false; const close = () => { if (closed) return; closed = true; comms.close(); f.host.stop(); f.db.close(); }; t.after(close);
  const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
  const bridge = installEngineBridge({host: f.host, god, edge, log() {}, worldLore: false, worldClock: false});
  const tick = async (n = 5) => { for (let i = 0; i < n; i++) { f.host.tickOnce(); await setImmediate(); f.host.drainInputs(); } };
@@ -32,7 +35,7 @@ async function garden(t, ops, ben = [0.6, 0.7]) {
  const act = async (s, vessel) => { soul = s; const r = await (await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability: `object:${id(vessel)}:harvest`, strict: true})}))).json(); assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 300)); return {soulId: s.soulId, id: r.receipt.id}; };
  const receipt = r => edge.receipt(r.soulId, r.id);
  const end = async (rs, ticks = 2600) => { for (let n = 0; n < ticks && !rs.every(r => ENDED.includes(receipt(r)?.phase)); n++) await tick(1); return rs.map(receipt); };
- return {f, edge, god, bridge, tick, ana, ben: b, W, ax, az, move, id, state, act, receipt, end};
+ return {f, close, edge, god, bridge, tick, ana, ben: b, W, ax, az, move, id, state, act, receipt, end};
 }
 const table = (ax, az) => [
  {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax + 4.9, az + 3.9], state: {growth: 4, moisture: 1}},
@@ -97,6 +100,16 @@ test('an act given up ends failed by name, and the body stops', {timeout: 60000}
  g.edge.actFail(g.ana.entityId, g.receipt(r).capability, {code: 'harvest.fetch-blocked', reason: 'Others were in the way.'});
  assert.equal(g.receipt(r).phase, 'failed'); assert.equal(g.receipt(r).code, 'harvest.fetch-blocked');
  await g.tick(200); assert.equal(g.state('basket').fruit ?? 0, 0); assert.equal(g.f.host.engine.programOf(g.ana.entityId), null, 'the programme stopped');
+});
+
+test('an act given up replays exactly: a restart with no snapshot boots', {timeout: 60000}, async t => {
+ const dir = mkdtempSync(join(tmpdir(), 'harvest-')), path = join(dir, 'world.db'); t.after(() => rmSync(dir, {recursive: true, force: true}));
+ const g = await garden(t, table, [0.6, 0.7], path), r = await g.act(g.ana, 'basket'); await g.tick(30);
+ g.edge.actFail(g.ana.entityId, g.receipt(r).capability, {code: 'harvest.fetch-blocked', reason: 'Not within two minutes.'}); await g.tick(5);
+ assert.equal(g.f.host.engine.programOf(g.ana.entityId), null, 'stopped');
+ const entity = g.ana.entityId; g.close();
+ const again = fixture(path, factory, {durableClockV1: true}); t.after(() => { again.host.stop(); again.db.close(); });
+ assert.equal(again.host.engine.programOf(entity), null, 'the stop is in the log, so replay ends the programme too');
 });
 
 test('a vessel on the ground behind something is fetched from its open side', {timeout: 60000}, async t => {

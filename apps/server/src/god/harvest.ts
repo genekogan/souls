@@ -8,6 +8,7 @@
 import { opSchema, GROWTH_STAGES, harvestOf, type Harvest, type Op, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import { handActuatorFrame, type HandActuatorMotion } from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
+import { PLAN_MARGIN } from '../../../../mars/viewer/engine/spatial/path.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Vec2 = [number, number]; type Vec3 = [number, number, number];
@@ -23,6 +24,12 @@ const GRACE_TICKS = 1200, EDGE_GAP = HUMAN_RADIUS + 0.04, STAND_GAP = HUMAN_RADI
 const TAKE_REACH = 0.82;
 /** Two Souls fetching at once keep their stands this far apart (m): two bodies and a margin. */
 const STANDS_APART = 2 * HUMAN_RADIUS + 0.04;
+/** A fetch stand has room for the walk to end on it: with less, the planner stops on a cell centre up to 0.14 m off, out of
+ *  reach of the vessel. */
+const STAND_ROOM = HUMAN_RADIUS + PLAN_MARGIN;
+/** A fetch held up this long is given up by name (ticks; two minutes). A blocked walk step ends sooner by itself, but
+ *  `take_item`'s own approach, its last resort and where a Soul pushed off its stand goes, has no limit (#1216). */
+const FETCH_TICKS = 2400;
 /** Stands tried out from a table's edge (m), and along the side from straight out from the vessel. */
 const EDGE_GAPS = [EDGE_GAP, EDGE_GAP + 0.06, EDGE_GAP + 0.12, EDGE_GAP + 0.18], ALONG = [0, 0.15, -0.15, 0.3, -0.3, 0.45, -0.45];
 /** The picking hand reaches this far into the bed from its near edge (m), and the body stands this far to the right of the
@@ -46,6 +53,8 @@ export type HarvestHost = {
   denied?(id: string, soul: { soulId: string; name: string }): Refusal | null;
   /** Is this body's act still open (its receipt not ended)? A walk held up by other people can outlast any fixed grace. */
   actOpen?(body: string, capability: string): boolean;
+  /** End this body's open act now, failed by name. */
+  actFail?(body: string, capability: string, why: Refusal): void;
 };
 
 export function createHarvest(h: HarvestHost) {
@@ -67,11 +76,12 @@ export function createHarvest(h: HarvestHost) {
   const LET_GO: Step = { verb: 'mars:let_go_v1', params: {} };
 
   /** Stands another Soul's open fetch is walking to: a vessel already in hand has left its stand. */
-  const taken = (body: string) => [...acting].filter(([b, a]) => b !== body && a.stand && ents()[a.vessel]?.support?.kind !== 'in-hand').map(([, a]) => a.stand as Vec3);
-  /** The best of these stands: clear, then away from another fetch's stand, then nearest the Soul. */
-  function bestStand(body: string, me: Vec2, stands: Vec3[]): Vec3 | null {
-    const others = taken(body), free = stands.filter(clear), apart = free.filter((st) => others.every((o) => Math.hypot(o[0] - st[0], o[2] - st[2]) >= STANDS_APART));
-    return (apart.length ? apart : free).sort((a, b) => Math.hypot(a[0] - me[0], a[2] - me[1]) - Math.hypot(b[0] - me[0], b[2] - me[1]))[0] ?? null;
+  const taken = (body: string) => [...acting].filter(([b, a]) => b !== body && a.stand && ents()[a.vessel]?.support?.kind !== 'in-hand' && (h.actOpen?.(b, `object:${a.vessel}:harvest`) ?? true)).map(([, a]) => a.stand as Vec3);
+  /** The best of these stands: with room, then away from another fetch's stand, then the lowest `rank`. */
+  function bestStand(body: string, stands: Vec3[], rank: (st: Vec3) => number): Vec3 | null {
+    const roomy = (p: Vec3) => (h.engine.clearanceAtV1 ? h.engine.clearanceAtV1(p[0], p[2], 0) : Infinity) >= STAND_ROOM;
+    const others = taken(body), free = stands.filter(roomy), apart = free.filter((st) => others.every((o) => Math.hypot(o[0] - st[0], o[2] - st[2]) >= STANDS_APART));
+    return (apart.length ? apart : free).sort((a, b) => rank(a) - rank(b))[0] ?? null;
   }
   /** The stand to take a vessel from and the steps to it. The walk is a step of the act, with the engine's limits on a
    *  blocked walk, and it ends with the vessel in reach, so `take_item` needs no walk of its own: that one has no limit, and
@@ -90,7 +100,7 @@ export function createHarvest(h: HarvestHost) {
         const sides: [Vec2, Vec2][] = [[[lx, hz], [0, 1]], [[lx, -hz], [0, -1]], [[hx, lz], [1, 0]], [[-hx, lz], [-1, 0]]];
         const all = sides.flatMap(([e, n]) => EDGE_GAPS.flatMap((g) => ALONG.map((a) => toWorld(wp, [(e[0] + n[0] * g + n[1] * a) / wp.s, 0, (e[1] + n[1] * g + n[0] * a) / wp.s]))));
         // deep on a wide table no stand reaches it: the nearest clear one, where `take_item` has the least left to do
-        const st = bestStand(body, me, all.filter((q) => away(q) <= TAKE_REACH)) ?? all.filter(clear).sort((a, b) => away(a) - away(b))[0];
+        const st = bestStand(body, all.filter((q) => away(q) <= TAKE_REACH), (q) => Math.hypot(q[0] - me[0], q[2] - me[1])) ?? bestStand(body, all, away);
         return st ? go(st) : { code: 'harvest.vessel-blocked', reason: `There is no room to stand at ${M().pathOf(s.on)} to pick up ${name}.` };
       }
     }
@@ -222,8 +232,11 @@ export function createHarvest(h: HarvestHost) {
         }
       } else if (now > until) {
         // the grace is only for an act that never began; one still open may be waiting its turn at a crowded table
-        if (p && h.actOpen?.(body, `object:${p.vessel}:harvest`)) watching.set(body, now + GRACE_TICKS);
-        else { watching.delete(body); acting.delete(body); }
+        const act = p ? `object:${p.vessel}:harvest` : '', v = p ? ents()[p.vessel]?.support : undefined;
+        if (p && h.actOpen?.(body, act)) {
+          if ((v?.kind !== 'in-hand' || v.by !== body) && now - (p.since ?? now) >= FETCH_TICKS) { h.actFail?.(body, act, { code: 'harvest.fetch-blocked', reason: `You did not get to ${M().pathOf(p.vessel)} within two minutes. Nothing was picked.` }); watching.delete(body); acting.delete(body); }
+          else watching.set(body, now + GRACE_TICKS);
+        } else { watching.delete(body); acting.delete(body); }
       }
       if (fired.size > 64) for (const x of [...fired].slice(0, 32)) fired.delete(x);
     }
