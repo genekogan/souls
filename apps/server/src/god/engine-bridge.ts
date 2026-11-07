@@ -7,16 +7,17 @@
 // The derived physics is plain data in the logged event, so the engine's replay never reads the entity model.
 // Fastest working path on the engine's existing structures (nav/1-style static scene re-base, CATALOG fixtures);
 // the per-tile patch follows L8's tiled Spatial.
+import { seatOutOfReach } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { handReachSeconds, handReleaseSeconds, handSwingSeconds, type HandActuatorMotion } from '../../../../mars/viewer/engine/social/hand-actuator.ts';
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
-import { deckRaised, railGaps, rasterOf } from '@sim/generators';
-import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@sim/world-compiler';
-import { beamBays, joistBays, sheetBays, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@sim/engine-mars';
+import { deckRaised, railGaps, rasterOf } from '@souls/generators';
+import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@souls/world-compiler';
+import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@souls/engine-mars';
 import { createHash } from 'node:crypto';
 import type { WorldHost } from '../world.ts';
-import type { LogEvent } from '@sim/protocol';
+import type { LogEvent } from '@souls/protocol';
 import type { EdgeLedger, FloorNear } from '../edge/ledger/ledger.ts';
 import type { EdgeCapability, EdgeSoul } from '../edge/contract.ts';
 import type { GodMode } from './god.ts';
@@ -48,7 +49,6 @@ import { installWorldLore } from './world-lore.ts';
 import { installHeld } from './held.ts';
 import { installWorldClock } from './world-clock.ts';
 import { config, KNOWN_WORLD_KEYS } from '../config.ts';
-import { seatFitProblem } from '../../../../mars/viewer/engine/bodies/humanoid.ts';
 import { floorPlatesOf, plateIsStep } from './floor-plates.ts';
 import { isVerificationProbe } from '../verification-probe.ts';
 import { planWalkouts, dropReleased, unhand, stuckWarning, type StuckResident } from './walkout.ts';
@@ -513,6 +513,8 @@ export class EngineBridge {
     if (!this.reconciled) return; // the first tick reconciles everything
     for (const e of diff.upserts) for (const id of this.model.subtree(e.id)) this.pending.add(id);
     for (const id of diff.removes) this.pending.add(id);
+    // PC16 (#695): a floor going away, or a sheet no longer laid, changes the landing at a flight's top
+    if (diff.removes.some((id) => (this.physics?.byEntity?.[id] as Part | undefined)?.surfaces?.some((f) => f.level > 0)) || diff.upserts.some((e) => this.isDeckSheet(this.model.resolvedDef(e.def)))) for (const f of this.model.entities.values()) if (f.joins && this.isStairFlight(this.model.resolvedDef(f.def))) this.pending.add(f.id);
     // doorblock: a door put into, moved out of or taken from a wall's gate gap changes whether that gate yields to it
     if (diff.upserts.some((e) => this.doorIds.has(e.id) || this.isDoor(e)) || diff.removes.some((id) => this.doorIds.has(id))) for (const id of this.gated) this.pending.add(id);
     // terrain moved under things (pads, landforms): re-derive everything (each entity is only sent if it changed)
@@ -650,6 +652,8 @@ export class EngineBridge {
     const walkableKit = def.make.kind === 'gen' && def.make.gen === 'kit/2' && !!def.make.args?.footprint; // XP5 hook
     // PC15 (#694): a deck sheet is an item that is also a floor once laid (below)
     const deckSheet = !!def.components.floor && (def.components.connectors ?? []).some((c) => c.bears);
+    // PC16 (#695): a stair flight is an item that is also a stairs link once it hangs on a beam (stairLink)
+    const stairFlight = this.isStairFlight(def);
     if (isFixtureDef(def)) {
       const facts = factsOf(def, baked, wp.s);
       // a floating boat's asset carries no obstacle (catalog-adapter isFloatingDef): a new id, so worlds that registered
@@ -658,10 +662,10 @@ export class EngineBridge {
       if (!known[aid] && !assets[aid]) { const asset = assetFromDef(aid, facts, { connectors: !!this.edge?.sharedCarry }); if (walkableKit) { delete asset.obstacle; asset.seatApproach = 'slot'; for (const slot of asset.slots ?? []) delete slot.approachPolicy; } assets[aid] = asset; } // XP5: seats retain slots; kit solids supply the obstacle geometry. Their exact slot approach stays (lane walk's
       // reachable/1 sweep would cross the kit's own solids).
       part.fixture = this.fixtureSpec(e, def, aid, (assets[aid] ?? known[aid]) as any, wp);
-      if (!walkableKit && !deckSheet) return part;
+      if (!walkableKit && !deckSheet && !stairFlight) return part;
     }
     // solids: wall segments and blocks (solid layer only; a def's own stair treads are walked by its links)
-    if ((def.layer === 'solid' || def.layer === 'surface') && baked.colliders.length && !deckSheet) {
+    if ((def.layer === 'solid' || def.layer === 'surface') && baked.colliders.length && !deckSheet && !stairFlight) {
       const fp = this.model.footprint(e, def);
       const solids = fp.map((o, i) => ({ o, local: baked.colliders[i] })).filter(({ local }) => !(baked.links?.some(l => !l.id.startsWith('mesh-step:')) && local.y1 - local.y0 <= 0.5));
       // E-life B7: a god balloon is depiction; its body on the ground is the native ride installed at its spot (rides.ts)
@@ -760,6 +764,9 @@ export class EngineBridge {
     }
     if (raisedDeck) this.deckAccess(e, part);
     if (deckSheet) this.deckSteps(e, part);
+    // PC16 (#695): a sheet that is a floor now may be the landing a hanging flight was derived without (sent next)
+    if (deckSheet && part.surfaces?.some((f) => f.level > 0)) for (const f of this.model.entities.values()) if (f.joins && this.isStairFlight(this.model.resolvedDef(f.def))) this.pending.add(f.id);
+    if (stairFlight) this.stairLink(e, def, wp, part);
     // F1: a decoration (a fountain, a lamp, a sign, a statue, a house) is also a fixture Souls perceive: views list it,
     // `look` finds it. No slots and no obstacle of its own: its solids above are what blocks, exactly as before.
     if (this.seenOnly(e, def)) {
@@ -872,21 +879,65 @@ export class EngineBridge {
     const ops = (batch as { ops?: Op[] } | null)?.ops ?? [];
     if (!ops.length) return null;
     const isDeck = (e: Entity) => { const d = this.model.resolvedDef(e.def); return !!d?.components.floor && (d.components.connectors ?? []).some((c) => c.bears) && !!e.joins && Object.keys(e.joins).length > 0; };
-    const decks = [...this.model.entities.values()].filter(isDeck);
+    // PC16 (#695): a flight hanging on a beam, with its treads, is held up the same way, and someone on it stands on it
+    const isFlight = (e: Entity) => !!e.joins && Object.keys(e.joins).length > 0 && this.isStairFlight(this.model.resolvedDef(e.def));
+    const decks = [...this.model.entities.values()].filter((e) => isDeck(e) || isFlight(e));
     if (!decks.length) return null;
     for (const [i, op] of ops.entries()) {
       const ref = op.op === 'remove' || op.op === 'move' ? op.id : op.op === 'disconnect' ? op.a.id : undefined; if (!ref) continue;
       const id = this.model.get(ref)?.id ?? ref;
+      // a flight stays hooked while its treads are in: unhooked, its foot alone would "support" it. From either end of the
+      // joint, and by taking away the beam it hangs on (or what that beam is a child of)
+      if (op.op === 'disconnect' || op.op === 'remove') for (const d of decks) {
+        if (isDeck(d)) continue;
+        const hook = (this.model.resolvedDef(d.def)?.components.connectors ?? []).find((c) => c.kind === 'stair-hook'), j = hook && d.joins?.[hook.id], treads = Object.keys(d.joins ?? {}).filter((c) => c !== hook?.id);
+        if (!hook || !j || !treads.length) continue;
+        const unhooks = op.op === 'disconnect' ? (id === d.id && op.a.connector === hook.id) || (id === j.to && op.a.connector === j.at) : id !== d.id && this.isOrHolds(id, j.to);
+        if (unhooks) return { accepted: false, failures: [{ op: i, code: 'connector.joined', entity: d.id, detail: `${this.model.pathOf(d.id)} keeps its hook while its treads are in (${treads.join(', ')}); take them out first.` }] };
+      }
       for (const d of decks) {
-        if (!this.holdsUp(d, id)) continue;
-        const who = this.standingOn(d); if (!who.length) continue;
-        return { accepted: false, failures: [{ op: i, code: 'deck.occupied', entity: d.id, detail: `${who.join(' and ')} ${who.length > 1 ? 'are' : 'is'} standing on ${this.model.pathOf(d.id)}; it would not hold them up, so it is not changed under them`, fix: 'Wait until nobody stands on the deck, then edit it.' }] } as Result;
+        const flight = !isDeck(d);
+        // a flight's treads are what one stands on
+        if (!(this.holdsUp(d, id) || (flight && Object.values(d.joins ?? {}).some((j) => j.to === id)))) continue;
+        const who = flight ? this.onFlight(d) : this.standingOn(d); if (!who.length) continue;
+        return { accepted: false, failures: [{ op: i, code: flight ? 'stair.occupied' : 'deck.occupied', entity: d.id, detail: `${who.join(' and ')} ${who.length > 1 ? 'are' : 'is'} ${flight ? 'on' : 'standing on'} ${this.model.pathOf(d.id)}; it would not hold them up, so it is not changed under them`, fix: `Wait until nobody stands on the ${flight ? 'stairs' : 'deck'}, then edit it.` }] } as Result;
       }
     }
     return null;
   }
+  /** `id` is this entity or one of its parents. */
+  private isOrHolds(id: string, entity: string): boolean {
+    for (let at: string | undefined = entity, n = 0; at && n < 64; at = this.model.entities.get(at)?.in.parent, n++) if (at === id) return true;
+    return false;
+  }
   /** PC15 (#694): a part that is a floor once laid on its bearing connectors (its physics changes when a crew lays it). */
   private isDeckSheet(d: StoredDef | undefined): boolean { return !!d?.components.floor && (d.components.connectors ?? []).some((c) => c.bears); }
+  /** PC16 (#695): a stair flight: a part that hangs by a stair hook and takes treads. */
+  private isStairFlight(d: StoredDef | undefined): boolean { const cs = d?.components.connectors ?? []; return cs.some((c) => c.kind === 'stair-hook') && cs.some((c) => c.kind === 'tread-seat'); }
+  /** PC16 (#695): a flight hanging on a beam is a stairs link from the ground at its foot up to the floor at its top (the
+   *  native stairLink, construction/stairs.ts, from its connectors): usable only when every tread is in and a laid floor
+   *  lies at its top, otherwise there and unusable with its reason ("treads 3–5 missing", "no landing at top"), so a walk
+   *  that needs it is refused naming why. A loose or carried flight is no link; nor one with no floor level at its top's height. */
+  private stairLink(e: Entity, def: StoredDef, wp: { x: number; y: number; z: number; yaw: number; s: number }, part: Part) {
+    const cs = def.components.connectors ?? [], hook = cs.find((c) => c.kind === 'stair-hook')!;
+    if (!e.joins?.[hook.id]) return;
+    const seats = cs.filter((c) => c.kind === 'tread-seat').sort((a, b) => a.at[0] - b.at[0]);
+    const run = 2 * hook.at[0], riser = seats.length > 1 ? seats[1]!.at[1] - seats[0]!.at[1] : hook.at[1] / 2, top = (seats.length + 1) * riser;
+    const c = Math.cos(wp.yaw), s = Math.sin(wp.yaw), at = (x: number): Vec2 => [r3(wp.x + x * c * wp.s), r3(wp.z - x * s * wp.s)];
+    const ya = r3(wp.y), yTop = r3(wp.y + top * wp.s), from = at(-run / 2 - 0.45), to = at(run / 2 + 0.45);
+    const landing = this.levels.filter((l) => Math.abs(l.y - yTop) <= 0.08).sort((a, b) => Math.abs(a.y - yTop) - Math.abs(b.y - yTop));
+    if (!landing.length) return;
+    // a body has to fit where it steps off: the landing is inside the floor by a body's radius, not just near it
+    const floor = landing.find((l) => this.hasFloorAt(l.id, to[0], to[1]) && this.hasFloorAt(l.id, ...at(run / 2 + 0.1)) && this.fitsOnFloor(l.id, to));
+    const missing = seats.map((x, i) => (e.joins?.[x.id] ? 0 : i + 1)).filter(Boolean), reasons: string[] = [];
+    if (missing.length) reasons.push(treadsPhrase(missing));
+    if (!floor) reasons.push('no landing at top');
+    // from the ground before its foot, up each tread, over its top onto the landing
+    const level = (floor ?? landing[0]!).id, foot = at(-run / 2), head = at(run / 2), path: [number, number, number][] = [[from[0], ya, from[1]], [foot[0], ya, foot[1]],
+      ...seats.map((x, i): [number, number, number] => { const p = at(x.at[0]); return [p[0], r3(ya + (i + 1) * riser * wp.s), p[1]]; }), [head[0], yTop, head[1]], [to[0], yTop, to[1]]];
+    const width = r3((def.size.box?.[2] ?? 0.9) * wp.s);
+    (part.links ??= []).push({ id: `${e.id}#stairs`, kind: 'stairs', from: { level: 0, p: from, y: ya }, to: { level, p: to, y: yTop }, width, heading: r3(Math.atan2(to[1] - from[1], to[0] - from[0])), path, usable: !reasons.length, ...(reasons.length ? { reason: reasons.join('; ') } : {}) });
+  }
   /** Whether `id` is the deck sheet itself or holds it up, through bearing joints down to the ground. */
   private holdsUp(deck: Entity, id: string): boolean {
     const seen = new Set<string>([deck.id]), queue = [deck];
@@ -895,6 +946,13 @@ export class EngineBridge {
       for (const [c, j] of Object.entries(e.joins ?? {})) if (bears.has(c) && !seen.has(j.to)) { seen.add(j.to); const o = this.model.entities.get(j.to); if (o) queue.push(o); }
     }
     return seen.has(id);
+  }
+  /** PC16 (#695): who is on a flight now: engine bodies inside its footprint, on any level (climbing it, or at its foot or head). */
+  private onFlight(f: Entity): string[] {
+    const ex = this.engine.world.entities[f.id] as { pose: { p: number[]; yaw: number } } | undefined, size = this.model.resolvedDef(f.def)?.size.box; if (!ex || !size) return [];
+    const c = Math.cos(ex.pose.yaw), s = Math.sin(ex.pose.yaw), r = 0.28;
+    const inside = (x: number, z: number) => { const dx = x - ex.pose.p[0], dz = z - ex.pose.p[2]; return Math.abs(dx * c + dz * s) <= size[0] / 2 + r && Math.abs(-dx * s + dz * c) <= size[2] / 2 + r; };
+    return Object.values(this.engine.world.entities).filter((h) => h.kind === 'human' && inside(h.pose.p[0], h.pose.p[2])).map((h) => h.label ?? h.id).sort();
   }
   /** Who stands on a laid deck's floor now (engine bodies on its level, inside it). */
   private standingOn(deck: Entity): string[] {
@@ -1439,7 +1497,7 @@ export class EngineBridge {
       // A thing in a body's hands is the engine's: forget what it was last told, so the god placing it again is sent.
       if (this.engineOwned(e)) { this.sent.delete(e.id); continue; }
       // PC15 (#694): the engine lays a deck sheet but its floor is derived here: it is sent, not taken as known
-      if (this.isDeckSheet(this.model.resolvedDef(e.def))) { this.sent.delete(e.id); continue; }
+      if (this.isDeckSheet(this.model.resolvedDef(e.def)) || this.isStairFlight(this.model.resolvedDef(e.def))) { this.sent.delete(e.id); continue; }
       this.sent.set(e.id, sentKey(JSON.stringify(normPart(this.derive(e, {}, this.physics?.assets ?? {}) ?? {}))));
     }
   }
@@ -1624,6 +1682,12 @@ export class EngineBridge {
       const r = this.engineAct(unit.ops, `engine: ${unit.ops.map((o) => describeOp(o, this.model)).join('; ')}`);
       // PC15 (#694): a sheet a crew laid is a floor now; the engine edit is not echoed, so its physics is sent from here
       if (r.accepted) for (const o of unit.ops as { id?: string; a?: { id: string } }[]) { const e = this.model.entities.get(o.id ?? o.a?.id ?? ''); if (e && this.isDeckSheet(this.model.resolvedDef(e.def))) this.pending.add(e.id); }
+      // PC16 (#695): a flight hung or a tread set changes the flight's stairs link; a laid sheet may be the landing at a flight's top
+      if (r.accepted) for (const o of unit.ops as { id?: string; a?: { id: string }; b?: { id: string } }[]) for (const id of [o.id, o.a?.id, o.b?.id]) {
+        const e = id ? this.model.entities.get(id) : undefined, d = e && this.model.resolvedDef(e.def);
+        if (e && this.isStairFlight(d)) this.pending.add(e.id);
+        if (e && this.isDeckSheet(d)) for (const f of this.model.entities.values()) if (f.joins && this.isStairFlight(this.model.resolvedDef(f.def))) this.pending.add(f.id);
+      }
       if (r.accepted) this.stats.writeBacks++; else { this.refusedPose.add(key); this.log(`write-back refused for ${unit.key}: ${JSON.stringify(r.failures).slice(0, 300)}`); }
       return;
     }
@@ -1756,6 +1820,11 @@ export class EngineBridge {
   /** During a send: the floors derived so far, and the entities it re-derives (their engine floors are being replaced). */
   private sendFloors = new Map<number, OBB2[]>();
   private sendIds: Set<string> | null = null;
+  /** PC16 (#695): a body's width of this level's floor around the point (`hasFloorAt`'s FLOOR_NEAR also counts a point just off an edge). */
+  private fitsOnFloor(level: number, at: Vec2): boolean {
+    this.hasFloorAt(level, at[0], at[1]);   // the index, current
+    return !!this.floorIndex?.by.get(level)?.some(at[0], at[1], (f) => pointInObb(at, f.obb, -0.28));
+  }
   private hasFloorAt(level: number, x: number, z: number): boolean {
     const hash = this.physics?.hash ?? '';
     if (this.floorIndex?.hash !== hash) {
@@ -2001,24 +2070,24 @@ export class EngineBridge {
           const id = `sit:${x.id}`, labelOf = (seatWords: string) => `${name(x.id)} (${kind && !name(x.id).split('/').pop()!.includes(kind) ? `a ${kind}, ` : ''}${seatWords}${by.length ? `by ${by.join(' and ')}; ` : ''}${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           // F1: a bench for two stays free while one of its seats is; the seat a Soul sits on is not free to itself
           const full = others.length >= seats || (!!u && !mine && seats <= 1);
-          // seat fit (engine bodies/humanoid.ts): a body whose look sets its height cannot get onto a seat too high for it.
-          // SEATDEF: the heights are the def's seat heights as the use-check reads them (seatTopsOf: engine seat slots carry
-          // none, so this read nothing before). Only too-high blocks: a seat lower than a body likes (a floor cushion) is sat on.
+          // #1083 (Gene, 2026-11-06): any seat a def declares is sat on up to the body's standing reach (seat.out-of-reach above
+          // it: the body would have to climb). SEATDEF: the heights are the def's seat heights as the use-check reads them
           const tops = [...seatTopsOf(this.model, x.id).values()].filter((y) => Number.isFinite(y));
-          const misfit = tops.length && tops.every((y) => seatFitProblem(me.body, y)?.code === 'seat.too-high') ? seatFitProblem(me.body, Math.min(...tops)) : null;
           // floors (2026-10-26): the sitter's feet rest on the floor under the seat (the terrain, or a floor plate on it); a
           // thing standing higher than that floor (on a deck the world does not walk on) would seat the body inside it
           const feet = levelOf(x) === 0 ? this.mw.standYAtV1?.(x.pose.p[0], x.pose.p[2], 0) : undefined, lift = typeof feet === 'number' ? x.pose.p[1] - feet : 0;
           // a floating thing (a moored canoe, party S8) rides above the pond floor by design and is boarded from its side
           const afloat = !!ent && isFloatingDef(this.model.resolvedDef(ent.def) as { components: Record<string, unknown> });
           const inside = !afloat && lift > SEAT_LIFT ? { code: 'seat.inside', reason: `${name(x.id)} stands ${lift.toFixed(2)} m above the floor you would stand on there, on something the world does not walk on: sitting on it would put you inside it.` } : null;
+          const far = tops.length && tops.every((y) => seatOutOfReach(me.body, y)) ? seatOutOfReach(me.body, Math.min(...tops)) : null;
           const top = tops.length ? Math.min(...tops) : undefined, ownDef = ent ? this.model.resolvedDef(ent.def) : undefined;
           const onTop = top !== undefined && ownDef && ownDef.size.box[1] > 0 && top >= ownDef.size.box[1] * (ent ? this.model.worldPose(ent).s : 1) - 0.05 ? `sit on top, ${top.toFixed(2)} m high; ` : top !== undefined ? `seat ${top.toFixed(2)} m high; ` : '';
-          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : misfit ? { code: misfit.code, reason: `${name(x.id)} does not fit your body: ${misfit.message}.` } : inside;
+          const block = mine ? { code: 'seat.yours', reason: `You are sitting on ${name(x.id)} already; stand:here to get up.` } : far ? { code: far.code, reason: `${name(x.id)} is out of reach: ${far.message}.` } : full ? { code: 'seat.taken', reason: `${(others.length ? others : [u!.body]).map((b) => this.soulName(b)).join(' and ')} ${others.length > 1 ? 'are' : 'is'} sitting there.` } : inside;
           const label = labelOf(onTop);
-          if (block?.code === 'seat.inside' || block?.code === 'seat.too-high') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
+          if (block?.code === 'seat.inside' || block?.code === 'seat.out-of-reach') unusable.push(caps.length); else if (!block) usable.push({ id, label, d });
           caps.push({ id, verb: 'sit', label, target: { id: x.id, kind: 'object' }, available: !block, ...(block ? { blocked: block } : {}), params: { seconds: { type: 'integer', min: 1, max: 600, default: 60 } } });
-          plans.set(id, { label, steps: [{ verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });
+          // #1083: seated elsewhere, she stands first (from inside a god-built seat's footprint a bare walk to another seat was refused route.start-blocked)
+          plans.set(id, { label, steps: [...stand, { verb: 'sit', params: { on: x.id, seconds: 60 } }], seconds: true });
         }
         if (d > NEAR) continue; // F2: a far seat is offered for sitting only
         // beds/1: a bed with native berths is lain on through the engine's take_slot (walk to its side, lie down on the
@@ -2062,6 +2131,14 @@ export class EngineBridge {
           const id=`carry:${x.id}`,label=`Carry ${name(x.id)} with both hands, then lay it down (to: a place name)${need>1?`; it needs ${need} carriers`:''}`;
           caps.push({id,verb:'carry',label,target:{id:x.id,kind:'object'},available:!block,...(block?{blocked:block}:{}),params:{to:{type:'string',maxLength:100}}});
           if(!block)plans.set(id,{label,steps:[...stand,{verb:'mars:carry',params:{crew:[soul.entityId],item:x.id,to:{x:here[0],z:here[1],yaw:x.pose.yaw??0}}}]});
+          // PC16 (#695): a loose tread lying by a hanging flight with a tread missing is set into its lowest missing seat by one Soul
+          const tdef=this.edge?.sharedCarry?this.model.resolvedDef(this.model.entities.get(x.id)?.def??''):undefined,tt=tdef?.tags.includes('tread')?treadTarget(this.mw.world as never,x.id):null;
+          if(tt){
+            const tid=`install-tread:${x.id}`,tlabel=`Set ${name(x.id)} into ${name(tt.flight)} as tread ${tt.index} (its lowest missing tread)`;
+            const tblock=this.layers.refusal(x.id,soul)??(held||me.human.grip?{code:'carry.hands-full',reason:'Put down what you are holding before using both hands.'}:(me.human.level??0)!==0?{code:'tread.ground-only',reason:`A tread is set from the ground beside the flight; ${name(x.id)} is not reachable from here.`}:null);
+            caps.push({id:tid,verb:'install-tread',label:tlabel,target:{id:x.id,kind:'object'},available:!tblock,...(tblock?{blocked:tblock}:{})});
+            if(!tblock)plans.set(tid,{label:tlabel,steps:[...stand,{verb:'mars:install_tread_v1',params:{crew:[soul.entityId],tread:x.id,flight:tt.flight,index:tt.index}}]});
+          }
           // Proposing moves nobody: it is a together invitation, so the plan has no body steps.
           if(sharedDef&&shareable){
             const crew:[number,number]=[need,Math.min(loose.carryCrew[1],8)],sid=`carry-with:${x.id}`;
@@ -2109,6 +2186,22 @@ export class EngineBridge {
               const choices=[{verb:'lay_sheet_v1' as const,params:{sheet:x.id,joists:rows[0]},name:`across the joists from ${on}`}];
               const lplan={label:llabel,steps:[],together:{kind:'shared' as const,template:'lay-sheet' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew:[2,2] as [number,number],choices}};
               if(!dblock)plans.set(lid,lplan);
+            }
+            // PC16 (#695): a loose stair flight standing by a deck's bay is set up against its outer beam by two Souls, its
+            // header on a free ledge seat (engine-mars flightBays) and its foot on the ground
+            const fbays=sdef!.tags.includes('flight')?flightBays(this.mw.world as never,x.id):[];
+            if(sdef!.tags.includes('flight')&&!fbays.length){
+              // PC16 (#695): a deck whose beams' ledges take no stair hook says so, rather than offering nothing
+              const old=flightUnfit(this.mw.world as never,x.id);
+              if(old){const fid=`install-flight-with:${x.id}`;caps.push({id:fid,verb:'install-flight-with',label:`Set ${name(x.id)} up against ${name(old)} with one other Soul`,target:{id:x.id,kind:'object'},available:false,blocked:{code:'stair.no-seat',reason:`The ledge of ${name(old)} does not take a stair hook; ${name(x.id)} needs a beam made for it.`}});}
+            }
+            if(fbays.length){
+              const ats=fbays.map(b=>b.at.toFixed(2)).join(', '),beam=name(fbays[0]!.beam);
+              const fid=`install-flight-with:${x.id}`,flabel=`Set ${name(x.id)} up against ${beam} with one other Soul, its header on the beam's ledge and its foot on the ground (asks them first; at: where along the beam, in metres from its middle, free: ${ats}; with: who)`;
+              caps.push({id:fid,verb:'install-flight-with',label:flabel,target:{id:x.id,kind:'object'},available:!dblock,...(dblock?{blocked:dblock}:{}),params:{at:{type:'number',min:-3,max:3,description:`where along the beam the flight goes, in metres from its middle (the nearest free seat within 10 cm): ${ats}`},with:{type:'string',maxLength:300,description:'the one Soul who sets it with you'},invite:{type:'string',optional:true,description:'amend your own open proposal'}}});
+              const choices=fbays.map(b=>({verb:'install_flight_v1' as const,params:{flight:x.id,beam:b.beam,seat:b.seat},at:b.at,name:`up against ${name(b.beam)}, ${b.at.toFixed(2)} m from its middle`}));
+              const fplan={label:flabel,steps:[],together:{kind:'shared' as const,template:'install-flight' as const,load:x.id,def:sharedDef.def,name:name(x.id),crew:[2,2] as [number,number],choices}};
+              if(!dblock)plans.set(fid,fplan);
             }
           }
         }

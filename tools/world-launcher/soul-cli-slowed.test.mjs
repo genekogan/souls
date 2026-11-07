@@ -21,7 +21,7 @@ const world429 = (res, code = 'soul.slow-down', after = 5, message) =>
   json(res, 429, { contract: 'eden-edge/1', error: { code, ...(message ? { message } : {}) }, world: { load: 'amber', retry_after_s: after } }, { 'retry-after': String(after), 'x-sim-load': 'amber' });
 
 async function fixture(t, respond) {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-slowed-')), seen = [];
+  const dir = mkdtempSync(join(tmpdir(), 'souls-slowed-')), seen = [];
   const server = createServer((req, res) => { req.resume(); req.on('end', () => { seen.push(req.url); respond(req, res, seen.length); }); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   writeFileSync(join(dir, '.eden-agent.json'), JSON.stringify({ world: `http://127.0.0.1:${server.address().port}`, soul: 's_slow', token: 'synthetic-slowed-token' }), { mode: 0o600 });

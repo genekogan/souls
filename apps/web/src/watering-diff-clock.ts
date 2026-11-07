@@ -1,4 +1,4 @@
-import type {Entity, WorldModel} from '@sim/world-compiler';
+import type {Entity, WorldModel} from '@souls/world-compiler';
 
 /** Entry 34: like the lamps' contact clock (light-diff-clock.ts), an engine diff that moves a watering can between a hook
  *  and a hand, changes its water, or changes a growing planter (the soil darkening, the patter of water, a stage) waits for

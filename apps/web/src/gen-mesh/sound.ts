@@ -8,7 +8,7 @@
 // Loops are built from filtered noise and oscillators; events (song phrases, steps, syllables) are scheduled each tick.
 // Gain falls off with distance to the thing; at most MAX_VOICES loudest sources sound at once.
 //
-// New worlds only: it starts when the page publishes `window.__simEntity` (LiveWorld does that only for world-engine
+// New worlds only: it starts when the page publishes `window.__soulsEntity` (LiveWorld does that only for world-engine
 // worlds), and the AudioContext is created on the first pointer/key gesture (browsers refuse audio before one).
 // The navbar Audio menu independently toggles effects and music, remembered per browser.
 // `window.__edenSound.state()` reports emitters and voices; `.log()` lists which sources started where, `.events()` every
@@ -20,7 +20,7 @@
 // was if it is heard again, a source that follows the listener (the sea) is heard wherever the camera is, and a voice's
 // event clock never fires a backlog of notes when it comes back.
 import {audioSettings,setAudioSettings,subscribeAudioSettings} from '../audio-settings.ts';
-import { kettleHeat, type WorldModel } from '@sim/world-compiler';
+import { kettleHeat, type WorldModel } from '@souls/world-compiler';
 import { accompanistOf, crackle, drumHits, PIANO_FADE, pianoEndAt, pianoNotes, pianoReadyAt, recordNotes, sungNotes, type Accompanist } from '../../../../mars/viewer/app/engine-view/piano-score.ts';
 import { RADIO_STATIONS, stationEvents, TUNE, type RadioEvent } from './radio-stations.ts';
 import { makeSinger, micChain, type Singer } from './voice.ts';
@@ -555,7 +555,7 @@ function step(host: Host) {
     // state is read live (one map lookup; the entity's specs share this state object).
     if (e.source === 'object' && e.spec.when && d < e.spec.radius) { const live = model.entities.get(e.id.split('#')[0])?.state; if (live) Object.assign(e.state, live); }
     // Entry 43: a kettle's sound follows its heat, a pure function of the switch tick and the depicted tick
-    if (e.spec.kind === 'kettle' && d < e.spec.radius) { const k = kettleHeat(e.state, (window as unknown as { __simEntity?: { depictedTick?: number } }).__simEntity?.depictedTick ?? NaN); e.state.heating = k.on; e.state.kettleTemp = k.temp; e.state.kettlePhase = k.phase; e.state.kettleSwitch = k.on ? 1 : typeof e.state.heatTick === 'number' && e.state.heatTick >= 0 && k.phase !== 'cold' ? 2 : 0; }
+    if (e.spec.kind === 'kettle' && d < e.spec.radius) { const k = kettleHeat(e.state, (window as unknown as { __soulsEntity?: { depictedTick?: number } }).__soulsEntity?.depictedTick ?? NaN); e.state.heating = k.on; e.state.kettleTemp = k.temp; e.state.kettlePhase = k.phase; e.state.kettleSwitch = k.on ? 1 : typeof e.state.heatTick === 'number' && e.state.heatTick >= 0 && k.phase !== 'cold' ? 2 : 0; }
     if (e.spec.mode === 'change') {
       // Native diffs advance the layer's depicted state without model.editSeq.
       // Read only already cached change emitters; do not rescan the world.
@@ -617,10 +617,10 @@ export function startSoundLayer() {
   if (typeof window === 'undefined' || (window as unknown as { __edenSound?: unknown }).__edenSound) return;
   settings = audioSettings();
   subscribeAudioSettings(()=>{settings=audioSettings();applyMaster();lastAmb=0;musicSync();});
-  const w = window as unknown as { __simEntity?: Host; __edenSound?: unknown };
+  const w = window as unknown as { __soulsEntity?: Host; __edenSound?: unknown };
   w.__edenSound = {
     state: () => ({ ctx: ctx?.state ?? 'none', muted: settings.muted, music: settings.music, volume: settings.volume, covered, piano: { near: pianoNear, scheduled: pianoDone.size }, jukebox: { near: jukeboxNear, ids: jukeboxIds.size, scheduled: jukeboxDone.size }, drums: { near: drumsNear, scheduled: drumDone.size },
-      radio: { near: radioNear, ids: radioIds.size, scheduled: radioDone.size, radios: [...radios].map(([id, r]) => ({ id, on: r.on, station: r.station, gain: +r.gain.toFixed(3), tunes: r.tunes, tuning: typeof w.__simEntity?.worldSeconds === 'number' && w.__simEntity.worldSeconds - r.tunedAt < TUNE.toLocked, hiss: +r.hiss.gain.value.toFixed(3) })) }, voice: { near: voiceNear, singers: [...singers].map(([id, s]) => ({ id, with: s.with })), scheduled: voiceLog.length },
+      radio: { near: radioNear, ids: radioIds.size, scheduled: radioDone.size, radios: [...radios].map(([id, r]) => ({ id, on: r.on, station: r.station, gain: +r.gain.toFixed(3), tunes: r.tunes, tuning: typeof w.__soulsEntity?.worldSeconds === 'number' && w.__soulsEntity.worldSeconds - r.tunedAt < TUNE.toLocked, hiss: +r.hiss.gain.value.toFixed(3) })) }, voice: { near: voiceNear, singers: [...singers].map(([id, s]) => ({ id, with: s.with })), scheduled: voiceLog.length },
       world: { trees: trees.count, exposure: +exposure.toFixed(2), night: +night.toFixed(2), typicalGround: +typicalGround.toFixed(1) },
       emitters: [...objects, ...ambient, ...people].map((e) => ({ id: e.id, kind: e.spec.kind, variant: e.spec.variant ?? 0, source: e.source, when: e.spec.when ?? null, on: condition(e.spec.when, e.state, night) })),
       heard: lastHeard.map(({ e: _e, ...h }) => ({ ...h, gain: +h.gain.toFixed(3), d: +h.d.toFixed(1) })),
@@ -668,7 +668,7 @@ export function startSoundLayer() {
     if (!arrivalOver() || !document.querySelector('.world-scene canvas')) return;
 
     // entry 37: the step first, so the playlist ducks in the same tick a radio (or piano, jukebox) becomes audible
-    const host = w.__simEntity; if (host?.camera && host.layer) { const t0 = performance.now(); try { step(host); } catch { /* a world mid-reload */ } cost.ticks++; cost.tickMs += performance.now() - t0; }
+    const host = w.__soulsEntity; if (host?.camera && host.layer) { const t0 = performance.now(); try { step(host); } catch { /* a world mid-reload */ } cost.ticks++; cost.tickMs += performance.now() - t0; }
     musicSync();
   }, TICK_MS);
 }

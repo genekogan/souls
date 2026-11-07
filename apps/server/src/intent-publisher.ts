@@ -1,7 +1,7 @@
 // Isolated trusted backend producer. No REST/MCP route or capability activation.
 import { randomUUID } from 'node:crypto';
 import { INTENT_V2, intentPublicationPayloadV2Schema, intentHistoryFactV2, intentRevisionV2Schema,
-  type IntentRevisionV2, type IntentPublicationPayloadV2 } from '@sim/protocol';
+  type IntentRevisionV2, type IntentPublicationPayloadV2 } from '@souls/protocol';
 import { foldIntentHistoryV2 } from './intent-history.ts';
 import { IntentRequests, IntentRequestUnavailable, type IntentRequestScope, type RequestReservation } from './intent-requests.ts';
 import { checkAcceptanceGuard, type AcceptanceGuard, type WorldHost } from './world.ts';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hashOf, physicalView } from '@sim/engine-contract';
+import { hashOf, physicalView } from '@souls/engine-contract';
 import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 
 test('native physical digest retains contract bytes through live changes and snapshot restore', async () => {

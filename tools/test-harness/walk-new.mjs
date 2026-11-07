@@ -11,7 +11,7 @@ const arg=name=>{const i=process.argv.indexOf(name);return i<0?undefined:process
 const {chromium}=createRequire(new URL('../../mars/viewer/package.json', import.meta.url).pathname)('@playwright/test');
 const W=1352,H=780,report={origin,runs:[]};
 const geometry=()=>{const c=document.querySelector('canvas[aria-label="Live 3D view of the world"]');const r=c?.getBoundingClientRect();return {window:[innerWidth,innerHeight],dpr:devicePixelRatio,canvasCss:r&&[Math.round(r.width),Math.round(r.height)],buffer:c&&[c.width,c.height]};};
-const cam=()=>{const e=window.__simEntity;if(!e)return null;const p=e.camera.position,t=e.controls.target;return {p:[p.x,p.y,p.z],pivot:[t.x,t.y,t.z],view:e.camera.view?.enabled?[Math.round(e.camera.view.offsetX),Math.round(e.camera.view.offsetY)]:null};};
+const cam=()=>{const e=window.__soulsEntity;if(!e)return null;const p=e.camera.position,t=e.controls.target;return {p:[p.x,p.y,p.z],pivot:[t.x,t.y,t.z],view:e.camera.view?.enabled?[Math.round(e.camera.view.offsetX),Math.round(e.camera.view.offsetY)]:null};};
 const moved=(a,b,k)=>!!(a&&b)&&a[k].some((v,i)=>Math.abs(v-b[k][i])>0.01);
 let release=null,worldUrl=null,fixture=null;
 try{fixture=arg('--web')?await startV7ClerkFixture({origin,out,web:arg('--web'),marsWeb:arg('--mars-web')}):null;release=await chromeLease('rec-new-world');
@@ -23,7 +23,7 @@ try{for(const dpr of [1,2]){const browser=await chromium.launch({channel:'chrome
    await page.screenshot({path:resolve(out,`home-new-world-dpr${dpr}.png`)});await page.locator('[data-create]').click();
    await page.waitForURL(/\/worlds\/w\/[a-z0-9-]+/,{timeout:120000});worldUrl=page.url().split('#')[0];run.created=worldUrl;}
   else await page.goto(worldUrl,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>!!window.__simEntity&&!!document.querySelector('[data-god-panel],[data-god-panel-toggle],[data-god-open]'),null,{timeout:120000});
+  await page.waitForFunction(()=>!!window.__soulsEntity&&!!document.querySelector('[data-god-panel],[data-god-panel-toggle],[data-god-open]'),null,{timeout:120000});
   await page.waitForTimeout(3000);run.geometry=await page.evaluate(geometry);
   run.header=await page.evaluate(()=>[...document.querySelectorAll('.hud-actions button, .hud-actions a, .hud-actions summary')].map(e=>(e.getAttribute('aria-label')||e.textContent||'').trim().slice(0,30)));
   await page.screenshot({path:resolve(out,`world-arrived-dpr${dpr}.png`)});

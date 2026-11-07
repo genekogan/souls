@@ -1,4 +1,4 @@
-import {type Engine,type EngineFactory,type EngineSnapshot,type CommonsFoodDeliveryV1} from '@sim/engine-contract';
+import {type Engine,type EngineFactory,type EngineSnapshot,type CommonsFoodDeliveryV1} from '@souls/engine-contract';
 import {MarsEngine} from './engine.ts';
 import {commonsProvisions} from './commons-provisions.ts';
 import {commonsKitchen} from './commons-kitchen.ts';

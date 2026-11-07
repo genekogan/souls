@@ -9,7 +9,7 @@ index 00000000..39bb0789
 +import test from 'node:test';import assert from 'node:assert/strict';
 +import {mkdtempSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';
 +import {fixture,invite,accept,factory} from '../test/native-owner-fixture.ts';
-+import {WorldHost} from './world.ts';import {Db} from './db.ts';import {bodyV1Schema} from '@sim/protocol';
++import {WorldHost} from './world.ts';import {Db} from './db.ts';import {bodyV1Schema} from '@souls/protocol';
 +import {migrateLegacyLooks,planLegacyLooks} from './edge/body/migrate-looks.ts';
 +import {lookKey,resolveLook,legacyPreset} from '../../web/src/humanoid/look.ts';
 +import {bodyProfile} from '../../../mars/viewer/engine/bodies/navigation.ts';
@@ -47,7 +47,7 @@ index 00000000..dc0af61b
 +// snapshots carry it and the viewer composes it from the kit. Sizes stay today's (no height/build/walkSpeed),
 +// so the engine body is unchanged (HUMAN_PROFILE). Bodies with any body field (floaters, uploads, looks) are left
 +// alone; a body that is not safely standing now is deferred (run again later). Idempotent.
-+import type {Entity} from '@sim/engine-contract';
++import type {Entity} from '@souls/engine-contract';
 +import type {Db} from '../../db.ts';
 +import type {WorldHost} from '../../world.ts';
 +import {lookBody, describeLook} from '../../../../web/src/humanoid/look.ts';

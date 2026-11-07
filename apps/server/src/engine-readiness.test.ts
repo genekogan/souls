@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Engine, EngineFactory } from '@sim/engine-contract';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import type { Engine, EngineFactory } from '@souls/engine-contract';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 import { GodMode } from './god/god.ts';

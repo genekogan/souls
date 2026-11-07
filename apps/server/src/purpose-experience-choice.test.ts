@@ -2,8 +2,8 @@ import {Brain} from './brain.ts';
 import {WorldHost} from './world.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildMidRequest,fingerprint,fakeJev} from '@sim/brain';
-import {publicEvent} from '@sim/protocol';
+import {buildMidRequest,fingerprint,fakeJev} from '@souls/brain';
+import {publicEvent} from '@souls/protocol';
 import {purposePerceiveFixture,drivePurpose} from '../test/purpose-perceive-fixture.ts';
 import {purposeExperienceContextV1} from './purpose-episodes.ts';
 const admit=(f:Awaited<ReturnType<typeof purposePerceiveFixture>>,index:number)=>{

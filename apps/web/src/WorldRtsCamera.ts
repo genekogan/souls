@@ -462,7 +462,7 @@ export class WorldRtsCamera {
     }
     this.write(c); if (mode === 'manual' && this.applyLook()) changed = true;
     // Diagnostics for proofs/tests (read-only): where the camera and its pivot are.
-    (globalThis as { __simCamera?: unknown }).__simCamera = { p: this.camera.position.toArray().map(v => +v.toFixed(2)), pivot: pivot.toArray().map(v => +v.toFixed(2)), look: [+this.look.yaw.toFixed(3), +this.look.pitch.toFixed(3)], marker: this.marker.visible, far: this.farLimit() };
+    (globalThis as { __soulsCamera?: unknown }).__soulsCamera = { p: this.camera.position.toArray().map(v => +v.toFixed(2)), pivot: pivot.toArray().map(v => +v.toFixed(2)), look: [+this.look.yaw.toFixed(3), +this.look.pitch.toFixed(3)], marker: this.marker.visible, far: this.farLimit() };
     return changed;
   }
   /** WASD speed factor: the eye's height above the ground under it over SPEED_HEIGHT, 1–SPEED_MAX. */

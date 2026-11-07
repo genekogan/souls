@@ -21,7 +21,7 @@ function fakeHost() {
 }
 
 test('managed host trace (#733 S2): turns and tool items become host.turn / host.tool, and the readout splits the episode', async t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-managed-trace-')), file = join(dir, 'trace.jsonl');
+  const dir = mkdtempSync(join(tmpdir(), 'souls-managed-trace-')), file = join(dir, 'trace.jsonl');
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   // The tap on the same process records the owner-message delivery, as with --import tap.mjs.
   const tap = createTap({file, argv: ['node', 'run.mjs', '--folder'], readScript: () => 'x', env: {}});
@@ -67,7 +67,7 @@ test('managed host trace (#733 S2): turns and tool items become host.turn / host
 });
 
 test('managed host trace is off without SOUL_TRACE_FILE, refuses links, and a failing sink never reaches the host', async t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-managed-trace-off-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-managed-trace-off-'));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   assert.equal(openHostTrace({}), null);
   writeFileSync(join(dir, 'target'), 'UNTOUCHED'); symlinkSync(join(dir, 'target'), join(dir, 'link'));
@@ -89,7 +89,7 @@ test('managed host trace is off without SOUL_TRACE_FILE, refuses links, and a fa
 });
 
 test('managed host trace close is bounded: a trace sink that never calls back cannot hold shutdown', async t => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-managed-trace-stall-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-managed-trace-stall-'));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   // close()'s wait timer is unref'd so it can't hold a real shutdown; with a sink that holds nothing open, this keeps the test's own loop alive to see it fire
   const keep = setInterval(() => {}, 1000);

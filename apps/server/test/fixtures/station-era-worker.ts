@@ -1,5 +1,5 @@
 import { workerData } from 'node:worker_threads';
-import { marsCommonsTransitionFactory } from '@sim/engine-mars';
+import { marsCommonsTransitionFactory } from '@souls/engine-mars';
 import { Db } from '../../src/db.ts';
 import { WorldHost } from '../../src/world.ts';
 const {path,phase}=workerData as {path:string;phase:string};

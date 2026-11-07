@@ -2,7 +2,7 @@
 // world unavailable), and keeps the hub's `{t:'load', level}` hint as `conn.load` without treating it as an error.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Connection } from '@sim/client';
+import { Connection } from '@souls/client';
 
 type Fake = { send(s: string): void; close(): void; readyState: number; onopen: any; onmessage: any; onclose: any; onerror: any };
 function rig(t: import('node:test').TestContext, handlers: Record<string, unknown> = {}) {

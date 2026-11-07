@@ -27,7 +27,7 @@ style, forbidden paths, release rules.
    argue a tier up, never down without the maintainer's agreement.
 3. **Gate commands.** Read `package.json` scripts and `.github/workflows/ci.yml`; prefer what CI runs. Here:
    `pnpm typecheck`, focused `node --test` / `pnpm --filter <pkg> test` for the touched packages, `pnpm --filter
-   @sim/web build` when the client changed. The full `pnpm check` can exceed the 10-minute foreground limit: run it
+   @souls/web build` when the client changed. The full `pnpm check` can exceed the 10-minute foreground limit: run it
    detached (`nohup setsid pnpm check > .e2e/check.log 2>&1 &`) and poll the log.
 4. **UI?** Changes under `apps/web`, `mars/viewer`, client packages or anything a visitor sees mean Phase 4 applies.
 5. **Open PR?** `REPO=${GITHUB_REPOSITORY:-$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')}`,
@@ -74,7 +74,7 @@ Apply confirmed fixes, then run the gate in order, stopping at the first failure
 | T0 | none beyond the gate |
 | T1 | focused `node --test` for the changed logic + `pnpm typecheck`, output quoted in the PR |
 | T2 | T1 + one uncut real-speed clip of the changed journey (`proof` skill), desktop, phone too if layout changed, on a fake-mind world; run related `e2e/` scenarios (`e2e` skill) |
-| T3 | T2 + scenario playtest, 2 repeats per arm (`tools/playtest`, see the `sim-director` skill's MEASURED.md), a reviewer pass, and maintainer sign-off: open the PR and request it, do not merge |
+| T3 | T2 + scenario playtest, 2 repeats per arm (`tools/playtest`, see the `souls-director` skill's MEASURED.md), a reviewer pass, and maintainer sign-off: open the PR and request it, do not merge |
 | T4 | release head only: the release recipe in `AGENTS.md` (full gate, live walks, CDN walk, changelog). Not something a feature PR does |
 
 Exercise the real flow a user takes: a change to sitting means a Soul or visitor actually sits on camera, not that

@@ -1,4 +1,4 @@
-// Lane P4 (2026-10-19): the installable-app manifest and head tags, made at build time by vite.config.ts (sim-pwa).
+// Lane P4 (2026-10-19): the installable-app manifest and head tags, made at build time by vite.config.ts (souls-pwa).
 //
 // One static file, dist/manifest.webmanifest, served beside every page: each world's server answers
 // <world>/manifest.webmanifest and the launcher answers <base>manifest.webmanifest (the world list). Pages link it

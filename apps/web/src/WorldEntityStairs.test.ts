@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
-import {WorldModel,type Entity} from '@sim/world-compiler';
+import {WorldModel,type Entity} from '@souls/world-compiler';
 import {mergeStatic} from './gen-mesh/static-merge.ts';
 import {WorldEntityStairs,loadedStairGeometry,stairNativeDef,pendingStairDiff} from './WorldEntityStairs.ts';
 import {stairGeometryDigest,type MeshStairProfile} from '../../../mars/viewer/app/engine-view/stair-mesh-profile.ts';

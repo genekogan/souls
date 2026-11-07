@@ -1,6 +1,6 @@
 // Construction overlays own all of their GPU resources. Never pass these through disposeObject.
 import * as THREE from 'three';
-import type { Entity, OBB, WorldModel } from '@sim/world-compiler';
+import type { Entity, OBB, WorldModel } from '@souls/world-compiler';
 import { clockMs } from './atmosphere/weather.ts';
 import { worldTimeText } from './world-clock.ts';
 

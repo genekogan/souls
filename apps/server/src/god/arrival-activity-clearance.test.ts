@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {coreRef} from '@sim/world-compiler';
+import {coreRef} from '@souls/world-compiler';
 import {GodNav, type NavHost, type Thing} from './nav.ts';
 import {fixture, invite, accept, factory} from '../../test/native-owner-fixture.ts';
 import {GodMode} from './god.ts';
