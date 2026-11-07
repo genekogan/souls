@@ -473,13 +473,13 @@ export class MarsEngine implements Engine {
     if (left.length) this.world.containedV1 = left; else delete this.world.containedV1;
   }
   /** #1150 rung 3: every programme ends with `why`, taking no step. An action with its own cleanup finishes it on later ticks. */
-  stopAllV1(why: { code: string; message: string }): number {
+  stopAllV1(why: { code: string; message: string }, force = false): number {
     let stopped = 0;   // what this call changed, so a host knows if a replay has to make the same stops
     const cancel = (id: string) => { try { this.rt.cancel(id, why); } catch { const l = this.rt.live.get(id); try { if (l) (this.rt as any).finish(l, 'cancelled', why); } catch { this.rt.live.delete(id); } } };
     for (const p of [...this.programs.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-      if (p.stopping && p.action && this.rt.isActive(p.action)) continue;   // already on its way down: its own reason and cleanup stand
+      if (!force && p.stopping && p.action && this.rt.isActive(p.action)) continue;   // already on its way down: its own reason and cleanup stand
       if (p.action && this.rt.isActive(p.action)) cancel(p.action);
-      if (p.action && this.rt.isActive(p.action)) { stopped++; p.stopping = why; p.refusalsV1 ??= []; continue; }
+      if (p.action && this.rt.isActive(p.action)) { if (p.stopping?.code !== why.code) stopped++; p.stopping = why; p.refusalsV1 ??= []; continue; }
       stopped++;
       try { this.end(p, p.build ? 'cancelled' : 'failed', why); } catch { this.programs.delete(p.id); if (this.byActor.get(p.actor) === p.id) this.byActor.delete(p.actor); }
     }

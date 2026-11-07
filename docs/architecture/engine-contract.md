@@ -130,7 +130,8 @@ live tick survived: a step or event that threw is reported and passed.
 **A step that throws still moves the clock,** live and in a replay, so no cooldown or replay waits on a tick that isn't
 coming. Half the ticks of ten seconds of world time faulted is `engine.step-failing`: the clock runs, bodies can't get
 anywhere, so acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and a due
-snapshot is taken at once. It ends when faults fall below a quarter of that.
+snapshot is taken at once. That snapshot serves a boot, never a rewind, and one that won't capture waits until the next is
+due. A stop under way that is itself failing is forced. It all ends when faults fall below a quarter of that.
 
 **What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be
 persisted, a stored baseline that won't restore). Each is named `durability.*`. Without `souls-repair/1`, `haltOnFault` is unchanged.

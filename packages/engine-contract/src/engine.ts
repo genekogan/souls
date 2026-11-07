@@ -120,7 +120,7 @@ export interface Engine {
    * Optional; the sequencer otherwise requires an exact resumable checkpoint. */
   previewAdmission?(program: Program): ProgramAdmission;
   /** #1150 rung 3, for an engine that declares rules. None of these steps the world, so no rule can fire during them. */
-  stopAllV1?(why: { code: string; message: string }): number;
+  stopAllV1?(why: { code: string; message: string }, force?: boolean): number;
   setClockV1?(tick: number): void;
   containV1?(): { contained: { code: string; subjects: string[] }[]; relocated: string[] };
   /** Stop a running program (the actor is left idle where it is). */

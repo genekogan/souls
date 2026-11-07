@@ -543,7 +543,7 @@ export class WorldHost {
     const previousViolations = this.engine.runtime.violations.length;
     const tStep = performance.now();
     try { out = this.stepEngine(); if (this.engine.runtime.violations.length > previousViolations) throw new Error(JSON.stringify(this.engine.runtime.violations.slice(previousViolations))); }
-    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); if (this.repairRules) { this.kernel.tick = this.engine.world.tick; sweep(this.kernel); } this.noteFaultedTick(error); this.recoverFault(error); if (this.stepFailing && this.clockAvailable && this.snapshotDue()) this.snapshotRepair(); return; }
+    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); if (this.repairRules) { this.kernel.tick = this.engine.world.tick; sweep(this.kernel); this.faultedPrograms = out!?.programs ?? null; } this.noteFaultedTick(error); this.recoverFault(error); this.faultedPrograms = null; if (this.stepFailing && this.clockAvailable && this.snapshotDue()) this.snapshotFaultedHead(); return; }
     this.noteCleanTick();
     this.advanceLives();
     this.kernel.tick = this.engine.world.tick;
@@ -555,11 +555,11 @@ export class WorldHost {
     this.observeIntentActions();
     this.afterPrograms(out.programs, false);
     if (out.refusals) this.noteRefusals(out.refusals);
+    if (this.repairRules && !this.clockAvailable) return;
     this.replayDebtMs += performance.now() - tStep;
     if(this.durableClockV1){
       // Derived effects become durable before this elapsed body tick is sent.
       // Listener-generated next inputs retain their ordinary queue semantics.
-      if(this.repairRules&&!this.clockAvailable)return;
       this.drainInputs();
       if(this.repairRules&&!this.clockAvailable)return;
       this.persistClockFrontier();
@@ -1506,6 +1506,8 @@ export class WorldHost {
   private lastRewindTick = -Infinity;
   /** When each in-place fault was last reported: one that keeps firing is written once per cooldown. */
   private inPlaceAt = new Map<string, number>();
+  /** What the step that just faulted finished, when it returned at all. */
+  private faultedPrograms: ProgramEvent[] | null = null;
   /** The ticks that ended in a fault, within the last window. */
   private faultTicks: number[] = [];
   /** #1150: why steps are failing, while they are. The clock runs but bodies can't get anywhere, so acts are refused and the
@@ -1539,6 +1541,18 @@ export class WorldHost {
   private writeRepair(e: LogEvent): boolean {
     try { this.db.appendEvent(this.worldId, e); return true; }
     catch (failure) { if (!this.repairRules) throw failure; this.failCheckpoint(failure, 'durability.repair'); return false; }
+  }
+  /** #1150: while steps are failing, a due snapshot is taken now: a sliced one would be cancelled by the next fault. It writes
+   *  the frontier first, as every snapshot must, or a crash could leave a snapshot past the frontier that no boot accepts. A
+   *  broken head may not capture: that is no durability failure, so it waits until one is next due. Only a failed write halts.
+   *  It isn't clean, so it serves a boot and never a rewind. */
+  private snapshotFaultedHead() {
+    const clean = this.recoveryBaseline; let head: ReturnType<WorldHost['captureHead']>;
+    try { if (this.engine.canSnapshot && !this.engine.canSnapshot()) { this.lastSnapshotTick = this.engine.world.tick; return; } head = this.captureHead(); }
+    catch (failure) { console.warn('[world] a faulted head would not snapshot; trying again when one is due:', String(failure).slice(0, 200)); this.lastSnapshotTick = this.engine.world.tick; return; }
+    if (this.durableClockV1) { try { this.persistClockFrontier(); } catch { return; } }   // already a named halt
+    try { this.commitHead(head, true); this.recoveryBaseline = clean; }
+    catch (failure) { this.failCheckpoint(failure, 'durability.repair'); }
   }
   private snapshotRepair(): boolean {
     if (this.engine.canSnapshot && !this.engine.canSnapshot()) return true;
@@ -1584,10 +1598,13 @@ export class WorldHost {
    *  cooldown. The fold does this on a replay; live it runs here, so the event can carry what it found. */
   private containInPlace(error: unknown) {
     const tick = this.engine.world.tick, facts = faultFacts(error), key = `${facts.rule}|${facts.bodies.join()}`, seen = this.inPlaceAt.get(key);
-    const stopped = this.engine.stopAllV1!(REWOUND), repeat = !!this.stepFailing || (seen !== undefined && tick - seen < REWIND_COOLDOWN_TICKS);
+    // what ended in a step that faulted on a violation ended all the same, and a replay runs this too
+    if (this.faultedPrograms) try { this.afterPrograms(this.faultedPrograms, false); } catch (failure) { console.error('[world] a finished programme failed its effects on a faulted tick:', String(failure).slice(0, 200)); }
+    const force = !!this.stepFailing;   // the stop under way may be what keeps failing
+    const stopped = this.engine.stopAllV1!(REWOUND, force), repeat = force || (seen !== undefined && tick - seen < REWIND_COOLDOWN_TICKS);
     if (repeat && !stopped) { this.heartbeat(); return; }
     if (!repeat) this.inPlaceAt.set(key, tick);
-    const inPlace = {...this.engine.containV1!(), reason: String(error).slice(0, 800)};
+    const inPlace = {...this.engine.containV1!(), reason: String(error).slice(0, 800), ...(force ? {force} : {})};
     const e: LogEvent = {seq: this.seq + 1, tick, kind: 'rules', author: 'world:rewind', payload: {lastRungInPlace: inPlace}, at: Date.now()};
     if (!this.writeRepair(e)) return;
     this.seq = e.seq; this.acc.log.push(e);
@@ -1896,6 +1913,7 @@ export class WorldHost {
     this.assertClockReady();
     this.cancelPeriodicSnapshot();
     this.drainInputs();
+    if (this.repairRules && !this.clockAvailable) return { pending: false, tick: this.engine.world.tick };   // nothing more from this head
     if(this.durableClockV1)this.persistClockFrontier();
     if (this.engine.canSnapshot && !this.engine.canSnapshot()) {
       // A graceful close still needs a durable replay destination when the
@@ -1911,9 +1929,14 @@ export class WorldHost {
   /** Capture and persist the head as the snapshot and recovery baseline (the caller has checked it can snapshot). */
   private snapshotHead(sync: boolean): { tick: number; stateHash: string } {
     this.cancelPeriodicSnapshot();
+    return this.commitHead(this.captureHead(), sync);
+  }
+  private captureHead() {
     const t0 = performance.now();
     const runtime = this.engine.snapshot();
-    const body = this.captureBody(runtime);
+    return { t0, runtime, body: this.captureBody(runtime) };
+  }
+  private commitHead({ t0, runtime, body }: ReturnType<WorldHost['captureHead']>, sync: boolean): { tick: number; stateHash: string } {
     // captureBody owns every field; persistence only reads it, and restoration/
     // recovery recipes clone before mutation. Keep one immutable captured body.
     this.recoveryBaseline = body; this.recoveryCapture = null;
@@ -1932,6 +1955,7 @@ export class WorldHost {
     if (this.periodicSnapshot) return;
     if (!this.engine.captureCheckpoint && !this.engine.captureSnapshot) { this.saveSnapshot(false); return; }
     this.assertClockReady(); this.drainInputs();
+    if (this.repairRules && !this.clockAvailable) return;
     if (this.durableClockV1) this.persistClockFrontier();
     if (this.engine.canSnapshot && !this.engine.canSnapshot()) return;
     this.snapshotGeneration++;

@@ -285,7 +285,7 @@ for (const [kind, key] of [['before its tick moves', 'preThrow'], ['part way thr
     assert.notEqual(host.engine.world.entities[Bo.entityId].pose.p[0], x, 'bodies move again');
   });
 
-test('L2 a fault on every other tick is the same named state: it can\'t rewind once a minute for ever', async (t) => {
+test('L2 faults on half the ticks are the same named state, so they stop rewinding', async (t) => {
   quiet(t);
   const w = await world(t), host = w.f.host, {Bo} = w.souls;
   w.control.midThrow = (e) => e.world.tick % 2 === 0; await w.tick(400);
@@ -314,6 +314,62 @@ test('a programme already on its way down keeps its reason and counts as nothing
   ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(5);
   const p = host.engine.programs.get(host.engine.programOf(Bo.entityId)), own = {code: 'world.refused:carry.load-static', message: 'its own'}; p.stopping = own;
   assert.equal(host.engine.stopAllV1({code: 'world.rewound', message: 'x'}), 0); assert.equal(p.stopping, own);
+});
+
+test('L7 a burst, a clean gap, then a fault that never ends: a crash after a snapshot from the faulted head still boots', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host, T = host.engine.world.tick;
+  w.control.midThrow = (e) => { const k = e.world.tick; return k === T + 3 || k === T + 6 || k >= T + 40; };   // nothing more is logged after the gap, so the snapshot's seq is the frontier's
+  await w.tick(170); assert.ok(host.stepFailing);
+  host.snapshotEvery = 50; await w.tick(60);
+  const snap = w.f.db.latestSnapshot(host.worldId).tick, h2 = reboot(t, w, path);
+  assert.ok(snap > T + 40); assert.equal(h2.engine.world.tick, snap);
+});
+
+test('a snapshot from a faulted head never becomes what a rewind goes back to', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host; await w.tick(1); host.saveSnapshot(true); const clean = host.recoveryBaseline, at = w.f.db.latestSnapshot(host.worldId).tick;
+  w.control.midThrow = () => true; await w.tick(260); host.snapshotEvery = 50; await w.tick(60);
+  assert.ok(w.f.db.latestSnapshot(host.worldId).tick > at); assert.equal(host.recoveryBaseline, clean);
+});
+
+for (const [what, breakIt] of [['a capture', (e) => { e.snapshot = () => { throw new Error('fixture.capture-bug'); }; }], ['canSnapshot', (e) => { e.canSnapshot = () => { throw new Error('fixture.capture-bug'); }; }]])
+  test(`L2 ${what} that throws on a faulted head is no halt and no throw: it waits until one is next due`, async (t) => {
+    quiet(t);
+    const w = await world(t), host = w.f.host;
+    w.control.midThrow = () => true; await w.tick(260); assert.ok(host.stepFailing);
+    host.snapshotEvery = 1; breakIt(host.engine); host.tickOnce();
+    assert.equal(host.paused, false); assert.equal(host.clockAvailable, true); assert.equal(host.glitches.byRule['durability.repair'], undefined);
+  });
+
+test('L6 a programme that finishes on a tick that faults on a repeat still closes its receipt', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, {Ada, Bo} = w.souls, e = host.engine, real = e.step.bind(e); let arm = 1;
+  const forced = () => e.rt.violations.push({tick: e.world.tick, code: 'support.floating', message: 'forced', subjects: [Bo.entityId]});
+  e.step = () => { const o = real(); if (arm === 1) { forced(); arm = 0; } else if (arm === 2 && o.programs.some((p) => p.kind === 'completed' && p.actor === Ada.entityId)) { forced(); arm = 0; } return o; };
+  host.lastRewindTick = e.world.tick; await w.tick(2);
+  const walk = ok(await act(w, Ada, {capability: 'walk:shed'})); arm = 2; await w.tick(400);
+  assert.equal(arm, 0, 'the fault landed on the finishing tick'); assert.notEqual(read(w, Ada, walk).phase, 'started');
+});
+
+test('a stop under way that is itself what keeps failing is forced once the world is failing, and written', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, {Bo} = w.souls, e = host.engine;
+  ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(5);
+  const p = e.programs.get(e.programOf(Bo.entityId)), action = p.action, cancel = e.rt.cancel.bind(e.rt); p.stopping = {code: 'program.stopped', message: 'its own'};
+  e.rt.cancel = (id, why) => { if (id === action) throw new Error('fixture.cancel-bug'); return cancel(id, why); };
+  host.lastRewindTick = e.world.tick; await w.tick(300);
+  assert.equal(host.engine.programs.size, 0); assert.ok(rows(w, "json_extract(payload, '$.lastRungInPlace.force') = 1") >= 1); assert.equal(host.stepFailing, null);
+});
+
+test('saveSnapshot after a repair that could not be written adds no snapshot and no frontier', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host; host.lastRewindTick = host.engine.world.tick;
+  const apply = host.apply.bind(host); host.apply = (e, r, d) => { if (e.payload?.bad && !r) throw new Error('fixture.fold-bug'); return apply(e, r, d); };
+  const append = w.f.db.appendEvent.bind(w.f.db); w.f.db.appendEvent = (id, e) => { if (e.payload?.lastRungInPlace) throw new Error('fixture.disk-full'); return append(id, e); };
+  const frontier = t.mock.method(host, 'persistClockFrontier'), before = w.f.db.latestSnapshot(host.worldId)?.tick;
+  void host.enqueue('rules', 'test', {bad: 1}); host.saveSnapshot(true);
+  assert.equal(host.clockAvailable, false); assert.equal(frontier.mock.callCount(), 0); assert.equal(w.f.db.latestSnapshot(host.worldId)?.tick, before);
 });
 
 test('the rewind cooldown survives a restart', async (t) => {
