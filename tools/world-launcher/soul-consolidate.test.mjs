@@ -96,7 +96,7 @@ test('a world can\'t get a line into "Noted more than once": only the Soul\'s ow
 
 test('a page that keeps failing is passed over, at no cost, and the days after it go on', async (t) => {
   const { dir } = lived(t);
-  let calls = 0; const ask = async (p) => { calls += 1; return /Played on day 1/.test(p) ? [] : ['Later days.']; }, pass = () => consolidate(dir, { ask, budget: 10, now: NOW, caps: { callsPerDay: 9, tokensPerPass: 700 } });
+  let calls = 0; const ask = async (p) => { calls += 1; return /Played on day 1/.test(p) ? [] : ['Later days.']; }, pass = () => consolidate(dir, { ask, budget: 10, now: NOW, caps: { callsPerDay: 9, tokensPerPass: 1000 } });
   assert.equal((await pass()).skipped, 'the mind gave nothing back'); assert.equal((await pass()).skipped, 'the mind gave nothing back');
   const r = await pass();
   assert.equal(r.passedOver, '2026-11-01'); assert.equal(calls, 2, 'no call for it');
@@ -227,6 +227,7 @@ test('A2 A5: an idle serve runs the pass on its schedule, through the real CLI; 
   await run('register', `${base}/a`); await run('create', 'Mira'); await run('here');
   const soul = join(dir, '.souls/souls/s_a1'), cfg = join(dir, '.souls/config.json');
   for (let d = 1; d <= 5; d++) writeFileSync(join(soul, `memory/journal/2026-10-0${d}.md`), `# 2026-10-0${d}\n\n${'- A day.\n'.repeat(5000)}`);
+  writeFileSync(join(soul, 'memory/consolidation.json'), JSON.stringify({ lastLook: new Date(Date.now() - 2 * 3600_000).toISOString() }));   // clocks in this test run fast, wall time doesn't
   writeFileSync(cfg, JSON.stringify({ ...JSON.parse(readFileSync(cfg, 'utf8')), consolidation: { everyHours: 0 } }));
   await run('serve');
   await new Promise((r) => setTimeout(r, 400));
