@@ -29,7 +29,7 @@ test('storage inside containers: words, refusals, real contents, lip-clear arcs,
  const bytes = h => JSON.stringify(h).length;
  const absent = await here();
  // 100 distant chests, half open, each with a bowl kept inside
- const distant = Array.from({length: 100}, (_, i) => [{op: 'place', def: 'core/drawer-chest@2', name: `distant-chest-${i}`, p: [120 + i % 10 * 2, 120 + Math.floor(i / 10) * 2], state: {open: i % 2 === 0}}, {op: 'place', def: 'core/bowl@2', name: `distant-bowl-${i}`, in: {parent: `distant-chest-${i}`, slot: 'in-1'}, p: [0, 0]}]).flat();
+ const distant = Array.from({length: 100}, (_, i) => [{op: 'place', def: 'core/drawer-chest@3', name: `distant-chest-${i}`, p: [120 + i % 10 * 2, 120 + Math.floor(i / 10) * 2], state: {open: i % 2 === 0}}, {op: 'place', def: 'core/bowl@2', name: `distant-bowl-${i}`, in: {parent: `distant-chest-${i}`, slot: 'in-1'}, p: [0, 0]}]).flat();
  ok(god.act({ops: distant})); await tick(45);
  const ent = n => {const e = [...god.model.entities.values()].find(e => e.name === n); assert.ok(e, 'entity ' + n); return e;};
  const far = await here(), farIds = new Set(distant.map(d => ent(d.name).id));
@@ -47,9 +47,9 @@ test('storage inside containers: words, refusals, real contents, lip-clear arcs,
   {op: 'place', def: 'core/table@1', name: 'table', p: [ax + 2.4, az - 0.6]},
   {op: 'place', def: 'core/bowl@2', name: 'bowl', in: {parent: 'table', slot: 'top'}, p: [0.25, 0]},
   {op: 'place', def: 'core/lantern@3', name: 'lantern', in: {parent: 'table', slot: 'top'}, p: [-0.25, 0], state: {on: false}},
-  {op: 'place', def: 'core/drawer-chest@2', name: 'chest', p: [ax + 1, az + 2.6], r: Math.PI},
+  {op: 'place', def: 'core/drawer-chest@3', name: 'chest', p: [ax + 1, az + 2.6], r: Math.PI},
   {op: 'place', def: 'core/lockers@3', name: 'locker', p: [ax - 2.2, az + 2.6], r: Math.PI},
-  {op: 'place', def: 'core/drawer-chest@2', name: 'private-chest', p: [ax + 4.5, az + 2.6], r: Math.PI, access: 'private', state: {open: true}}]}));
+  {op: 'place', def: 'core/drawer-chest@3', name: 'private-chest', p: [ax + 4.5, az + 2.6], r: Math.PI, access: 'private', state: {open: true}}]}));
  await tick(60);
  const id = n => ent(n).id, state = n => ent(n).state ?? {}, item = n => f.host.engine.world.entities[id(n)];
  const act = async (words, accepted = true, who = soul) => {const prev = soul; soul = who; try {const r = await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability: words})})); const b = await r.json(); assert.equal(b.accepted, accepted, words + ' ' + JSON.stringify(b).slice(0, 500)); return b;} finally {soul = prev;}};

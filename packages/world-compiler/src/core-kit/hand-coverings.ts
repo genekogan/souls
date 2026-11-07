@@ -59,4 +59,14 @@ const blindWindow = {
   actions: [{ ...actions('blind')[0], label: 'Open the blind' }, { ...actions('blind')[1], label: 'Close the blind' }],
 } as unknown as DefInput;
 
-export const HAND_COVERINGS: DefInput[] = [curtainedWindow, blindWindow];
+// #494 / #416: v1 above is immutable (worlds keep its geometry); v2 fits the 400-triangle kit budget. Every shape and
+// role is v1's (the twenty curtain folds, the tassel the hand goes to); only the sill's 6 mm rounding becomes the 5 mm
+// of the rest of the wall (a sharp box: 12 triangles instead of 44), and the rod and the tassel turn with 6 sides.
+const curtainedWindow2 = structuredClone(curtainedWindow) as DefInput & { version: number; make: { args: { shapes: Shape[] } } };
+curtainedWindow2.version = 2;
+for (const sh of curtainedWindow2.make.args.shapes) {
+  if (sh.tint === 'frame' && sh.round === 0.006) sh.round = 0.005;
+  if (sh.tint === 'rod' || sh.tint === 'valve') sh.segments = 6;
+}
+
+export const HAND_COVERINGS: DefInput[] = [curtainedWindow, blindWindow, curtainedWindow2];
