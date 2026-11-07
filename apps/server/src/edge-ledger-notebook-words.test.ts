@@ -99,4 +99,13 @@ test('notebook words resolve only where a notebook is offered', () => {
   // a word the tokens drop still counts: "first" is not the newest line
   assert.equal(resolve('cross out my first line in the notebook', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('cross out my note in the дневник', [pin, unpin]), 'capability.unknown');
+  // review of #990: only "first" counts. A plain word places her words, and it is never what they name
+  for (const [w, caps, id] of [['cross out my note at the board', [pin, unpin], unpin.id], ['cross out my note near the board', [pin, unpin], unpin.id], ['cross out my note there', [pin, unpin], unpin.id], ['cross out my note over there', [pin, unpin], unpin.id], ['cross out my little note', [pin, unpin], unpin.id], ['cross out my name at the sheet', all, unsign.id], ['cross off my name at the sign-up sheet', [sign, unsign], unsign.id], ['cross out my line by the notebook', [nbPin, nbUnpin], nbUnpin.id]] as [string, any[], string][]) assert.equal(resolve(w, caps), id, w);
+  const said = (input: string, caps: any[]) => (resolveCapability(input, { caps, target: () => ({ names: [], around: [], at: [1, 1] }), places: [], root: [], me: null } as any) as any).reason;
+  assert.match(said('cross out my note at the sheet', [pin, unpin]), /goes by "sheet"/, 'the refusal names the absent thing, not "at"');
+  assert.match(said('cross out my first line in the notebook', [nbPin, nbUnpin]), /goes by "first"/);
+  // a thing's own name keeps its plain words
+  const found = mk('e_aaaa0005', 'unpin', 'Take down your note from the notice board (lost-and-found)', ''), aid = mk('e_cccc0006', 'unpin', 'Cross out your line in the notebook (first-aid-log)', '');
+  for (const w of ['cross out my note on the lost-and-found', 'cross out my note on the lost and found']) assert.equal(resolve(w, [found]), found.id, w);
+  assert.equal(resolve('cross out my line in the first-aid-log', [aid]), aid.id);
 });

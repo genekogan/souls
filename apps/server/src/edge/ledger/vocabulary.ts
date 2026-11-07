@@ -599,7 +599,9 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const crossing = !!alt, here = crossing ? tokens([...first, ...second].map(thing).join(' ')) : [];
     // words about something that isn't offered do nothing: "my journal note" with only a board is not that board's note. Any
     // word that is neither an offered name nor a label's noun stops it. Only these verbs: "take down" and "remove" are as they were.
-    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], fits = (w: string) => tokenHit(w, known) || tokenHit(THING_ALIASES[w] ?? w, known), stray = rest.toLowerCase().split(/[^\p{L}\p{N}]+/u).find(w => w && !PLAIN_WORDS.has(w) && !LABEL_FILLER.has(w) && !fits(w));
+    // Both sides are raw words: "lost-and-found" and "first-aid-log" are names, and of the words tokens() drops only "first" says something.
+    const rawWords = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    const known = crossing ? rawWords([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], fits = (w: string) => tokenHit(w, known) || tokenHit(THING_ALIASES[w] ?? w, known), stray = rawWords(rest).find(w => !PLAIN_WORDS.has(w) && !LABEL_FILLER.has(w) && !(STOP.has(w) && w !== 'first') && !fits(w));
     if (crossing && first.length + second.length && stray) return {kind: 'unknown', code: 'capability.unknown', reason: `Nothing here to cross out or take down goes by "${stray}", so nothing was done.`, didYouMean: []};
     const altFits = !!alt && (second.length
       ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !first.length
