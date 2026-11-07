@@ -115,13 +115,16 @@ would break a rule is not applied ([#1150](https://github.com/soulsimulation/sou
 1. **Refuse** (above), inside `Engine.step`.
 2. **Narrow replay:** the host's recovery plans, unchanged, each kept only if its replay is clean.
 3. **Last rung,** when rung 2 fails or has no plan: restore the last clean baseline, stop every programme, re-apply
-   everything since it except decisions (`decision`, `play`), and set the clock to the fault's tick. This takes no engine step,
+   everything since it except decisions and what only they explain (`decision`, `play`, `edge-stop`, intent admissions,
+   arrivals and sleep stops), and set the clock to the fault's tick. This takes no engine step,
    so no rule can fire. It's logged as a recovery recipe with `lastRung`. Open receipts end `world.rewound`.
-   With no baseline, or a second one before a new snapshot, it stays on the head: stop, contain, logged as `lastRungInPlace`.
+   With no baseline, or within a minute of the last one, it stays on the head: stop, contain, logged as `lastRungInPlace`, once
+   per fault per minute. An event that won't re-apply costs only itself, and the recipe lists it.
 
 **`containedV1`** is part of world state, absent when empty: what still breaks a rule after rung 3. Each entry is counted
-once, doesn't fault again, and leaves when it stops firing. A body on it is relocated once. An invariant that throws while
-this list is read is contained too.
+once, doesn't fault again, and leaves when it stops firing. A body inside something is relocated once. Under these rules an
+invariant that throws is a named `engine.thrown` violation, so it is contained like any other. A replay survives what the
+live tick survived: a step or event that threw is reported and passed.
 
 **What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be
 persisted, a stored baseline that won't restore). Without `souls-repair/1`, `haltOnFault` is unchanged.

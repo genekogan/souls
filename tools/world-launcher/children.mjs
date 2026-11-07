@@ -518,7 +518,7 @@ export class ChildPool {
       if (ok) { h.fails = 0; h.okAt = now; } else h.fails++;
       k.live = k.world?.dataDir ? readLive(join(k.world.dataDir, 'live.json'), c.pid) : null;
       // #1150: each new rung 3 is an ALERT, shown for as long as a wedge is
-      if ((k.live?.rewinds ?? 0) > (k.rewindsSeen ?? 0)) k.lastRewind = { at: Date.now(), n: k.live.rewinds }; if (k.live?.rewinds != null) k.rewindsSeen = k.live.rewinds;
+      if (k.rewindsSeen !== undefined && (k.live?.rewinds ?? 0) > k.rewindsSeen) k.lastRewind = { at: Date.now(), n: k.live.rewinds }; if (k.live) k.rewindsSeen = k.live.rewinds ?? 0;
       if (said) h.said = said; else if (ok) h.said = null;
       const why = this.liveWhy(k, now) ?? (h.fails >= g.failures ? `${h.said ?? '/healthz unanswered'} ${h.fails} times in a row` : null);
       if (why) void this.wedge(k, why);

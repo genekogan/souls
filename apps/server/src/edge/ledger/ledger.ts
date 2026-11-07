@@ -653,16 +653,19 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private onRelocated(bodies: string[]) {
     for (const id of bodies) { const soul = this.host.mindByEntity.get(id)?.soulId; if (soul) this.comms?.streams.deliver?.(soul, RELOCATED.code, this.host.engine.world.tick, {text: RELOCATED.message}); }
   }
-  /** #1150 rung 3: nothing running survived, so every open act ends here, and each Soul is told what did not happen. */
-  private onRewound() {
+  /** #1150 rung 3: nothing running survived, so every open act ends here, and each Soul is told. */
+  private onRewound(relocated: string[]) {
     this.together.rewound(REWOUND.code, REWOUND.message);
     for (const r of this.rows("phase IN ('waiting','started')")) this.update(r.receipt_id, {phase: 'failed', code: REWOUND.code, reason: REWOUND.message});
     this.pending.clear(); this.dropMenus('engine-recovery');
+    // a walk finished since the baseline did not happen either, and that receipt is closed: every Soul hears it
+    for (const m of this.host.minds.values()) this.comms?.streams.deliver?.(m.soulId, REWOUND.code, this.host.engine.world.tick, {text: REWOUND.message});
+    this.onRelocated(relocated);
   }
   /** Hotfix: a recovered engine fault ends the open receipts of the Souls whose programmes were set aside. */
   private onRecovery(e: {kind: string; payload: unknown}) {
-    const fact = e.payload as {recovery?: {edge?: {souls: string[]}; lastRung?: unknown}; lastRungInPlace?: unknown; refusal?: {relocated?: true; bodies: string[]}} | null;
-    if (e.kind === 'rules' && (fact?.recovery?.lastRung || fact?.lastRungInPlace)) return this.onRewound();
+    const fact = e.payload as {recovery?: {edge?: {souls: string[]}; lastRung?: {relocated?: string[]}}; lastRungInPlace?: {relocated?: string[]}; refusal?: {relocated?: true; bodies: string[]}} | null;
+    if (e.kind === 'rules' && (fact?.recovery?.lastRung || fact?.lastRungInPlace)) return this.onRewound((fact.recovery?.lastRung ?? fact.lastRungInPlace)!.relocated ?? []);
     if (e.kind === 'rules' && fact?.refusal?.relocated) return this.onRelocated(fact.refusal.bodies);
     const edge = fact?.recovery?.edge; if (e.kind !== 'rules' || !edge) return;
     for (const soulId of edge.souls) {

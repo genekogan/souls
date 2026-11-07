@@ -20,7 +20,12 @@ import {forgetMotion} from '../../mars/viewer/engine/runtime/invariants.ts';
 
 const repair = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true, soulsRepairV1: true}), today = await marsFactory({...GREEN_FIELD_WORLD, sharedCarryV1: true});
 function faulted(base, control) {
-  const wrap = (e) => { const rt = e.rt, fired = new WeakSet(); rt.invariants = [(r) => { if (r.tick === control.at && !fired.has(r)) { fired.add(r); return control.fault(r) ?? []; } return []; }, ...rt.invariants]; return e; };
+  const wrap = (e) => {
+    const rt = e.rt, fired = new WeakSet(), step = e.step.bind(e);
+    rt.invariants = [(r) => { if (r.tick === control.at && !fired.has(r)) { fired.add(r); return control.fault(r) ?? []; } if (control.every) return control.every(r) ?? []; return []; }, ...rt.invariants];
+    e.step = () => { const o = step(); if (control.throwEvery || e.world.tick === control.throwAt) throw new Error('fixture.engine-bug'); return o; };   // after the tick moved, as a thrown action does
+    return e;
+  };
   return {...base, create: (w) => wrap(base.create(w)), restore: (s) => wrap(base.restore(s))};
 }
 async function world(t, base = repair, path = ':memory:') {
@@ -87,8 +92,66 @@ for (const rule of ['support.floating', 'beam.unseated', 'deck.unsupported', 'st
 test('L2 a thrown step, every replay throwing: a rewind, not a halt', async (t) => {
   t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
   const w = await world(t), host = w.f.host; ok(await act(w, w.souls.Ada, {capability: 'walk:shed'})); await w.tick(10);
-  w.control.fault = () => { throw new Error('fixture.engine-bug'); }; w.control.at = host.engine.world.tick + 3; await w.tick(10);
+  w.control.throwAt = host.engine.world.tick + 3; await w.tick(10);
   assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.equal(byRung(host).halt ?? 0, 0);
+});
+
+test('a step that throws every tick cannot rewind every tick: one rewind, and the log stays bounded', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, rows = () => w.f.db.db.prepare('SELECT COUNT(*) n FROM events').get().n, before = rows();
+  w.control.throwEvery = true; await w.tick(60);
+  assert.equal(host.paused, false); assert.equal(byRung(host).rewind <= 2, true, JSON.stringify(byRung(host))); assert.ok(rows() - before <= 3, `log grew by ${rows() - before}`);
+  assert.equal(w.f.db.db.prepare("SELECT COUNT(*) n FROM events WHERE author='world:recovery'").get().n <= 1, true);
+});
+
+test('an invariant that throws every tick is contained once, and Souls still act', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, {Ada} = w.souls;
+  w.control.every = () => { throw new Error('fixture.invariant-bug'); }; await w.tick(40);
+  assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.deepEqual(host.engine.world.containedV1?.map((c) => c.code), ['engine.thrown']);
+  const walk = ok(await act(w, Ada, {capability: 'walk:yard'})); await w.tick(400);
+  assert.equal(read(w, Ada, walk).phase, 'completed'); assert.equal(byRung(host).rewind, 1);
+});
+
+test('a cancel that throws does not stop the rung', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, def = host.engine.rt.registry.get('walk_to'), cancel = def.cancel; t.after(() => { def.cancel = cancel; });
+  ok(await act(w, w.souls.Ada, {capability: 'walk:shed'})); await w.tick(10);
+  def.cancel = () => { throw new Error('fixture.cancel-bug'); }; host.recoveryCapture = null;
+  await assert.doesNotReject(async () => { host.lastRewindTick = host.engine.world.tick; w.control.fault = violate('support.floating', [w.souls.Ada.entityId]); w.control.at = host.engine.world.tick + 2; await w.tick(6); });
+  assert.equal(host.paused, false); assert.equal(byRung(host).halt ?? 0, 0); assert.equal(host.engine.programOf(w.souls.Ada.entityId), null);
+});
+
+test('one event that will not re-apply costs only itself, and the recipe says which', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, {Ada} = w.souls, [x, , z] = host.engine.world.entities[w.souls.Bo.entityId].pose.p;
+  assert.notEqual(w.god.act({ops: [{op: 'place', def: 'core/bowl@2', name: 'kept', p: [x + 2, z]}]}).accepted, false); await w.tick(3);
+  const bad = await accept(host, host.enqueue('rules', 'test', {note: 'will not re-apply'})), apply = host.apply.bind(host);
+  host.apply = (e, r) => { if (r && e.seq === bad.seq) throw new Error('fixture.bad-event'); return apply(e, r); };
+  w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = host.engine.world.tick + 2; await w.tick(6);
+  const r = JSON.parse(w.f.db.db.prepare("SELECT payload FROM events WHERE author='world:recovery' ORDER BY seq DESC").get().payload).recovery;
+  assert.deepEqual(r.lastRung.skipped, [bad.seq]); assert.ok(host.engine.world.entities[w.god.model.get('kept').id], 'the god edit still applied');
+});
+
+test('L4 a refusal while something is contained does not rewind anyone', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, {Ada} = w.souls; w.control.every = violate('support.floating', ['g-standing']); await w.tick(10);
+  assert.equal(byRung(host).rewind, 1);
+  ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(10);
+  const rt = host.engine.rt; let done = false; rt.invariants = [(r) => { if (!done) { done = true; r.world.entities[Ada.entityId].pose.p[0] += 1; } return []; }, ...rt.invariants];
+  await w.tick(3);
+  assert.equal(byRung(host).refusal, 1); assert.equal(byRung(host).rewind, 1);
+});
+
+test('L6 a Soul whose walk finished since the baseline hears it did not happen, and one born in the window keeps its body', async (t) => {
+  t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+  const w = await world(t), host = w.f.host, {Ada, Bo} = w.souls;
+  t.mock.method(host, 'snapshotHead', () => ({tick: 0, stateHash: ''}));
+  const done = ok(await act(w, Bo, {capability: 'walk:yard'})); await w.tick(300); assert.equal(read(w, Bo, done).phase, 'completed');
+  await invite(w.f, 'cy'); const cy = await accept(host, w.f.souls.create('dev:cy', {name: 'Cy', description: 'Born in the window'})); await w.tick(3);
+  w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = host.engine.world.tick + 2; await w.tick(6);
+  assert.equal(byRung(host).rewind, 1); assert.ok(w.comms.streams.read(Bo.soulId, 0).events.some((e) => e.kind === 'world.rewound'), 'Bo is told');
+  assert.ok(host.engine.world.entities[cy.entity_id], 'the newcomer has a body'); assert.ok(host.minds.get(cy.id), 'and a mind');
 });
 
 test('L3 decisions are left out, and god edits and Souls are kept', async (t) => {
@@ -117,14 +180,26 @@ test('L4 what still fires is contained: counted once, no second fault, gone when
   assert.equal('containedV1' in eng().world, false, 'off the list, and no key'); ok(await act(w, Ada, {capability: 'walk:shed'}));
 });
 
-test('L5 a second rung 3 before a new snapshot stays on the head: programmes stop, the rule is contained, the world runs on', async (t) => {
+for (const [why, arrange] of [['with no baseline', (h) => { h.recoveryBaseline = null; h.recoveryCapture = null; }], ['soon after the last one', (h) => { h.lastRewindTick = h.engine.world.tick; }]])
+  test(`L5 ${why} it stays on the head: programmes stop, the rule is contained, the world runs on`, async (t) => {
+    t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
+    const w = await world(t), host = w.f.host, {Ada} = w.souls;
+    const walk = ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(10); arrange(host);
+    const tick = host.engine.world.tick; w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = tick + 3; await w.tick(10);
+    assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.ok(host.engine.world.tick > tick, 'it stayed on the head');
+    assert.equal(w.f.db.db.prepare("SELECT COUNT(*) n FROM events WHERE author='world:rewind'").get().n, 1);
+    assert.equal(read(w, Ada, walk).code, 'world.rewound'); await w.tick(5); ok(await act(w, Ada, {capability: 'walk:yard'}));
+  });
+
+test('L5 a thrown step contained on the head still boots: the replay survives what the live tick survived', async (t) => {
   t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
-  const w = await world(t), host = w.f.host, {Ada} = w.souls; host.rewoundSinceSnapshot = true;
-  const walk = ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(10);
-  const tick = host.engine.world.tick; w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = tick + 3; await w.tick(10);
-  assert.equal(host.paused, false); assert.equal(byRung(host).rewind, 1); assert.ok(host.engine.world.tick > tick, 'it stayed on the head');
-  assert.equal(w.f.db.db.prepare("SELECT COUNT(*) n FROM events WHERE author='world:rewind'").get().n, 1);
-  assert.equal(read(w, Ada, walk).code, 'world.rewound'); await w.tick(5); ok(await act(w, Ada, {capability: 'walk:yard'}));
+  const dir = mkdtempSync(join(tmpdir(), 'last-rung-')), path = join(dir, 'world.db'), w = await world(t, repair, path); let db2, h2;
+  t.after(() => { try { h2?.stop(); db2?.close(); } catch { /* the first failure is the one that matters */ } rmSync(dir, {recursive: true, force: true}); });
+  await w.tick(5); w.f.host.lastRewindTick = w.f.host.engine.world.tick; w.control.throwAt = w.f.host.engine.world.tick + 2; await w.tick(10);
+  assert.equal(byRung(w.f.host).rewind, 1);
+  const hash = w.f.host.engine.stateHash(), tick = w.f.host.engine.world.tick; w.comms.close(); w.f.host.stop(); w.f.db.close();
+  db2 = new Db(path); h2 = new WorldHost(db2, w.factory, seed, 1e9, worldId, {durableClockV1: true}); h2.boot();
+  assert.equal(h2.engine.world.tick, tick); assert.equal(h2.engine.stateHash(), hash);
 });
 
 for (const clean of [false, true])
@@ -132,6 +207,7 @@ for (const clean of [false, true])
     t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
     const dir = mkdtempSync(join(tmpdir(), 'last-rung-')), path = join(dir, 'world.db'), w = await world(t, repair, path), {Ada} = w.souls; let db2, h2;
     t.after(() => { try { h2?.stop(); db2?.close(); } catch { /* the first failure is the one that matters */ } rmSync(dir, {recursive: true, force: true}); });
+    if (!clean) t.mock.method(w.f.host, 'snapshotHead', () => ({tick: 0, stateHash: ''}));   // no snapshot after it, so the boot replays the recipe
     ok(await act(w, Ada, {capability: 'walk:shed'})); await w.tick(10);
     w.control.fault = violate('support.floating', [Ada.entityId]); w.control.at = w.f.host.engine.world.tick + 3; await w.tick(30);
     assert.equal(byRung(w.f.host).rewind, 1);
@@ -146,5 +222,5 @@ for (const clean of [false, true])
 test('a durability failure still halts, and says so', async (t) => {
   t.mock.method(console, 'warn', () => {}); t.mock.method(console, 'error', () => {});
   const w = await world(t), host = w.f.host; t.mock.method(host, 'persistClockFrontier', () => { throw new Error('fixture.disk-full'); });
-  await assert.rejects(async () => { await w.tick(3); });
+  await assert.rejects(async () => { await w.tick(3); }, /fixture\.disk-full/);
 });

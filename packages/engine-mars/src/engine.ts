@@ -144,6 +144,9 @@ type Prog = {
   readiedActors?:string[];
   build?: { phase: BuildPhase; crew: string[]; stopping?: Diag; reverse?: true };
 };
+/** #1150: an invariant that throws is a named violation, so the repair ladder sees it and the rest of the tick still runs. */
+const guardedInvariantV1 = (inv: any) => (rt: any) => { try { return inv(rt); } catch (e) { return [{ code: 'engine.thrown', message: String((e as Error)?.message ?? e).slice(0, 200), subjects: [] }]; } };
+const containedKey = (v: { code: string; subjects?: string[] }) => `${v.code}|${[...(v.subjects ?? [])].sort().join()}`;
 type RefusalCopy = { pose: { p: number[]; yaw?: number }; level?: number };
 export type MarsWorldConfig = { /** PC13 (#692): the shared raise (raise_hold_v1 and its invariant); absent, SIM_SHARED_CARRY=1 decides. */ sharedCarryV1?:boolean; /** #1150: a move that would break a rule is refused inside the step; absent, SIM_SOULS_REPAIR=1 decides. */ soulsRepairV1?:boolean; groundReclaimV1?:boolean; shoreDepartV1?:boolean; map?:typeof MARS_2026_MAP; walkSettleWaitV1?:boolean; occupiedLinkRoutingV1?:boolean; concurrentLinkEgressV1?:boolean; stairLandingClearanceV1?:boolean; edgeMotionV1?:boolean; spreadClearV1?:boolean; disassemblyV1?:boolean; spreadV2?:boolean; yieldTimeoutV1?:boolean; quietStallReleaseV1?:boolean; stairMakeWayV1?:boolean; reflexTimeoutV1?:boolean; walkBlockV1?:boolean; safeArrivalV1?:boolean; commonsArrivalV1?:boolean; commonsTransitionV1?:boolean; fixtureGroundGoalsV1?:boolean; nativeArrivalWitnessV1?:boolean; quietLandingCourtesyV1?:boolean; scene: 'proving-ground' | 'meal' | 'eden-camp' | 'littlemartians' | 'greenfield' | 'eden-commons'; clock?: { origin: number; dayTicks: number }; sleepBlockTicks?:number; quietSeatCourtesy?:boolean; safeCrewRemoval?:boolean; arrival: [number, number]; arrivalPlace: string; reference: [number, number]; grounds: { id: string; name: string } };
 export const LITTLE_MARTIANS_WORLD: MarsWorldConfig={scene:'littlemartians',arrival:[0,18],arrivalPlace:'garden',reference:[0,16],grounds:{id:'grounds',name:'Ceramic garden'}};
@@ -344,6 +347,7 @@ export class MarsEngine implements Engine {
     if (reuse) this.tableReusesV1++;
     const table: EntityTable = reuse ? checkedTable(cached!) : listTable(this.ents);
     this.tableCacheV1 = null;
+    if (this.cfg.soulsRepairV1 === true && this.rt.invariants !== this.guardedV1) this.guardedV1 = this.rt.invariants = this.rt.invariants.map(guardedInvariantV1);
     const refusable = this.cfg.soulsRepairV1 === true ? this.refusalCopyV1(table) : null, seen = this.rt.violations.length;
     this.m.stepCarriers(this.rt, table);   // carrier/1: rides move their seated riders first (no carriers: no effect)
     this.m.stepHandHolds(this.rt);         // entry 35: hands let go finish, a broken pair lets go (no holds: no effect)
@@ -398,6 +402,7 @@ export class MarsEngine implements Engine {
     return out;
   }
 
+  private guardedV1?: unknown[];
   /** #1150: where each body an action can move stands before this tick, with the load it holds. Never stored. */
   private refusalCopyV1(table: EntityTable): Map<string, RefusalCopy> {
     const out = new Map<string, RefusalCopy>(), ents = this.ents, { keys, list } = table as { keys: string[]; list: any[] };
@@ -452,15 +457,16 @@ export class MarsEngine implements Engine {
     for (const h of [...plan.actions].sort()) this.rt.cancel(h, relocationDiag);
     const poses: EngineRefusalV1['poses'] = {};
     for (const id of plan.relocate!) {
-      const e = this.ents[id], moved = this.restoreHumanPoseV1(id, { p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, level: e.human.level });
+      const e = this.ents[id], moved = this.tryRelocateV1(id);
       if (!moved) { stuck.push(plan.violation); return; }
       poses[id] = { p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw ?? 0, level: e.human.level };
     }
     done.set(`relocated|${plan.relocate!.join()}`, { tick, rule: plan.rule, bodies: plan.relocate!, programs: [...plan.programs.keys()].sort(), poses, relocated: true });
   }
+  private tryRelocateV1(id: string): boolean { const e = this.ents[id]; try { return this.restoreHumanPoseV1(id, { p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, level: e.human.level }); } catch { return false; } }
   /** Contained entries don't fault again, and leave the list when they stop firing. */
   private stillContainedV1(seen: number) {
-    const rt = this.rt, key = (v: { code: string; subjects?: string[] }) => `${v.code}|${[...(v.subjects ?? [])].sort().join()}`, list = this.world.containedV1!, known = new Set(list.map(key));
+    const rt = this.rt, key = containedKey, list = this.world.containedV1!, known = new Set(list.map(key));
     const fresh = rt.violations.splice(seen) as { code: string; subjects?: string[] }[], firing = new Set<string>();
     for (const v of fresh) { if (known.has(key(v))) firing.add(key(v)); else rt.violations.push(v); }
     const left = list.filter(c => firing.has(key(c)));
@@ -468,10 +474,11 @@ export class MarsEngine implements Engine {
   }
   /** #1150 rung 3: every programme ends with `why`, taking no step. An action with its own cleanup finishes it on later ticks. */
   stopAllV1(why: { code: string; message: string }) {
+    const cancel = (id: string) => { try { this.rt.cancel(id, why); } catch { const l = this.rt.live.get(id); try { if (l) (this.rt as any).finish(l, 'cancelled', why); } catch { this.rt.live.delete(id); } } };
     for (const p of [...this.programs.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-      if (p.action && this.rt.isActive(p.action)) this.rt.cancel(p.action, why);
+      if (p.action && this.rt.isActive(p.action)) cancel(p.action);
       if (p.action && this.rt.isActive(p.action)) { p.stopping = why; p.refusalsV1 ??= []; continue; }
-      this.end(p, p.build ? 'cancelled' : 'failed', why);   // an unfinished build's failure throws: the rung that can't fail never fails it
+      try { this.end(p, p.build ? 'cancelled' : 'failed', why); } catch { this.programs.delete(p.id); if (this.byActor.get(p.actor) === p.id) this.byActor.delete(p.actor); }
     }
   }
   /** #1150 rung 3: the clock moves to the fault's tick without stepping the world, so ticks stay monotonic for the log. */
@@ -481,7 +488,8 @@ export class MarsEngine implements Engine {
   containV1(): { contained: { code: string; subjects: string[] }[]; relocated: string[] } {
     const rt = this.rt, read = () => { const out = new Map<string, { code: string; subjects: string[] }>(); withEntityList(rt.world, () => { for (const inv of rt.invariants) { try { for (const d of inv(rt)) { const subjects = [...(d.subjects ?? [])].sort(); out.set(`${d.code}|${subjects.join()}`, { code: d.code, subjects }); } } catch { out.set('engine.thrown|', { code: 'engine.thrown', subjects: [] }); } } }, listTable(this.ents)); return [...out.values()].sort((a, b) => (`${a.code}|${a.subjects}` < `${b.code}|${b.subjects}` ? -1 : 1)); };
     const relocated: string[] = [];
-    for (const id of [...new Set(read().flatMap(v => v.subjects))].sort()) { const e = this.ents[id]; if (e?.human && this.restoreHumanPoseV1(id, { p: [e.pose.p[0], e.pose.p[1], e.pose.p[2]], yaw: e.pose.yaw, level: e.human.level })) relocated.push(id); }
+    // only a body inside something: a floating load's bearer has nowhere better to stand
+    for (const id of [...new Set(read().filter(v => v.code.startsWith('collision.')).flatMap(v => v.subjects))].sort()) { const e = this.ents[id]; if (!e?.human) continue; const [x, , z] = e.pose.p; if (this.tryRelocateV1(id) && (e.pose.p[0] !== x || e.pose.p[2] !== z)) relocated.push(id); }
     const contained = read();
     if (contained.length) this.world.containedV1 = contained; else delete this.world.containedV1;
     return { contained, relocated };
@@ -511,7 +519,8 @@ export class MarsEngine implements Engine {
     }
     (this.out.refusals ??= []).push(...done.values());
     // The moves are back; ask the invariants again. A second pass in one tick also resets the step check's memory to these poses.
-    withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) { rt.violations.push({ ...d, tick }); rt.events.push({ tick, type: 'violation', code: d.code, message: d.message, subjects: d.subjects }); } }, listTable(ents));
+    const contained = new Set((this.world.containedV1 ?? []).map(containedKey));
+    withEntityList(rt.world, () => { for (const inv of rt.invariants) for (const d of inv(rt)) { if (contained.has(containedKey(d))) continue; rt.violations.push({ ...d, tick }); rt.events.push({ tick, type: 'violation', code: d.code, message: d.message, subjects: d.subjects }); } }, listTable(ents));
     rt.violations.push(...stuck);
   }
 
@@ -538,7 +547,7 @@ export class MarsEngine implements Engine {
       // PC08: while an `untilSafe` stop's action is held up it stands still, so a retry would refuse again and only hide
       // the hold-up's own diagnostic (who is in the way); it is retried once the action moves again
       if(p.action&&this.rt.isActive(p.action)){if(!(p.stopUntilSafe&&this.rt.records.get(p.action)?.status==='blocked'))this.rt.cancel(p.action,p.stopping);return;}
-      return this.end(p,p.refusalsV1?'failed':'cancelled',p.stopping);
+      return this.end(p,p.refusalsV1&&!p.build?'failed':'cancelled',p.stopping);   // an unfinished build's failure throws
     }
     for (let guard = 0; guard < 12; guard++) {
       if (!this.ents[p.actor]) return this.end(p, 'cancelled', { code: 'actor.removed', message: 'the actor is gone' });
