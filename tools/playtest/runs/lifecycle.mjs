@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
-import { applySetup } from './setup.mjs';
+import { applySetup, applyWorldTime } from './setup.mjs';
 import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
@@ -107,7 +107,7 @@ export async function executeCast({ castFile, playtestDir, serverRoot, hooks, al
 /** startRun → terminal receipt. status: refused (nothing created) | completed | failed | cancelled | stopped-limit.
  *  signal: an AbortSignal the caller aborts on SIGINT/SIGTERM. execute/scenarioPreflight/importer are injectable. */
 export async function startRun({ spec, specPath = null, specSha256 = null, serverRoot, outDir = null, signal = null, log = () => {},
-  execute = null, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, toolsRoot, tapCheck, processSampler = startProcessSampler }) {
+  execute = null, scenarioPreflight = null, observerImporter, loadModules = null, setupFn = applySetup, worldTimeFn = applyWorldTime, toolsRoot, tapCheck, processSampler = startProcessSampler }) {
   const validation = validateSpec(spec, { specPath, serverRoot, ...(toolsRoot ? { toolsRoot } : {}) });
   if (!validation.ok) return { status: 'refused', stage: 'validate', errors: validation.errors };
   const pre = await preflightRun({ validation, serverRoot, scenarioPreflight, ...(tapCheck ? { tapCheck } : {}) });
@@ -139,7 +139,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
     if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
     // Recording sidecars carry the run's provenance (#754); the runner adds world, camera and clock fields.
-    if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
+    if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, worldTimeRequested: eff.world.time ?? null, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
   }
   writeJson(scenarioFile, directed ? validation.cast : validation.scenario);
   if (directed) Object.assign(receipt.references, { cast: scenarioFile, journal: join(playtestDir, 'director', 'commands.jsonl') });
@@ -172,7 +172,14 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     // The scenario preflight already ran in preflightRun; hand its result over so cmdRun does not repeat it (a second
     // machine-gate roll could otherwise refuse inside the runner and read as failed rather than refused).
     const hooks = { own: ledger.own, signal: abort.signal, ...(pre.checks.scenario ? { preflight: pre.checks.scenario } : {}), ...(modules ? { modules } : {}),
-      ...(validation.setup ? { afterProvision: async ({ world }) => {
+      ...(validation.setup || eff.world.time ? { afterProvision: async ({ world }) => {
+        // World time (#888) first: before any seat or camera, so every clip of the run is by day. A clock that could
+        // not be set is recorded and the run goes on.
+        if (eff.world.time) {
+          receipt.worldTime = await worldTimeFn({ base: world.base, time: eff.world.time }); save();
+          log(`world time: ${receipt.worldTime.ok ? `${receipt.worldTime.applied?.clock ?? '?'}${receipt.worldTime.applied?.paused ? ', clock paused' : ''}` : `not set: ${receipt.worldTime.error}`}`);
+        }
+        if (!validation.setup) return;
         receipt.setup = await setupFn({ base: world.base, setup: validation.setup });
         writeJson(join(runDir, 'setup.json'), receipt.setup); save();
         log(`setup: ${receipt.setup.ok ? `${receipt.setup.batches.length} batch(es) applied` : `refused: ${receipt.setup.error}`}`);

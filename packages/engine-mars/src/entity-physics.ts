@@ -8,7 +8,7 @@ import { pointInObb, type Vec2 } from '../../../mars/viewer/engine/core/math.ts'
 import type { EntityPhysicsV1 } from '../../../mars/viewer/engine/spatial/edits.ts';
 import type { Level, Link, Obstacle, Surface } from '../../../mars/viewer/engine/spatial/types.ts';
 import type { Entity, WorldState } from '../../../mars/viewer/engine/world/types.ts';
-import { registerAssets } from './catalog-adapter.ts';
+import { isLooseCarryAsset, registerAssets } from './catalog-adapter.ts';
 import { prepareImmutableSnapshotData } from '../../../mars/viewer/engine/runtime/codec.ts';
 
 export type { EntityPhysicsV1 };
@@ -17,7 +17,12 @@ export type EntityPartV1 = { surfaces?: Surface[]; solids?: Obstacle[]; links?: 
 export type FixtureSpecV1 = {
   def: string; kind: 'fixture' | 'item'; label: string;
   p: [number, number, number]; yaw: number;
-  support?: { kind: 'ground' } | { kind: 'resting-on'; on: string; slot: string };
+  /** PC12 (#691): a part with connectors stood on end (the entity's tilt about its own z); absent otherwise. */
+  roll?: number;
+  support?: { kind: 'ground' } | { kind: 'resting-on'; on: string; slot: string } | { kind: 'connected'; to: string[] };
+  /** PC12 (#691): the part's structural joints (its connector, the other part, that part's connector), mirrored from the
+   *  entity world's reciprocal `joins`; the part is then installed. Absent for a part with none. */
+  connections?: { socket: string; to: string; toSocket: string }[];
   /** The engine level of the floor it stands on. Hosts send it for a fixture on an upper floor since lane LEVELS
    *  (2026-10-21); absent (earlier journals, the ground), the engine takes the level nearest its height. */
   level?: number;
@@ -130,7 +135,8 @@ export function worldEditChangesNavigation(world: WorldState, edit: WorldEditV1)
     const f = part?.fixture, cur = world.entities[id];
     if (!f) { if (cur?.tags?.includes('entity-world')) return true; continue; }
     if (!cur || cur.def !== f.def || cur.kind !== (f.kind === 'item' ? 'component' : 'fixture') || cur.level !== f.level
-      || text(cur.pose.p) !== text(f.p) || cur.pose.yaw !== f.yaw || text(cur.support ?? null) !== text(f.support ?? null)) return true;
+      || text(cur.pose.p) !== text(f.p) || cur.pose.yaw !== f.yaw || text(cur.support ?? null) !== text(f.support ?? null)
+      || (cur.pose.roll ?? 0) !== (f.roll ?? 0) || text(cur.connections ?? null) !== text(f.connections ?? null)) return true;
   }
   return false;
 }
@@ -154,12 +160,13 @@ export function applyWorldEdit(world: WorldState, e: WorldEditV1): { physics: En
     if (heldByBody) { kept.push(id); continue; }
     const f = v.fixture;
     const next: Entity = {
-      id, def: f.def, kind: f.kind === 'item' ? 'component' : 'fixture', label: f.label, tags: ['entity-world', ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.recordedItemPoseV1 ? ['entity-world-item-pose'] : []), ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.fixtureCarry ? ['entity-world-transport'] : [])],
-      pose: { p: [f.p[0], f.p[1], f.p[2]], yaw: f.yaw },
+      id, def: f.def, kind: f.kind === 'item' ? 'component' : 'fixture', label: f.label, tags: ['entity-world', ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.recordedItemPoseV1 ? ['entity-world-item-pose'] : []), ...((physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined)?.capabilities?.fixtureCarry || isLooseCarryAsset(physics.assets[f.def] as import('../../../mars/viewer/engine/world/catalog.ts').AssetDef | undefined) ? ['entity-world-transport'] : [])],
+      pose: { p: [f.p[0], f.p[1], f.p[2]], yaw: f.yaw, ...(f.roll ? { roll: f.roll } : {}) },
       provenance: { origin: 'design-edit', confidence: 'hypothetical', note: 'placed by the world\'s god (entity world, world-edit/1)' },
       ...(f.support ? { support: structuredClone(f.support) } : {}),
       ...(f.kind !== 'item' && typeof f.level === 'number' ? { level: f.level } : {}),
-      ...(f.kind === 'item' && f.support?.kind === 'ground' ? { phase: 'staged' as const } : {}),
+      // PC12 (#691): a joined part is installed (never carried off while joined); a loose one on the ground is staged
+      ...(f.connections?.length ? { phase: 'installed' as const, connections: structuredClone(f.connections) } : f.kind === 'item' && f.support?.kind === 'ground' ? { phase: 'staged' as const } : {}),
       ...(cur?.contents ? { contents: cur.contents } : {}),
     };
     world.entities[id] = next;

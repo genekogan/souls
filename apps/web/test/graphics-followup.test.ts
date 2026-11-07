@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import * as THREE from 'three';
-import type {PublicSoul} from '@sim/protocol';
+import type {PublicSoul} from '@souls/protocol';
 import {AssetDownloads} from '../src/AssetDownloads.ts';
 import {explorePresence,orderedExploreSouls,exploreRoom} from '../src/explore-data.ts';
 import {twilightColour} from '../src/atmosphere/twilight.ts';

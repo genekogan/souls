@@ -1,4 +1,4 @@
-import {ownerLifecycleCapabilitySchema} from '@sim/protocol';
+import {ownerLifecycleCapabilitySchema} from '@souls/protocol';
 type ApiOptions={path:(value:string)=>string;session?:()=>number;fetch?:typeof fetch;timeoutMs?:number};
 /** A panel disappearing cannot revoke a request already accepted by the server.
  * Fence queued dispatch and returned data at the current Shell session instead. */

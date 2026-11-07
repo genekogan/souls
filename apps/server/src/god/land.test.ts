@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Db } from '../db.ts';
-import { boundsOf } from '@sim/world-compiler';
+import { boundsOf } from '@souls/world-compiler';
 import { GodMode, type WorldDiffMessage } from './god.ts';
 import { land } from './land.ts';
 

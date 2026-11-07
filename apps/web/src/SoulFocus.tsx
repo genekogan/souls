@@ -1,5 +1,5 @@
 import type {AuthCtx} from './Shell.tsx';
-import type {Api,Sim} from './useSim.ts';
+import type {Api,Souls} from './useSouls.ts';
 import {approvedMe,authIdentity} from './auth-projection.ts';
 import {SoulCard} from './SoulCard.tsx';
 import {SoulChoices} from './SoulChoices.tsx';
@@ -7,7 +7,7 @@ import {VisitorsLine} from './SoulTravel.tsx';
 import {ApprovalCard} from './god-ui/ApprovalDialog.tsx';
 import {useCardOpen,useShownApproval} from './pairing-slot.ts';
 import {bodiesFromEvents} from './soul-state.ts';
-type FocusProps={sim:Sim;api:Api;auth:AuthCtx;selected:string|null;select(id:string|null):void;manage():void;active?:boolean;camera?:{following:boolean;follow():void;stop():void}};
+type FocusProps={sim:Souls;api:Api;auth:AuthCtx;selected:string|null;select(id:string|null):void;manage():void;active?:boolean;camera?:{following:boolean;follow():void;stop():void}};
 export function SoulFocus(props:FocusProps){
  const own=!!props.selected&&!!approvedMe(props.auth,props.sim.me)?.souls.includes(props.selected);
  const key=JSON.stringify([props.sim.privateAuthorityGeneration??0,props.sim.conn.welcome?.worldId,props.sim.conn.welcome?.epoch,props.selected,authIdentity(props.auth),own]);

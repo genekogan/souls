@@ -1,7 +1,7 @@
 // Public proposal geometry only; no host, DB, owner, models or live installation.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { createTerrainGeometryProbe } from '@sim/engine-mars';
+import { createTerrainGeometryProbe } from '@souls/engine-mars';
 
 const input=new URL('../scene-placement/',import.meta.url);
 function pinned(name:string,sha256:string){

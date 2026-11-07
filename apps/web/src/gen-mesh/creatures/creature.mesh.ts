@@ -2,8 +2,8 @@
 // motion.ts animates (gait + behaviour), with the world model bound for terrain, water and
 // solids. Owner: L4. Geometry is shared per (def, palette); each instance has its own pivots.
 import type * as THREE from 'three';
-import { kitArgs, type Value } from '@sim/generators';
-import type { StoredDef, WorldModel } from '@sim/world-compiler';
+import { kitArgs, type Value } from '@souls/generators';
+import type { StoredDef, WorldModel } from '@souls/world-compiler';
 import { buildKit } from '../kit.mesh.ts';
 import { registerMesh, type MeshCtx } from '../registry.ts';
 import { bindMotionModel, makeRig, type Gait, type Rig } from '../motion.ts';

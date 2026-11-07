@@ -11,7 +11,7 @@
 // Edits: the cover index follows the world's areas and footprints; when they change, cached cells are re-dealt in the
 // background (nearest first) while the old ones stay drawn.
 import * as THREE from 'three';
-import type { WorldModel } from '@sim/world-compiler';
+import type { WorldModel } from '@souls/world-compiler';
 import { blockCellsOf, BLOCK_CELL } from './ecology.mesh.ts';
 import { browserQuality } from '../quality-tier.ts';
 import { COVER_CELL, KINDS, REC, cellKind, cellSites, coverIndex, coverPalette, prefix, type CellSites, type CoverIndex } from './ground-cover-recipe.ts';

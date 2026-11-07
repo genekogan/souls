@@ -53,14 +53,14 @@ try {
     if (s.rev && key !== null && Date.now() - stableSince > 3000) { settledAt = stableSince - tNav; break; }
     if (Date.now() - tNav > settleMax * 1000) break;
   }
-  const entityCount = await page.evaluate(() => window.__simEntity?.layer?.entityCount ?? null);
-  const loop = await page.evaluate(() => window.__simEntity?.layer?.loopStats ?? null);
+  const entityCount = await page.evaluate(() => window.__soulsEntity?.layer?.entityCount ?? null);
+  const loop = await page.evaluate(() => window.__soulsEntity?.layer?.loopStats ?? null);
   // the orbit (the probe's gesture: one finger across the middle, then a pinch) under the profiler
   const cx = Math.round(W / 2), cy = Math.round(H * 0.5);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
   await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
   await page.evaluate(() => {
-    const p = window.__orbit, layer = window.__simEntity?.layer;
+    const p = window.__orbit, layer = window.__soulsEntity?.layer;
     if (!layer) throw new Error('entity layer not available');
     const update = layer.update;
     layer.update = function (...args) { const t = performance.now(); try { return update.apply(this, args); } finally { if (p.recording) p.updates.push(performance.now() - t); } };

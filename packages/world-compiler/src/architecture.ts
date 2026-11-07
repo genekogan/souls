@@ -1,6 +1,6 @@
 // Exterior entrance safety uses the generator's room/door/stair graph and the same yaw boxes
 // indexed for overlap/engine navigation. No engine or server is needed for a local dry run.
-import { CREATION_LIMITS as L, pointInPoly, reachableFromOutside, type Baked, type Opening, type Vec2 } from '@sim/generators';
+import { CREATION_LIMITS as L, pointInPoly, reachableFromOutside, type Baked, type Opening, type Vec2 } from '@souls/generators';
 import { obbOverlap, type WorldModel, type OBB } from './model.ts';
 import type { Diff } from './compile.ts';
 import type { Entity, Failure } from './schemas.ts';

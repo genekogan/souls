@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Connection} from '@sim/client';
+import {Connection} from '@souls/client';
 
 function rig(t:import('node:test').TestContext,getToken:()=>Promise<string|null>){
  t.mock.timers.enable({apis:['setTimeout','setInterval']});t.mock.method(Math,'random',()=>0);

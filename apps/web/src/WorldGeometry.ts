@@ -11,14 +11,14 @@ import {createConnectedNativeShore} from '../../../mars/viewer/app/engine-view/c
 import {shoreBankEdgePositions,SHORE_BANK_EDGE_NAME} from './WorldShoreBankEdges.ts';
 import {groundOutsideTerrain,type GroundRectangle} from './WorldGround.ts';
 import {createCapturedShoreEnvironment,type CapturedShoreView} from '../../../mars/viewer/app/engine-view/content/environment/captured-shore.ts';
-import { commonsSceneMetadataV1Schema, type CommonsSceneMetadataV1 } from '@sim/engine-contract';
+import { commonsSceneMetadataV1Schema, type CommonsSceneMetadataV1 } from '@souls/engine-contract';
 import { authoredCommons, commonsFixtureAtRoot } from './WorldCommons.ts';
 import type { SampledEntity } from '../../../mars/viewer/engine/take/replay.ts';
 import { createEdenCommonsEnvironment, type ContentView } from '../../../mars/viewer/app/engine-view/content/environment/commons.ts';
 import { createCommonsPaths } from '../../../mars/viewer/app/engine-view/content/environment/commons-paths.ts';
 import { createCommonsMeadow } from '../../../mars/viewer/app/engine-view/content/environment/commons-meadow.ts';
 import { createPavilionVines } from '../../../mars/viewer/app/engine-view/content/assets/pavilion-vines.ts';
-import { recordedTakeSchema, recordedTakeChunkSchema } from '@sim/protocol';
+import { recordedTakeSchema, recordedTakeChunkSchema } from '@souls/protocol';
 import type { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {StaticRootRegistry} from './rendering/StaticRootRegistry.ts';
 import {dequantizeBackdrop} from './WorldBackdropDequantize.ts';
@@ -34,7 +34,7 @@ import { isMarsCamp, MarsDesert } from './WorldMarsDesert.ts';
 // ------------------------------------------------------------------ wire shapes
 export type Chunk = { fromTick: number; toTick: number; take: Take };
 export type RawChunk = { fromTick: number; toTick: number; take: unknown };
-/** What the server streams over the socket (useSim keeps the latest). `receivedAt` is performance.now(). */
+/** What the server streams over the socket (useSouls keeps the latest). `receivedAt` is performance.now(). */
 export type LiveTakes = { serverTick: number; chunks: RawChunk[]; receivedAt: number };
 export type BuildingPlacement = { file: string; p: [number, number, number]; yaw?: number;scale?:number|[number,number,number] };
 export type MarsBackdrop={contract:'mars-campus-backdrop/1';url:string;at:[number,number,number];hide?:BackdropHide};
@@ -220,7 +220,8 @@ export class WorldGeometry {
   /** Ground rectangle [minX, minZ, maxX, maxZ] that the camera frames. */
   readonly bounds: [number, number, number, number];
 
-  constructor(scene: SpatialScene | null, ground?:'grass', commons?:CommonsSceneMetadataV1, shore?:WorldShore,private assetRoot='/world-assets/littlemartians') {
+  private assetRoot: string;
+  constructor(scene: SpatialScene | null, ground?:'grass', commons?:CommonsSceneMetadataV1, shore?:WorldShore,assetRoot='/world-assets/littlemartians') {this.assetRoot=assetRoot;
     if(ground==='grass'){this.materials.floor.color.set('#76a454');this.materials.outside.color.set('#639844');}
     this.group.name = 'camp';
     this.buildings.name = 'buildings';

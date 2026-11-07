@@ -1,4 +1,4 @@
-import { intentReceiptV2Schema, type IntentReceiptV2, type IntentRequestV2 } from '@sim/protocol';
+import { intentReceiptV2Schema, type IntentReceiptV2, type IntentRequestV2 } from '@souls/protocol';
 export type IntentResponse = { kind: 'recorded'; receipt: IntentReceiptV2 } | { kind: 'unconfirmed'; title: string; detail: string };
 /** Validate the actual versioned wire response and this caller's immutable request. */
 export function intentResponse(status: number, body: unknown, scope: {worldId:string;soulId:string;ownerId:string;principalId?:string;entityId?:string;request:IntentRequestV2}):IntentResponse {

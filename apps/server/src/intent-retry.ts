@@ -1,6 +1,6 @@
 // A controller/admission block can invite reconsideration; it is neither a
 // completed purpose nor a new owner instruction. Derived from durable facts.
-import type {IntentRevisionV2} from '@sim/protocol';
+import type {IntentRevisionV2} from '@souls/protocol';
 import type {IntentHistoryV2} from './intent-history.ts';
 
 /** Same backoff as the existing native failed-option cooldown, in world ticks.
