@@ -933,7 +933,7 @@ export class WorldEntityLayer {
       const ride = cupHand ? undefined : this.overrides.get(id); if (ride) { d.obj.position.copy(ride); const yaw = this.overrideYaw.get(id); if (yaw !== undefined) d.obj.rotation.y = -yaw; const roll = this.overrideRoll.get(id); if (roll !== undefined) d.obj.rotation.z = roll; }
       const s = d.from.s + (d.to.s - d.from.s) * t;
       d.obj.scale.setScalar(s);
-      const shown = this.interiorVisible(id, d);
+      const shown = this.interiorVisible(id, d) && !this.juggled?.has(id);
       const inHand = cupHand || (!ride && !d.removing && this.held.has(id) && (d.obj.userData.handleGrip ? this.handleHeld(id, d) : this.handPoint(this.held.get(id)!, d.obj.position)));
       if (!inHand || !d.obj.userData.cupShown) this.cupWater(id, null);
       if (!inHand && this.pours.has(id)) this.pours.get(id)!.visible = false;
@@ -1003,6 +1003,9 @@ export class WorldEntityLayer {
     for (const id of this.glowAnim) { const d = this.drawn.get(id)!; if (d.obj.visible && ((d.k! + frame) & (d.offscreen ? 15 : 3)) === 0) this.syncGlow(d, nowMs); }
   }
   private syncGlow(d: Drawn, nowMs: number) { animate(d.obj, d.motion!.entity, d.motion!.def, nowMs / 1000, { y: d.to.p.y, yaw: d.motion!.yaw }); d.glowStale = false; }
+  /** #441: held sets drawn as flying balls this frame (WorldGames): each is drawn whole or as balls, never both. */
+  private juggled?: ReadonlySet<string>;
+  setJuggled(sets: ReadonlySet<string>) { this.juggled = sets; }
   /** Viewer B7: where a body's figure holds a carried thing — the palm of its raised hand (the carrying arm is posed to
    *  the engine's hand point; the free one hangs lower), or between both palms when they are level (two-handed / seated).
    *  The figure is the native people view's rig, found in the scene by its name (= the body's engine id). False when the

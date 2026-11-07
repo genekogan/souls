@@ -11,6 +11,7 @@ import { handReachSeconds, handReleaseSeconds, handSwingSeconds, type HandActuat
 import { menuWorldOf, type MenuWorld } from '../split/menu-world.ts';
 import {CATALOG} from '../../../../mars/viewer/engine/world/catalog.ts';
 import {MAX_KG_PER_CARRIER} from '../../../../mars/viewer/engine/carry/formation.ts';
+import {JUGGLE} from '../../../../mars/viewer/engine/items/juggle.ts';
 import { deckRaised, railGaps, rasterOf } from '@souls/generators';
 import { applyBatch, containerClaims, containerHidden, containerInside, containerOpen, obbOverlap, type Diff, type Entity, type Failure, type Op, type Result, type StoredDef, type ResidentMove, type WorldModel } from '@souls/world-compiler';
 import { beamBays, joistBays, sheetBays, flightBays, flightUnfit, treadTarget, treadsPhrase, assetFromDef, assetIdFor, isFixtureDef, isFloatingDef, nearestSurfaceSlot, buildWorldEditPhysics, withLinkApproaches, type DefFacts, type EntityPhysicsV1, type FixtureSpecV1, type WorldEditV1 } from '@souls/engine-mars';
@@ -2034,7 +2035,7 @@ export class EngineBridge {
     caps.push({ id: 'pray', verb: 'pray', label: 'Pray to the god of this world (params: {"text": "…"}); answers come back under GET /v1/god/prayers/mine', available: true, params: { text: { type: 'string', required: true, maxLength: 2000 } } });
     const ents = this.mw.world.entities as Record<string, any>, me = ents[soul.entityId]; if (!me?.human) return;
     const here: Vec2 = [me.pose.p[0], me.pose.p[2]];
-    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'put-in', 'search')) {
+    if (named('sit', 'lie', 'sleep', 'pick-up', 'put-on', 'put-in', 'search', 'juggle')) {
       const held = Object.values(ents).find((x: any) => x.tags?.includes('entity-world') && x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any;
       const name = (id: string) => (this.model.entities.has(id) ? this.model.pathOf(id) : String(ents[id]?.label ?? id));
       // MARSLIVED: a thing resting on a table is reached from the table's floor (its top's height matched Mimos's 0.53 m
@@ -2053,6 +2054,18 @@ export class EngineBridge {
         return at ? [{ verb: 'mars:walk_to', params: { x: at[0], z: at[1], level } }] : [];
       };
       const stand = me.human.activity === 'sit' || me.human.baseActivity === 'sit' || me.human.berth ? [{ verb: 'stand', params: {} }] : [];
+      // #441 (W107): a held set of balls can be juggled, standing up first if seated; only while it is held
+      {
+        const inHands = held ? Object.values(ents).filter((x: any) => x.support?.kind === 'in-hand' && x.support.by === soul.entityId) as any[] : [];
+        const defOf = (x: any) => { const m = this.model.entities.get(x.id); return m && this.model.resolvedDef(m.def); }, set = inHands.find((x) => defOf(x)?.tags.includes('juggling'));
+        const jm = set && this.model.entities.get(set.id), jd = jm && this.model.resolvedDef(jm.def);
+        if (jd) {
+          const second = inHands.length > 1, id = `juggle:${set.id}`, label = `Juggle ${name(set.id)}`;
+          const palette = jd.palette as Record<string, string> | undefined, tint = (k: string) => String(jm!.params?.[k] ?? palette?.[k] ?? '').slice(0, 16), colors = ['one', 'two', 'three'].map(tint);
+          caps.push({ id, verb: 'juggle', label, target: { id: set.id, kind: 'item' }, available: !second, ...(second ? { blocked: { code: 'juggle.hand-full', reason: 'Juggling needs the other hand free; put the other thing down first.' } } : {}), params: { seconds: { type: 'integer', min: JUGGLE.MIN_SECONDS, max: JUGGLE.MAX_SECONDS, default: 20 } } });
+          if (!second) plans.set(id, { label, steps: [...stand, { verb: 'mars:juggle_v1', params: { item: set.id, seconds: 20, ...(colors.every(Boolean) ? { colors } : {}) } }], seconds: true });
+        }
+      }
       // floors (2026-10-26): a seat the body cannot use names the nearest one it can (or the ground)
       const unusable: number[] = [], usable: { id: string; label: string; d: number }[] = [];
       for (const x of near) {
@@ -2212,7 +2225,8 @@ export class EngineBridge {
           const id = `pick-up:${x.id}`, label = kept ? `Take ${name(x.id)}${note ? ` (${note})` : ''} out of ${kept.label} (${d} m)` : `Pick up ${name(x.id)} (${d} m${levelOf(x) ? `, ${this.floorWord(x)}` : ''})`;
           // PC12 (#691): a small part joined into an assembly is not picked up off its joints either
           const block = (kept ? this.storageRefusal(kept, soul) ?? this.claimRefusal(x.id, soul, d <= FACTS_NEAR) : null) ?? this.joinedRefusal(x.id);
-          caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}) });
+          const pm = this.model.entities.get(x.id), juggling = pm && this.model.resolvedDef(pm.def)?.tags.includes('juggling');
+          caps.push({ id, verb: 'pick-up', label, target: { id: x.id, kind: 'item' }, available: !block, ...(block ? { blocked: block } : {}), ...(juggling ? { aliases: ['juggling balls'] } : {}) });
           const precise=(this.physics?.assets[x.def] as {capabilities?:{recordedItemPoseV1?:boolean}})?.capabilities?.recordedItemPoseV1&&levelOf(x)===(me.human.level??0);
           // entry 43: an opted-in pick-up lets an idle gesture go before the hand reaches (entry 41's M04 finding)
           plans.set(id, { label, steps: [...stand, ...(precise?[{ verb: 'mars:let_go_v1', params: {} }]:kept?[]:approach(x)), { verb: 'mars:take_item', params: { item: x.id, hand: 'right' } }] });

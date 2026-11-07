@@ -50,6 +50,8 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   const workTable = JSON.parse(readFileSync(new URL('../conformance/work-table-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // 2026-11-05 library budgets (#494): the music family's new in-budget revisions; nothing left to pin (see the record's note).
   const budgetsMusic = JSON.parse(readFileSync(new URL('../conformance/library-budgets-music-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
+  // #441 2026-11-05: core-juggling-balls@1, a carryable set; the narrow run found nothing, so this pins no finding.
+  const jugglingBalls = JSON.parse(readFileSync(new URL('../conformance/juggling-balls-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // #427 2026-11-05: core-tent@2 and core-field-gate@1 opened by hand; the narrow run found nothing, so this pins no finding.
   const openings = JSON.parse(readFileSync(new URL('../conformance/openings-20261105.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   // 2026-11-05 music family (#431): the new record player; the narrow run found nothing, so this pins no finding.
@@ -77,7 +79,7 @@ test('EF4 small-K gate: every library def places, bakes, furnishes and builds ga
   // PC16 2026-11-06: the stair flight, tread and step beam that takes a stair hook; the narrow runs found nothing, so this pins no finding.
   const stairs = JSON.parse(readFileSync(new URL('../conformance/stairs-20261106.json', import.meta.url), 'utf8')) as Pick<typeof known, 'findings'>;
   const signature = (f: Finding) => JSON.stringify([f.def, f.hash, f.field, f.stage, f.code, f.detail]);
-  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...guestbook.findings, ...lostAndFound.findings, ...swapShelf.findings, ...repairDefs.findings, ...openings.findings, ...hidingPlaces.findings, ...pantry.findings, ...workTable.findings, ...litter.findings, ...joints.findings, ...deck.findings, ...stairs.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
+  const allowed = new Set([...known.findings, ...integration.findings, ...trunk3.findings, ...trunk32.findings, ...w2.findings, ...z2.findings, ...bsgen.findings, ...seatdef.findings, ...officeDesk.findings, ...soulActions.findings, ...looseMaterials.findings, ...budgetsMusic.findings, ...recordPlayer.findings, ...chalk.findings, ...guestbook.findings, ...lostAndFound.findings, ...swapShelf.findings, ...jugglingBalls.findings, ...repairDefs.findings, ...openings.findings, ...hidingPlaces.findings, ...pantry.findings, ...workTable.findings, ...litter.findings, ...joints.findings, ...deck.findings, ...stairs.findings].flatMap(f => f.fields.map(field => signature({ ...f, field }))));
   const newFindings = report.findings.filter(f => !allowed.has(signature(f)));
   assert.deepEqual(newFindings, [], `Undocumented conformance failures: ${JSON.stringify(newFindings.slice(0, 12))}`);
   assert.deepEqual(report.qualificationGaps, known.qualificationGaps, 'rendering gaps changed: qualify them or document the exact gap');

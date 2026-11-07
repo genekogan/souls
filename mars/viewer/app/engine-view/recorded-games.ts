@@ -1,4 +1,5 @@
 import type {SampledEntity} from '../../engine/take/replay.ts';
+import {juggleBalls,type JuggleV1} from '../../engine/items/juggle.ts';
 export type RecordedGame={kind:'frisbee'|'petanque'|'volleyball';group:string;players:string[];flightPolicy?:'clear-v1';since?:number;joinedAt?:number;releaseTick?:number;releaseFrameTick?:number;releaseFrom?:number;waiting?:boolean;from?:string;to?:string|null;throwTick?:number;landTick?:number;turn?:number;end?:number;jack?:[number,number];at?:[number,number];boules?:{by:string;at:[number,number]}[]};
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
@@ -17,6 +18,15 @@ export function recordedGame(value:unknown):RecordedGame|null{
 export type GameObject={key:string;kind:RecordedGame['kind']|'jack';p:[number,number,number];flight:boolean;progress:number};
 /** Release/catch landmarks fit the shared1.34m shoulder/0.62m arm model. */
 export function gameContact(kind:RecordedGame['kind']){return kind==='volleyball'?{forward:.2,height:1.85}:kind==='petanque'?{forward:.32,height:.92}:{forward:.43,height:1.05};}
+export type JuggledBall={key:string;p:[number,number,number];color?:string};
+/** #441: the balls of every juggling body, and the sets they stand in for (each set is drawn whole or as balls, never both). */
+export function recordedJuggles(entities:Readonly<Record<string,SampledEntity>>,absoluteTick:number):{balls:JuggledBall[];sets:Set<string>}{
+ const balls:JuggledBall[]=[],sets=new Set<string>();
+ for(const [id,e] of Object.entries(entities)){const s=e.state.juggleV1 as JuggleV1|undefined;if(!s)continue;
+  const at=juggleBalls(s,absoluteTick,e.p,e.yaw);if(!at)continue;sets.add(s.item);
+  at.forEach((p,i)=>balls.push({key:id+':juggle:'+i,p,...(s.colors?{color:s.colors[i]}:{})}));}
+ return {balls,sets};
+}
 /** Pooled game props are a replay-stable depiction of logged turns; no collision/score simulation. */
 export function recordedGameObjects(entities:Readonly<Record<string,SampledEntity>>,absoluteTick:number):GameObject[]{
  const groups=new Map<string,RecordedGame>();
