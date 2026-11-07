@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { collect, fullPages } from './generate.mjs';
 import { OUTLINE, SITE, frontmatter, lintPage, lintTree, urlOf } from './lint.mjs';
 
 const page = (fm, body) => `---\n${fm}\n---\n\n${body}\n`;
@@ -11,7 +12,7 @@ const FM = 'title: A page\ndescription: One line.\naudience: agents\nupdated: 20
 const codes = (text) => lintPage(text).map((p) => p.code);
 
 test('docs/site lints clean: every outline page exists with valid frontmatter, one H1 and resolving links', () => {
-  const { pages, problems } = lintTree();
+  const { pages, problems } = lintTree(undefined, { full: Object.fromEntries(fullPages(collect()).map((p) => [p.file, p.text])) });
   assert.deepEqual(problems, []);
   for (const url of OUTLINE) assert.ok(pages.includes(url), url);
   assert.ok(!pages.some((p) => /WRITING/i.test(p)), 'the writing guide is not a page');

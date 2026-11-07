@@ -42,9 +42,9 @@ Plain, specific, confident. Say what it is, what is new, and what to do.
    when, and quote at most a line or two. If a page needs more, the skill is missing something: fix the skill.
 5. **Reference comes from code.** Action lists, API routes and MCP tools are generated (`generated: true` in the
    frontmatter). In `actions.md`, `api.md` and `mcp.md` the prose above `## Actions`, `## Routes` and `## Tools` is
-   written by hand; from that heading down the page is rewritten by `node tools/docs/generate.mjs` from what the
-   server's own modules answer. Never hand-edit the generated part: change the code and run the generator.
-   `node --test tools/docs/generate.test.mjs` fails while the committed pages and the code disagree.
+   written by hand and committed, and the file stops at that heading. The rest is added when the docs are built, by
+   `tools/docs/generate.mjs`, from what the server's own modules answer, so changing the code needs no docs change. To
+   read a full page locally: `node tools/docs/generate.mjs --out .local/docs`.
 6. **No internal paths or process jargon** in page text: no repository paths, lane names, issue numbers, release
    codenames, hostnames other than soul.game, or personal details. `sources` in the frontmatter is the one place for
    repository paths.

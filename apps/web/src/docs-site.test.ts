@@ -3,6 +3,7 @@
 // page, pages.json (the sitemap's source) lists them too; plus the Markdown subset the renderer must get right.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,8 @@ import { buildDocs, htmlOutline, inline, markdownHtml, markdownOutline, parseDoc
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url)), SITE = join(ROOT, 'docs/site');
 const files = (d: string): string[] => readdirSync(d).sort().flatMap((e) => { const f = join(d, e); return statSync(f).isDirectory() ? files(f) : f.endsWith('.md') ? [f] : []; });
-const build = (base = '/') => buildDocs({ files: files(SITE).map((f) => relative(SITE, f)), read: (r) => readFileSync(join(SITE, r), 'utf8'),
+const generated: Record<string, string> = JSON.parse(execFileSync(process.execPath, [join(ROOT, 'tools/docs/generate.mjs'), '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+const build = (base = '/') => buildDocs({ files: files(SITE).map((f) => relative(SITE, f)), read: (r) => generated[r] ?? readFileSync(join(SITE, r), 'utf8'),
   template: readFileSync(join(ROOT, 'apps/web/docs-template.html'), 'utf8'), changelog: readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8'), base, origin: 'https://soul.game' });
 
 test('every page is emitted as HTML and as its Markdown twin, with the same headings and the same links', () => {
@@ -52,6 +54,17 @@ test('llms.txt lists every published page once with its description; llms-full.t
 // A plain root build with the default origin (as `pnpm --filter @sim/web build` and the bundle gate make it) must hold exactly
 // these files. A based or differently-originated build is checked by the parity test above, not here.
 const DIST = join(ROOT, 'apps/web/dist'), rootBuild = existsSync(join(DIST, 'llms.txt')) && readFileSync(join(DIST, 'llms.txt'), 'utf8').includes('](https://soul.game/docs.md)');
+test('the served reference pages are the full ones: HTML, Markdown twin and llms-full.txt', () => {
+  const { pages, out } = build();
+  for (const [slug, heading, inside] of [['actions', '## Actions', 'Refusal codes'], ['api', '## Routes', 'Served beside the route table'], ['mcp', '## Tools', 'soul_wait']] as const) {
+    assert.ok(pages.some((p) => p.url === `/docs/${slug}`));
+    assert.ok(out.get(`docs/${slug}.md`)!.includes(inside), `${slug}.md`);
+    assert.ok(out.get(`docs/${slug}/index.html`)!.includes(inside), `${slug} html`);
+    assert.ok(out.get(`docs/${slug}.md`)!.split(`\n${heading}\n`)[1]!.length > 1000, `${slug}: the part under ${heading}`);
+  }
+  if (!pages.find((p) => p.url === '/docs/mcp')!.stub) assert.ok(out.get('llms-full.txt')!.includes('### soul_wait'));
+});
+
 test('a root web build holds exactly the files the build function makes', { skip: !rootBuild && 'no root web build with the default origin in apps/web/dist' }, () => {
   const { out } = build();
   for (const [file, text] of out) assert.equal(readFileSync(join(ROOT, 'apps/web/dist', file), 'utf8'), text, file);

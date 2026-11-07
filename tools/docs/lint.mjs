@@ -5,6 +5,7 @@
 // The writing rules behind these checks: docs/site/WRITING.md.
 //
 //   node tools/docs/lint.mjs [--dir docs/site]     exit 0 clean, 1 with one line per problem
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,13 +113,14 @@ export function lintPage(text, { pages = new Set(OUTLINE) } = {}) {
 
 function* walk(dir) { for (const e of readdirSync(dir).sort()) { const p = join(dir, e); if (statSync(p).isDirectory()) yield* walk(p); else if (p.endsWith('.md')) yield p; } }
 
-/** Lint a docs tree: { pages: [url], problems: [{ file, code, message }] }. */
-export function lintTree(dir = SITE) {
+/** Lint a docs tree: { pages: [url], problems: [{ file, code, message }] }. `full` holds pages to lint in place of their
+ *  file: the reference pages as built ({ 'actions.md': text }), since their generated part isn't in the tree. */
+export function lintTree(dir = SITE, { full = {} } = {}) {
   const files = [...walk(dir)].filter((f) => !NOT_PAGES.has(relative(dir, f)));
   const pages = new Set(files.map((f) => urlOf(relative(dir, f))));
   const problems = [];
   for (const url of OUTLINE) if (!pages.has(url)) problems.push({ file: dir, code: 'outline.missing', message: `the outline page ${url} has no file` });
-  for (const f of files) for (const p of lintPage(readFileSync(f, 'utf8'), { pages })) problems.push({ file: relative(ROOT, f), ...p });
+  for (const f of files) for (const p of lintPage(full[relative(dir, f)] ?? readFileSync(f, 'utf8'), { pages })) problems.push({ file: relative(ROOT, f), ...p });
   return { pages: [...pages].sort(), problems };
 }
 
@@ -126,7 +128,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const i = process.argv.indexOf('--dir');
   if (i > 0 && !process.argv[i + 1]) { console.error('usage: node tools/docs/lint.mjs [--dir <docs dir>]'); process.exit(2); }
   const dir = i > 0 ? resolve(process.argv[i + 1]) : SITE;
-  const { pages, problems } = lintTree(dir);
+  // the tree's own reference pages as they are built (a child process: generate.mjs imports this file)
+  const full = i < 0 ? JSON.parse(execFileSync(process.execPath, [join(ROOT, 'tools/docs/generate.mjs'), '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })) : {};
+  const { pages, problems } = lintTree(dir, { full });
   for (const p of problems) console.log(`${p.file}: ${p.code}: ${p.message}`);
   console.log(`docs lint: ${pages.length} page(s), ${problems.length} problem(s)`);
   process.exit(problems.length ? 1 : 0);

@@ -13,7 +13,7 @@ test('docs and plain tools changes run no job', () => {
   assert.equal(jobsFor(['docs/a.md']).scope, 'none');
 });
 
-test('the generated reference pages: checked when the server, packages, generator or the pages change; not for other docs', () => {
+test('the reference pages\' generator: checked when the server, packages, generator or the pages change; not for other docs', () => {
   for (const f of ['apps/server/src/mcp.ts', 'packages/engine-mars/src/engine.ts', 'tools/docs/generate.mjs', 'tools/docs/reference/collect.mjs', 'docs/site/api.md'])
     assert.ok(names([f]).includes('docs-reference'), f);
   assert.deepEqual(names(['tools/docs/generate.mjs']), ['docs-reference']);

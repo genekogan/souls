@@ -3,11 +3,12 @@
 // hand above one heading each (## Actions, ## Routes, ## Tools); from that heading down the page is written here, from
 // what the server's own modules answer (reference/collect.mjs): the edge action schema and intents, the engine's verbs,
 // the refusal codes the edge source names, every HTTP route a new world registers, and every MCP tool the SDK lists.
-// The docs build (the docsSite plugin, apps/web/src/docs-site.ts) renders the committed pages; generate.test.mjs fails
-// when they and the code disagree, so a schema change ships with its docs.
+// The generated part is not in the tree, so a change to the code never has to touch these pages: the docs build (the docsSite
+// plugin, apps/web/vite.config.ts) runs this and renders the full pages, and CI checks that it runs (generate.test.mjs).
 //
-//   node tools/docs/generate.mjs            rewrite the generated part of each page
-//   node tools/docs/generate.mjs --check    exit 1, naming each page that differs from the code
+//   node tools/docs/generate.mjs              say what would be generated, or exit 1 if the generator can't run
+//   node tools/docs/generate.mjs --json       print { "actions.md": <full page>, ... }: what the docs build reads
+//   node tools/docs/generate.mjs --out <dir>  write the full pages there, to read them locally
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -170,23 +171,20 @@ export function splice(text, heading, section) {
   return `${lines.slice(0, i).join('\n')}\n${section.trimEnd()}\n`.replace(/^\n/, '');
 }
 
-/** Every generated page, as it should be: [{ file, path, want, have }]. */
-export function pagesFor(facts, root = ROOT) {
-  return PAGES.map((p) => {
-    const path = join(root, 'docs/site', p.file), have = readFileSync(path, 'utf8');
-    return { file: `docs/site/${p.file}`, path, have, want: splice(have, p.heading, p.render(facts)) };
-  });
+/** Every generated page in full: the committed prose above its heading, then the section from the code. [{ file, text }] */
+export function fullPages(facts, root = ROOT) {
+  return PAGES.map((p) => ({ file: p.file, text: splice(readFileSync(join(root, 'docs/site', p.file), 'utf8'), p.heading, p.render(facts)) }));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const check = process.argv.includes('--check');
-  const pages = pagesFor(collect());
-  const stale = pages.filter((p) => p.want !== p.have);
-  if (check) {
-    for (const p of stale) console.log(`${p.file}: differs from the code; run node tools/docs/generate.mjs`);
-    console.log(`docs reference: ${pages.length} page(s), ${stale.length} stale`);
-    process.exit(stale.length ? 1 : 0);
+  const pages = fullPages(collect()), i = process.argv.indexOf('--out');
+  if (process.argv.includes('--json')) process.stdout.write(JSON.stringify(Object.fromEntries(pages.map((p) => [p.file, p.text]))));
+  else {
+    if (i > 0) {
+      if (!process.argv[i + 1]) { console.error('usage: node tools/docs/generate.mjs [--json | --out <dir>]'); process.exit(2); }
+      mkdirSync(resolve(process.argv[i + 1]), { recursive: true });
+      for (const p of pages) writeFileSync(join(resolve(process.argv[i + 1]), p.file), p.text);
+    }
+    console.log(`docs reference: ${pages.map((p) => `${p.file} ${p.text.length} bytes`).join(', ')}`);
   }
-  for (const p of stale) writeFileSync(p.path, p.want);
-  console.log(`docs reference: ${pages.length} page(s), ${stale.length} rewritten`);
 }
