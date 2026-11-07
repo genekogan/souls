@@ -169,7 +169,7 @@ function acquireLock(path, { label = "eden-god", ttlMs = LOCK_TTL_MS, reentrant 
 }
 
 // lib/doctor.mjs
-import { existsSync as existsSync4, readdirSync as readdirSync2, readFileSync as readFileSync6, unlinkSync as unlinkSync3, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync6, unlinkSync as unlinkSync3, statSync as statSync3 } from "node:fs";
 import { resolve as resolve4 } from "node:path";
 
 // lib/chrome-lease.mjs
@@ -208,7 +208,7 @@ async function chromeLease(label = "unknown", { waitMs = 11e4, staleMs = LOCK_TT
 }
 
 // lib/state.mjs
-import { existsSync as existsSync3, readFileSync as readFileSync5, writeFileSync as writeFileSync3, renameSync as renameSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync3, renameSync as renameSync2, unlinkSync as unlinkSync2 } from "node:fs";
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -293,7 +293,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync as readFileSync4, rmSync as rmSync3 } from "node:fs";
 
 // lib/seat.mjs
-import { existsSync as existsSync2, readFileSync as readFileSync3 } from "node:fs";
+import { readFileSync as readFileSync3 } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve as resolve3 } from "node:path";
 
@@ -736,9 +736,9 @@ function sit(home, key) {
   process.env.EDEN_GOD_SEAT = key;
 }
 var LEGACY = ".eden-god.json";
-var legacyWorld = () => {
+var readWorld = (file) => {
   try {
-    return JSON.parse(readFileSync3(LEGACY, "utf8")).world ?? null;
+    return JSON.parse(readFileSync3(file, "utf8")).world ?? null;
   } catch {
     return null;
   }
@@ -760,23 +760,15 @@ function seatForRegister(url) {
 function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process.env, home = homedir() } = {}) {
   const found = findHome({ cwd, env: env2, homedir: home });
   if (found.kind !== "home") return argv;
-  const h = openHome(found.root);
-  if (env2.EDEN_GOD_SEAT) {
-    sit(h, env2.EDEN_GOD_SEAT);
-    return argv;
-  }
-  const cfg = h.config(), first = argv[0] ?? "", say = (w) => commands[w] ? `@${w}` : w;
-  const asked = first.startsWith("@") ? first.slice(1) : !commands[first] && (cfg.gods[first] || cfg.worlds[first]) ? first : null;
-  const line2 = asked === null ? argv : argv.slice(1), cmd = line2[0];
+  const h = openHome(found.root), cfg = h.config(), first = argv[0] ?? "", say = (w) => commands[w] ? `@${w}` : w;
+  const inherited = env2.EDEN_GOD_SEAT || null;
+  const worded = inherited ? null : first.startsWith("@") ? first.slice(1) : !commands[first] && (cfg.gods[first] || cfg.worlds[first]) ? first : null;
+  const asked = inherited ?? worded, line2 = worded === null ? argv : argv.slice(1), cmd = line2[0];
   if (asked !== null && !cfg.gods[asked]) throw new Error(`No god seat for ${asked} here. Run: node eden-god.mjs register <world-url>`);
   if (env2.EDEN_GOD_HELPER) {
-    let world = null;
-    try {
-      world = JSON.parse(readFileSync3(resolve3(cwd, env2.EDEN_GOD_HELPER), "utf8")).world;
-    } catch {
-    }
-    const key = keyOf(cfg.worlds, world);
-    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key ?? world}, not ${asked}.`);
+    if (["register", "pair", "mint"].includes(cmd)) throw new Error("A helper works under its lead's seat; it does not pair or register.");
+    const key = keyOf(cfg.worlds, readWorld(resolve3(cwd, env2.EDEN_GOD_HELPER)));
+    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key}, not ${asked}.`);
     if (key && cfg.gods[key]) sit(h, key);
     return line2;
   }
@@ -787,9 +779,14 @@ function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process
     } else sit(h, asked);
     return line2;
   }
-  if (existsSync2(join2(cwd, LEGACY))) {
-    const key = keyOf(cfg.worlds, legacyWorld());
-    if (!key || !cfg.gods[key]) return argv;
+  const fileWorld = readWorld(join2(cwd, LEGACY));
+  if (fileWorld) {
+    const key = keyOf(cfg.worlds, fileWorld);
+    if (!key || !cfg.gods[key] || !h.godSecrets(key).token) return argv;
+    if (cmd !== "register" && cmd !== "help") {
+      sit(h, key);
+      return line2;
+    }
   }
   if (cmd === "register") {
     registering = h;
@@ -1016,7 +1013,7 @@ function noticeInboxHeader(headers) {
 
 // lib/state.mjs
 var STATE = ".eden-god.json";
-var read = (file) => existsSync3(file) ? JSON.parse(readFileSync5(file, "utf8")) : {};
+var read = (file) => existsSync2(file) ? JSON.parse(readFileSync5(file, "utf8")) : {};
 var claimName = (id) => {
   if (!/^c_[0-9a-f]{8}$/.test(id)) throw new Error("EDEN_GOD_CLAIM must be c_ followed by eight hexadecimal digits");
   return `.eden-god.claim-${id}.json`;
@@ -1026,7 +1023,7 @@ var helperFile = (id) => `.eden-god.helper-${claimName(id).slice(".eden-god.clai
 function helperState() {
   const file = process.env.EDEN_GOD_HELPER;
   if (!file) return null;
-  if (!existsSync3(file)) throw new Error(`EDEN_GOD_HELPER names a missing file: ${file}`);
+  if (!existsSync2(file)) throw new Error(`EDEN_GOD_HELPER names a missing file: ${file}`);
   const s = read(file), cid = s.helper?.claim;
   if (!cid) throw new Error(`${file} is not a helper file (no helper.claim)`);
   if (process.env.EDEN_GOD_CLAIM && process.env.EDEN_GOD_CLAIM !== cid) throw new Error(`EDEN_GOD_CLAIM=${process.env.EDEN_GOD_CLAIM} differs from the helper file's claim ${cid}`);
@@ -1283,14 +1280,14 @@ var r2 = (v) => Math.round(v * 100) / 100;
 // lib/doctor.mjs
 function localDoctor({ fix = false, cwd = seatDir() ?? process.cwd(), chrome = CHROME_LOCK } = {}) {
   const slots = chromeSlotDirs(chrome), paths = [...slots, resolve4(cwd, ".eden-god.look.json.lock"), resolve4(cwd, ".eden-god.json.lock"), ...readdirSync2(cwd).filter((n) => /^\.eden-god\.claim-c_[0-9a-f]{8}\.json\.lock$/.test(n)).map((n) => resolve4(cwd, n))];
-  for (let i = 0; i < paths.length; i++) if (existsSync4(paths[i] + ".reclaim")) paths.push(paths[i] + ".reclaim");
+  for (let i = 0; i < paths.length; i++) if (existsSync3(paths[i] + ".reclaim")) paths.push(paths[i] + ".reclaim");
   const locks = paths.map((path2) => {
     const slot = slots.indexOf(path2), row = { kind: slot >= 0 ? "chrome" : "state", ...slot >= 0 ? { slot } : {}, ...inspectLock(path2) };
     if (fix && row.stale) row.fixed = breakLock(path2);
     return row;
   });
   const path = resolve4(cwd, ".eden-god.look.json");
-  if (existsSync4(path)) {
+  if (existsSync3(path)) {
     let raw, k;
     try {
       raw = readFileSync6(path, "utf8");
@@ -1372,11 +1369,11 @@ async function taxonomy(flags2 = {}) {
 }
 
 // cli.mjs
-import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync11, mkdirSync as mkdirSync4, appendFileSync } from "node:fs";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync10, mkdirSync as mkdirSync4, appendFileSync } from "node:fs";
 import { resolve as resolve9 } from "node:path";
 
 // lib/mirror.mjs
-import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync7 } from "node:fs";
 import { createHash } from "node:crypto";
 
 // lib/solver.mjs
@@ -2306,7 +2303,7 @@ var wasTrusted = () => trustedRead;
 var speaksMirror = () => speaks && !oldServer;
 function readCache() {
   try {
-    return existsSync5(godFile(CACHE)) ? JSON.parse(readFileSync7(godFile(CACHE), "utf8")) : null;
+    return existsSync4(godFile(CACHE)) ? JSON.parse(readFileSync7(godFile(CACHE), "utf8")) : null;
   } catch {
     return null;
   }
@@ -2748,14 +2745,14 @@ function exportGenesis(snapshot3, { name } = {}) {
 
 // lib/look.mjs
 import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync8, mkdirSync as mkdirSync3, readFileSync as readFileSync9, writeFileSync as writeFileSync5, rmSync as rmSync5, statSync as statSync4, utimesSync as utimesSync2 } from "node:fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync9, writeFileSync as writeFileSync5, rmSync as rmSync5, statSync as statSync4, utimesSync as utimesSync2 } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer as createServer2 } from "node:net";
 import { dirname as dirname2, resolve as resolve6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // lib/remote-look.mjs
-import { existsSync as existsSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { existsSync as existsSync5, writeFileSync as writeFileSync4 } from "node:fs";
 import { resolve as resolve5, win32 } from "node:path";
 var needsLocalBrowser = (args) => !!args.views || args.frames > 1 || !!args.studio;
 var localBrowserError = () => Error("look: sheets (--views/--site), motion frames and kit workbench require local Playwright and Google Chrome; the remote renderer supports single views only");
@@ -2798,7 +2795,7 @@ function chromeCandidates(platform = process.platform, env2 = process.env) {
 async function withRemoteLook(args, runtime, local) {
   if (args.remote || process.env.EDEN_GOD_LOOK === "remote") return remoteLook(args, runtime);
   const candidates = (runtime.chromeCandidates ?? chromeCandidates)();
-  if (runtime.pw === void 0 && candidates && !(runtime.chromeExists ?? (() => candidates.some(existsSync6)))()) {
+  if (runtime.pw === void 0 && candidates && !(runtime.chromeExists ?? (() => candidates.some(existsSync5)))()) {
     try {
       return await remoteLook(args, runtime);
     } catch (remote) {
@@ -2821,7 +2818,7 @@ async function withRemoteLook(args, runtime, local) {
 
 // lib/warm.mjs
 import { spawn } from "node:child_process";
-import { existsSync as existsSync7, readFileSync as readFileSync8, rmSync as rmSync4 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync8, rmSync as rmSync4 } from "node:fs";
 var WARM = ".eden-god.warm.json";
 var LISTENER = ".eden-god.listen.json";
 var KEEPER = ".eden-god.look.json";
@@ -2859,7 +2856,7 @@ function warmEnabled(state = (() => {
   }
 })(), env2 = process.env, chrome = () => {
   const c = chromeCandidates();
-  return !c || c.some(existsSync7);
+  return !c || c.some(existsSync6);
 }) {
   if (env2.EDEN_GOD_WARM === "0" || env2.EDEN_GOD_LOOK === "remote") return false;
   if (!state?.world) return false;
@@ -2987,7 +2984,7 @@ function findPlaywright({ timeoutMs = 6e4 } = {}) {
   })();
   const bases = [process.env.EDEN_GOD_PLAYWRIGHT_FROM, readWarm()?.pwFrom, process.cwd(), here, resolve6(here, "../.."), resolve6(here, "../../.."), resolve6(here, "../../../mars/viewer"), resolve6(here, "../../mars/viewer"), resolve6(here, "../mars/viewer")].filter(Boolean);
   for (const b of bases) {
-    const pkg = existsSync8(resolve6(b, "package.json")) ? resolve6(b, "package.json") : resolve6(b, "noop.js");
+    const pkg = existsSync7(resolve6(b, "package.json")) ? resolve6(b, "package.json") : resolve6(b, "noop.js");
     for (const name of ["playwright-core", "playwright", "@playwright/test"]) {
       try {
         const m = createRequire(pkg)(name);
@@ -3955,7 +3952,7 @@ var LAYERS_POS = { hours: 1, event: 2, own: 2, access: 2, price: 2, currency: 1,
 var LAYERS_HELP = `layers: hours <ref> --open 07:00-15:00 (or 07:00-15:00@sat,sun) [--event "market 09:00 240 sat"] [--follow locked@open=false/true | on@dark=true/false] [--clear] (replaces the whole schedule) \xB7 event <ref> "market 09:00 240 sat" [--set market|concert] [--piece def@x,z[@yawdeg]] [--shift dx,dz] [--label "\u2026"] (adds one event; its set appears while it is on) \xB7 event <ref> <name> --remove \xB7 own <ref> <soul|god|group:x|none> [--private|--public] \xB7 access <ref> private|public|none \xB7 zone <name> <residential|commercial|park|farm|civic|industrial|wild> --rect|--circle|--area \xB7 zone-suggest <use> \xB7 layers \xB7 only where the world opts in (LAYERS=1): price <ref> <n|none> [--service "a coffee"] \xB7 currency <name> \xB7 give <soul> <n> \xB7 pay <from> <to> <n> \xB7 relate <a> <friend|neighbour|family|works-at|lives-at|member-of> <b> [--off]`;
 
 // lib/governance.mjs
-import { existsSync as existsSync9, readFileSync as readFileSync10 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync10 } from "node:fs";
 var clip = (s, n) => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
   return t.length > n ? t.slice(0, n - 1) + "\u2026" : t;
@@ -4000,7 +3997,7 @@ function decideBody(id, decision, f = {}) {
   let text;
   if (f.text !== void 0) {
     if (typeof f.text !== "string" || !f.text.trim()) throw new Error("--text needs the new constitution (markdown, or a file holding it)");
-    text = existsSync9(f.text) && !f.text.includes("\n") ? readFileSync10(f.text, "utf8") : f.text;
+    text = existsSync8(f.text) && !f.text.includes("\n") ? readFileSync10(f.text, "utf8") : f.text;
   }
   return { decision, ...reason ? { reason } : {}, ...text !== void 0 ? { text } : {} };
 }
@@ -4067,7 +4064,7 @@ function missingAbout(m, { kind, limit = 30 } = {}) {
 var SKILL_VERSION = "1.8";
 
 // lib/upload.mjs
-import { existsSync as existsSync10, readFileSync as readFileSync11 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync11 } from "node:fs";
 import { basename as basename2, dirname as dirname3, resolve as resolve7 } from "node:path";
 
 // lib/glb.mjs
@@ -4315,12 +4312,12 @@ var refusalLine = (file, r) => `REFUSED ${file}: ${r.code}${r.field ? ` ${r.fiel
   fix: ${r.fix}` : ""}`;
 async function uploadOne(entry, { dry = false, budget = DEFAULT_BUDGET, send = postAsset } = {}) {
   const file = entry.file, label = basename2(file);
-  if (!existsSync10(file)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such file ${file}`] };
+  if (!existsSync9(file)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such file ${file}`] };
   const bytes = new Uint8Array(readFileSync11(file));
   if (!bytes.byteLength) return { ok: false, refused: true, lines: [`REFUSED ${label}: the file is empty`] };
   let footprint;
   if (entry.footprint) {
-    if (!existsSync10(entry.footprint)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such footprint ${entry.footprint}`] };
+    if (!existsSync9(entry.footprint)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such footprint ${entry.footprint}`] };
     footprint = new Uint8Array(readFileSync11(entry.footprint));
   }
   const height = entry.height !== void 0 && entry.height !== "" ? Number(entry.height) : void 0;
@@ -4378,7 +4375,7 @@ async function postAsset({ bytes, mime, filename, footprint, fields }, { timeout
 }
 async function upload(path, flags2 = {}, deps = {}) {
   if (!path) throw new Error(USAGE);
-  if (!existsSync10(path)) throw new Error(`upload: no such file ${path}`);
+  if (!existsSync9(path)) throw new Error(`upload: no such file ${path}`);
   const bytes = new Uint8Array(readFileSync11(path));
   const dry = !!flags2.dry;
   let entries;
@@ -6282,7 +6279,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     for (const k of ["at", "offset", "size", "yaw", "mass", "root"]) if (f[k] !== void 0) throw new Error(`--${k} does not apply to a district chapter: the plan holds each plot's rectangle and massing`);
     const plots = buildValues(f.plots, ",", "plots", 8, 8), steps2 = f.steps === void 0 ? void 0 : buildValues(f.steps, ",", "steps", 24, 60);
     if (f.title !== void 0 && (typeof f.title !== "string" || !f.title.trim() || f.title.length > 80)) throw new Error("--title is 1..80 characters");
-    const brief = f.brief === void 0 ? void 0 : existsSync11(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync10(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, district: { id: f.district, ...plots ? { plots } : {} }, ...f.title ? { title: f.title } : {}, ...steps2 ? { steps: steps2 } : {}, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {} };
@@ -6293,7 +6290,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     const steps2 = f.steps.split(",").map((x) => x.trim());
     if (steps2.length > 24 || steps2.some((x) => !x || x.length > 60)) throw new Error("--steps needs 1..24 labels, each 1..60 characters");
     const massing = inheritedMassing ?? parseMassing(f.mass), site = await buildSite(f);
-    const brief = f.brief === void 0 ? void 0 : existsSync11(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync10(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, title: f.title, steps: steps2, site, massing, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {}, ...f.root ? { root: f.root } : {} };
@@ -6345,7 +6342,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
   if (sub === "claim") {
     const file = claimFile(r.claim.id), release = acquireLock(`${file}.lock`, { label: "claim state creation" });
     try {
-      const previous = existsSync11(file) ? JSON.parse(readFileSync13(file, "utf8")) : null;
+      const previous = existsSync10(file) ? JSON.parse(readFileSync13(file, "utf8")) : null;
       if (previous?.build?.id !== r.build.id || previous.build.claim !== r.claim.id) atomicWrite(file, JSON.stringify({ build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
     } finally {
       release();
@@ -6667,7 +6664,7 @@ var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
   return out.join("\n");
 });
 async function define(json2, ignored = []) {
-  const def = typeof json2 === "string" ? JSON.parse(existsSync11(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
+  const def = typeof json2 === "string" ? JSON.parse(existsSync10(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
   if (def.make?.kind === "gen" && !def.params) {
     const g = (await schema()).generators?.find((x) => x.id === def.make.gen);
     if (g && Object.keys(g.params).length) def.params = g.params;
@@ -6683,7 +6680,7 @@ function correctedLine(warnings = [], ignored = []) {
   return shown.length ? `corrected${refs.length === 1 ? ` ${refs[0]}` : ""}: ${shown.join("; ")}` : "";
 }
 async function defineKit(json2, flags2 = {}) {
-  const k = typeof json2 === "string" ? JSON.parse(existsSync11(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
+  const k = typeof json2 === "string" ? JSON.parse(existsSync10(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
   if (!k.name || !Array.isArray(k.shapes)) throw new Error("define-kit needs {name, shapes:[\u2026]} (see SKILL.md, kit primitives in SCHEMA.md)");
   const matches = (await searchDefs([k.name.replace(/[-_.]/g, " "), ...k.tags ?? []].join(" "))).defs;
   const picks = [...matches.filter((d) => usedIn(d).length), ...matches.filter((d) => !usedIn(d).length)].slice(0, 5);
@@ -6857,7 +6854,7 @@ function helpFor(cmd) {
   return [...lines.length ? lines : [`${cmd}: see help`], `${cmd} options: ${opts.map((x) => "--" + x).join(" ")}`].join("\n");
 }
 var CLI_SHAPE = { POS, FLAGS, BOOL, NUMERIC, boolsFor };
-var readArg = (r) => r[0] !== void 0 ? existsSync11(r[0]) && !r[0].trim().startsWith("{") ? readFileSync13(r[0], "utf8") : r[0] : readFileSync13(0, "utf8");
+var readArg = (r) => r[0] !== void 0 ? existsSync10(r[0]) && !r[0].trim().startsWith("{") ? readFileSync13(r[0], "utf8") : r[0] : readFileSync13(0, "utf8");
 var COMMANDS = {
   doctor: (r, f) => doctor(f),
   trace: (r, f) => trace(f),

@@ -1,7 +1,7 @@
 // Where a god's files live. A legacy folder keeps them beside the agent, as ever. Inside a Souls home a god holds a seat,
 // `.souls/gods/<world>/`, with its token in the shared credentials.json. The working directory stays the person's, because
 // god commands take relative file arguments: only this CLI's own files move. Never reads anything under souls/.
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { findHome, keyOf, openHome } from '../../world-launcher/soul/home.mjs';
@@ -17,7 +17,7 @@ function sit(home, key) {
   process.env.SOULS_HOME = home.root; process.env.EDEN_GOD_SEAT = key;
 }
 const LEGACY = '.eden-god.json';
-const legacyWorld = () => { try { return JSON.parse(readFileSync(LEGACY, 'utf8')).world ?? null; } catch { return null; } };
+const readWorld = (file) => { try { return JSON.parse(readFileSync(file, 'utf8')).world ?? null; } catch { return null; } };
 
 /** `register` makes its own seat, once its arguments are parsed. Call the answer if the world does not confirm: a typo leaves no seat. */
 export function seatForRegister(url) {
@@ -30,32 +30,39 @@ export function seatForRegister(url) {
   return held ? () => {} : () => { h.dropGod(key, { world: !known }); seat = null; delete process.env.EDEN_GOD_SEAT; };
 }
 
-/** Pick the seat for this run, before any command. Returns the command line without its world selector. */
+/** Pick the seat for this run, before any command. Returns the command line without its world selector. In this order:
+ *  1. A seat is named: by a child's EDEN_GOD_SEAT, `@world`, or a bare world word no command shares. It must exist.
+ *  2. A helper sits in the world of its helper file, and never pairs or registers.
+ *  3. A named seat is used. A named `register` may only repeat that seat's own world.
+ *  4. A file here with a world is this folder's god: its seat if that seat is paired (`node eden.mjs import` did that),
+ *     else the file itself, as on any folder without a home. An unnamed `register` of a paired file goes on to 5.
+ *  5. `register` makes the seat of its URL, once its arguments are parsed and the world answers.
+ *  6. One seat needs no name; several must be named; none leaves this run on the folder. */
 export function enterGodSeat(argv, commands, { cwd = process.cwd(), env = process.env, home = homedir() } = {}) {
   const found = findHome({ cwd, env, homedir: home });
   if (found.kind !== 'home') return argv;
-  const h = openHome(found.root);
-  if (env.EDEN_GOD_SEAT) { sit(h, env.EDEN_GOD_SEAT); return argv; }
-  const cfg = h.config(), first = argv[0] ?? '', say = (w) => (commands[w] ? `@${w}` : w);
-  // `@world` always names a world; a bare word does when no command has that name.
-  const asked = first.startsWith('@') ? first.slice(1) : !commands[first] && (cfg.gods[first] || cfg.worlds[first]) ? first : null;
-  const line = asked === null ? argv : argv.slice(1), cmd = line[0];
+  const h = openHome(found.root), cfg = h.config(), first = argv[0] ?? '', say = (w) => (commands[w] ? `@${w}` : w);
+  const inherited = env.EDEN_GOD_SEAT || null;
+  const worded = inherited ? null : first.startsWith('@') ? first.slice(1) : !commands[first] && (cfg.gods[first] || cfg.worlds[first]) ? first : null;
+  const asked = inherited ?? worded, line = worded === null ? argv : argv.slice(1), cmd = line[0];
   if (asked !== null && !cfg.gods[asked]) throw new Error(`No god seat for ${asked} here. Run: node eden-god.mjs register <world-url>`);
-  // A helper belongs to the world its helper file names, whatever else this home holds.
   if (env.EDEN_GOD_HELPER) {
-    let world = null; try { world = JSON.parse(readFileSync(resolve(cwd, env.EDEN_GOD_HELPER), 'utf8')).world; } catch { /* state.mjs says what is wrong */ }
-    const key = keyOf(cfg.worlds, world);
-    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key ?? world}, not ${asked}.`);
+    if (['register', 'pair', 'mint'].includes(cmd)) throw new Error('A helper works under its lead\'s seat; it does not pair or register.');
+    const key = keyOf(cfg.worlds, readWorld(resolve(cwd, env.EDEN_GOD_HELPER)));
+    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key}, not ${asked}.`);
     if (key && cfg.gods[key]) sit(h, key);
     return line;
   }
-  // In this order: a named seat; then a legacy file, which outranks anything unnamed; then register; then the only seat.
   if (asked !== null) {
     if (cmd === 'register') { registering = h; registerAs = asked; } else sit(h, asked);
     return line;
   }
-  // A legacy file here is this folder's god until `node eden.mjs import` moves it: a seat is never lost from view.
-  if (existsSync(join(cwd, LEGACY))) { const key = keyOf(cfg.worlds, legacyWorld()); if (!key || !cfg.gods[key]) return argv; }
+  const fileWorld = readWorld(join(cwd, LEGACY));
+  if (fileWorld) {
+    const key = keyOf(cfg.worlds, fileWorld);
+    if (!key || !cfg.gods[key] || !h.godSecrets(key).token) return argv;
+    if (cmd !== 'register' && cmd !== 'help') { sit(h, key); return line; }
+  }
   if (cmd === 'register') { registering = h; return line; }
   const seats = Object.keys(cfg.gods);
   if (seats.length === 1 && cmd !== 'help') sit(h, seats[0]);

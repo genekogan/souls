@@ -139,6 +139,41 @@ test('a helper sits in its own world\'s seat, and a legacy file does not hide an
   assert.match((await runner(other, god, { HOME: dir })('b', 'status')).out, /\/w\/b/);
 });
 
+test('every legacy, helper and child case keeps to its own seat', async (t) => {
+  const base = await worlds(t), dir = folder(t), godCli = runner(dir, god), soul = runner(dir, eden);
+  await soul('register', `${base}/a`);
+  for (const w of ['a', 'b']) { await godCli('register', `${base}/${w}`, 'dev:owner'); await godCli(w, 'mint'); }
+  const beside = (extra) => { const d = join(dir, `f${readdirSync(dir).length}`); mkdirSync(d); return [d, runner(d, god, { HOME: dir, ...extra })]; };
+  // a file whose world's seat is paired sits there, even with two seats and no name
+  const [paired, inPaired] = beside();
+  writeFileSync(join(paired, '.eden-god.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok' }));
+  assert.match((await inPaired('status')).out, /\/w\/b/);
+  // a seat that was never paired does not take the file's place
+  await godCli('register', `${base}/a`, 'dev:owner');
+  const creds = join(dir, '.souls/credentials.json'), c = JSON.parse(readFileSync(creds, 'utf8')), kept = c.gods.a.token;
+  delete c.gods.a.token; writeFileSync(creds, JSON.stringify(c));
+  const [unpaired, inUnpaired] = beside();
+  writeFileSync(join(unpaired, '.eden-god.json'), JSON.stringify({ world: `${base}/a`, token: 'god_a_tok' }));
+  assert.equal((await inUnpaired('status')).code, 0, 'the file still works');
+  c.gods.a.token = kept; writeFileSync(creds, JSON.stringify(c));
+  // a file with no world is no god: register goes to the home
+  const [worldless, inWorldless] = beside();
+  writeFileSync(join(worldless, '.eden-god.json'), JSON.stringify({ group: 'g1' }));
+  assert.equal((await inWorldless('register', `${base}/a`, 'dev:owner')).code, 0);
+  assert.equal(JSON.parse(readFileSync(join(worldless, '.eden-god.json'), 'utf8')).world, undefined);
+  // a helper neither pairs nor registers
+  writeFileSync(join(dir, 'helper.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok', helper: { claim: 'c_12345678' } }));
+  const identity = () => JSON.parse(readFileSync(creds, 'utf8')).gods.b.identity;
+  const before = identity();
+  assert.match((await runner(dir, god, { EDEN_GOD_HELPER: 'helper.json' })('register', `${base}/b`, 'dev:other')).err, /does not pair or register/);
+  assert.equal(identity(), before);
+  // a child's seat is a named seat
+  const child = runner(dir, god, { SOULS_HOME: join(dir, '.souls'), EDEN_GOD_SEAT: 'a' });
+  assert.match((await child('register', `${base}/b`, 'dev:owner')).err, /The seat a is for/);
+  assert.match((await runner(dir, god, { SOULS_HOME: join(dir, '.souls'), EDEN_GOD_SEAT: 'zzz' })('status')).err, /No god seat for zzz/);
+  assert.ok(!existsSync(join(dir, '.souls/gods/zzz')));
+});
+
 test('a world named like a command is reached with @', (t) => {
   const dir = folder(t), root = join(dir, '.souls'); createHome(root);
   const h = openHome(root); h.ensureGod('http://x.invalid/w/map'); h.ensureGod('http://x.invalid/w/b');
