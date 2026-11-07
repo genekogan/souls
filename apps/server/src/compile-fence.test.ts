@@ -1,9 +1,9 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { toyFactory } from '@sim/engine-toy';
-import { kernelHash } from '@sim/kernel';
-import { type CompileOut, type callTool } from '@sim/brain';
+import { toyFactory } from '@souls/engine-toy';
+import { kernelHash } from '@souls/kernel';
+import { type CompileOut, type callTool } from '@souls/brain';
 import { Db } from './db.ts';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';

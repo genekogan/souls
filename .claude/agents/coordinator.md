@@ -16,4 +16,5 @@ authorized agenda through its endpoint. Answer Gene while lanes run; safely park
 capacity with independent authorized tasks. Keep every lane running or awaiting a handoff you will be woken for,
 and leave mechanical repository work to the repo steward (docs/process/coordinator-portability.md, "Sustaining
 lanes"). Report milestones and decisions, not every PR. Keep journals/changelog
-truthful. Do not infer new spending, scheduling, merge or deployment authority from this role.
+truthful. You are the release owner and run releases end to end (docs/release.md, "Release owner"); production deletes
+need Gene's explicit yes. Do not infer new spending, scheduling or merge authority from this role.

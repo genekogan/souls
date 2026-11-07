@@ -16,7 +16,7 @@
 // They join the ledger's own places layer (the PlaceIndex), so the ledger's map, place paths, arrivals, exits,
 // "elsewhere" invitations and plain-words resolution work on them unchanged; the ledger's `placeWalkable` hook (unset on
 // Eden/Mars/LM) says they are walkable although they are not native engine regions. Pure reads of the entity model.
-import type { Entity, StoredDef, WorldModel } from '@sim/world-compiler';
+import type { Entity, StoredDef, WorldModel } from '@souls/world-compiler';
 import type { EdgeLedger } from '../edge/ledger/ledger.ts';
 import { decorateMeaning, humanTitle } from './meaning.ts';
 import type { Place } from '../edge/ledger/places.ts';

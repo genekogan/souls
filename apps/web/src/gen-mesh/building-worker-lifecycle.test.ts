@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { GENERATORS } from '@sim/generators';
-import { CORE_KIT, WorldModel, type Entity } from '@sim/world-compiler';
+import { GENERATORS } from '@souls/generators';
+import { CORE_KIT, WorldModel, type Entity } from '@souls/world-compiler';
 import { meshFor, type MeshCtx } from './registry.ts';
 import { MaterialLib } from './materials.ts';
 import { buildingBuffers, prefetchBuilding, releaseBuildingWorkersWhenIdle, type BuildingJob, type BuildingBuffers } from './building.mesh.ts';

@@ -80,4 +80,4 @@ range `fromTick..toTick` plus a take whose pose samples are relative to its `sta
 the hot chunks; `/v1/takes` pages history (1–120 per page) with a `next` cursor. The viewer samples about a second
 behind the server. Units: metres, Y up, yaw 0 faces +X; pose samples store millimetres and milliradians
 (`[relativeTick, x, y, z, yaw]`). Structural decoders (`recordedTakeSchema`, `recordedTakeChunkSchema`, …) are
-exported from `@sim/protocol`; they validate shape, not physics or privacy.
+exported from `@souls/protocol`; they validate shape, not physics or privacy.

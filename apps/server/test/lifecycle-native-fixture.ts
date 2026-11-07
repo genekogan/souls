@@ -1,5 +1,5 @@
 import { setImmediate } from 'node:timers/promises';
-import { marsFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { Db } from '../src/db.ts';
 import { WorldHost } from '../src/world.ts';
 import { LifecycleJournal } from '../src/lifecycle-journal.ts';

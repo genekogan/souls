@@ -4,7 +4,7 @@ import {setImmediate} from 'node:timers/promises';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {Hono} from 'hono';
-import {coreRef} from '@sim/world-compiler';
+import {coreRef} from '@souls/world-compiler';
 import {fixture, factory} from '../../test/native-owner-fixture.ts';
 import {EdgeLedger} from '../edge/ledger/ledger.ts';
 import {ApiError} from '../souls.ts';

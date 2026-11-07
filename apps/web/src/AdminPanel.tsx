@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { Api, Sim } from './useSim.ts';
+import type { Api, Souls } from './useSouls.ts';
 
-export function AdminPanel({ sim, api }: { sim: Sim; api: Api }) {
+export function AdminPanel({ sim, api }: { sim: Souls; api: Api }) {
   const [rate, setRate] = useState('1'); const [budget, setBudget] = useState('0.5'); const [out, setOut] = useState(''); const [clients, setClients] = useState<any>(null);
   const [uses, setUses] = useState('5'); const [inote, setInote] = useState(''); const [invites, setInvites] = useState<any>(null);
   const loadInvites = async () => { const r = await api('/v1/admin/invites'); if (r.status === 200) setInvites(r.data); else setOut(JSON.stringify(r.data)); };

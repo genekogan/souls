@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { Db } from './db.ts';
 
 test('a write waits for another process holding the lock', async () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'sim-lock-')), 't.db');
+  const path = join(mkdtempSync(join(tmpdir(), 'souls-lock-')), 't.db');
   const db = new Db(path);
   db.createWorld({ id: 'w', schema: 's', rules_version: 'r', dt: 0.05, seed: 'x' });
   const holder = spawn(process.execPath, ['-e', `

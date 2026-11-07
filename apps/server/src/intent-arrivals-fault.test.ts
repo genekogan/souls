@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@sim/engine-mars';
-import type {callTool,CompileOut} from '@sim/brain';
+import {marsFactory,EDEN_SAFE_COMMONS_WORLD} from '@souls/engine-mars';
+import type {callTool,CompileOut} from '@souls/brain';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {Brain} from './brain.ts';
 import {IntentControlV2} from './intent-control.ts';

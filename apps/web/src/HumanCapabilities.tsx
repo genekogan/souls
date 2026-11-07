@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {humanCapabilityRegistryV1Schema,type HumanCapabilityRegistryV1} from '@sim/engine-contract';
-import type {Api} from './useSim.ts';
+import {humanCapabilityRegistryV1Schema,type HumanCapabilityRegistryV1} from '@souls/engine-contract';
+import type {Api} from './useSouls.ts';
 const names={walk:'Walk',sit:'Sit',rest:'Rest',eat:'Eat',hang_out:'Spend time somewhere',activity:'Other activities'};
 /** Private actor-scoped suggestions. Read only on opening or explicit refresh. */
 export function HumanCapabilities({api,worldId,soulId,entityId,contract='human-capabilities/1'}:{api:Api;worldId:string;soulId:string;entityId:string;contract?:'human-capabilities/1'|'human-capabilities/2'}){
