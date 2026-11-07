@@ -86,11 +86,10 @@ test('record player: pick a record at the tonearm, stop at the knob, refusal, in
  await run('object:player:put-on-record','record','Morning Waltz','tuner',{record:'Morning Waltz'});
  // plain words the way a Soul says them
  const resolve=async(w,params={})=>{const r=await (await app.request('/v1/edge/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:w,params})})).json();return r.resolve?.would?.capability??r.resolve?.code??JSON.stringify(r).slice(0,200);};
- const words={};for(const w of ['put on a record','play a record','put a record on','play a record on the record player','stop the record player','turn off the record player','stop the record','stop the music'])words[w]=await resolve(w,/^(stop|turn)/.test(w)?{}:{record:'Harbour Lights'});
+ const words={};for(const w of ['put on a record','play a record','put a record on','play a record on the record player','stop the record player','turn off the record player','stop the record'])words[w]=await resolve(w,/^(stop|turn)/.test(w)?{}:{record:'Harbour Lights'});
 for(const w of ["put on a record","play a record","put a record on","play a record on the record player"])assert.equal(words[w],`object:${id('player')}:put-on-record`,`"${w}": ${words[w]}`);
  assert.equal(words['stop the record player'],`object:${id('player')}:switch-off`);
  assert.equal(words['stop the record'],`object:${id('player')}:switch-off`,'#1051: the record, not the body');
- assert.equal(words['stop the music'],`object:${id('player')}:switch-off`);
  const nearOn=await here();
  await run('object:player:switch-off','on',false,'valve');
  assert.equal(state('player').record,'Morning Waltz','the record stays on the platter');

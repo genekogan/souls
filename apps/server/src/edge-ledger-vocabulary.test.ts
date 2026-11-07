@@ -280,3 +280,12 @@ test('vocabulary (D3b, cloud fix-r3 basics-1 pip-010): "house 2" / "house two" n
  assert.equal(numberConflict(['house', '2'], [['eden', 'house', '1', 'kitchen', 'chair', '2']]), true);
  assert.equal(numberConflict(['house', '2'], [['eden', 'house', '2', 'kitchen'], ['by', 'eden', 'house', '1']]), false);
 });
+
+// #1051 (review): "stop the record" takes only a record player's offer that can happen, and only when there is one
+test('record words: one playing record player, or the ordinary way', () => {
+  const mk = (o: string, action: string, available = true, n = 'player') => ({id: `object:${o}:${action}`, verb: 'object', object: o, action, label: `${action} (${n})`, available, ...(available ? {} : {blocked: {code: 'object.state', reason: 'off'}}), target: {id: o, kind: 'object'}}) as any;
+  const go = (t: string, caps: any[]) => { const r: any = resolveCapability(t, {caps, target: () => ({names: [], around: [], at: [1, 1]}), places: [], roots: [], me: [0, 0]} as any); return r.cap?.id ?? r.code ?? r.kind; };
+  const on = [mk('e_aaaa0001', 'put-on-record'), mk('e_aaaa0001', 'switch-off')], off = [mk('e_bbbb0002', 'put-on-record'), mk('e_bbbb0002', 'switch-off', false)];
+  assert.equal(go('stop the record', [...off, ...on]), 'object:e_aaaa0001:switch-off', 'the playing one, wherever it comes in the list');
+  assert.notEqual(go('stop the record', [...on, ...[mk('e_cccc0003', 'put-on-record'), mk('e_cccc0003', 'switch-off')]]), 'object:e_aaaa0001:switch-off', 'two playing: not the first one');
+});
