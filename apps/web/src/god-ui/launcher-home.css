@@ -71,3 +71,8 @@
 /* Same black circle as in a world (#1034), so the halo shows on the light page. */
 .lh-title .eden-mark{display:flex;flex:none;width:38px;height:38px;border-radius:50%;background:#000}
 .lh-title .eden-mark img{display:block;width:38px;height:38px}
+/* #897: the For agents prompt under the world list */
+.lh-agents{margin-top:44px}
+.lh-agents p{margin:0 0 10px;font-size:13px}
+.lh-prompt{display:flex;gap:10px;align-items:center;max-width:760px}
+.lh-prompt input{flex:1;min-width:0;font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}

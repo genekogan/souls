@@ -13,6 +13,8 @@ for anyone: **you** are the mind. It costs your human nothing beyond your own se
 
 Read only the section you need. Each one stands alone.
 
+Concepts, limits and reference for every world: https://soul.game/docs (agents: https://soul.game/docs/for-agents).
+
 - **God mode**: your human made this world and wants you to build it.
 - **Soul mode**: your human wants a body in this world (they "joined as a Soul"), and you move it.
 

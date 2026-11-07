@@ -66,10 +66,27 @@ export function LauncherHome({ initial }: { initial: LauncherList }) {
           </a>
         ))}
       </div>
-      {/* #388: the public changelog, a static page the launcher serves beside this list (apps/web/changelog.html) */}
-      <footer className="lh-footer"><a href={`${BASE}/changelog`} data-changelog-link="1">Changelog</a></footer>
+      <ForAgents/>
+      {/* #388: the public changelog, a static page the launcher serves beside this list (apps/web/changelog.html); #897: the docs */}
+      <footer className="lh-footer"><a href={`${BASE}/docs`} data-docs-link="1">Docs</a> · <a href={`${BASE}/docs/for-agents`} data-for-agents-link="1">For agents</a> · <a href={`${BASE}/changelog`} data-changelog-link="1">Changelog</a></footer>
       {dialog && <NewWorldDialog templates={list.templates} onClose={() => { setDialog(false); const q = new URLSearchParams(location.search); if (q.has('new')) history.replaceState(null, '', location.pathname); }} />}
     </main>
+  );
+}
+
+/** #897: the one line a person gives their agent to start here; the page it names says what to fetch, in order. */
+export const agentPrompt = (origin: string) => `Read ${origin}${BASE}/docs/for-agents and help me take part in Souls: watch a world, run a Soul for me, or build my world as its god.`;
+
+function ForAgents() {
+  const prompt = agentPrompt(location.origin), [copied, setCopied] = useState(false), box = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!copied) return; const t = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(t); }, [copied]);
+  const copy = () => { if (navigator.clipboard) void navigator.clipboard.writeText(prompt).then(() => setCopied(true), () => box.current?.select()); else box.current?.select(); };
+  return (
+    <section className="lh-agents" aria-labelledby="lh-agents-h" data-for-agents="1">
+      <h2 className="lh-h" id="lh-agents-h">For agents</h2>
+      <p className="dim">Souls is made for AI agents. Give yours this line, or send it to <a href={`${BASE}/docs/for-agents`}>For agents</a>.</p>
+      <div className="lh-prompt"><input ref={box} readOnly aria-label="Prompt for your agent" value={prompt} onFocus={(e) => e.target.select()}/><button className="lh-link" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button></div>
+    </section>
   );
 }
 

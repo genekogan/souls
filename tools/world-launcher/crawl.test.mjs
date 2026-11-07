@@ -35,7 +35,7 @@ const PORT = Number(process.env.CRAWL_TEST_PORT ?? 7090), RANGE = [PORT + 1, POR
 const dir = mkdtempSync(join(tmpdir(), 'launcher-crawl-test-'));
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 writeFileSync(join(templatesDir, 'plain.json'), JSON.stringify({ schema: 'genesis/1', name: 'Plain', description: 'x', batches: [] }));
-const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Souls</title>'); writeFileSync(join(webDir, 'changelog.html'), '<!doctype html>');
+const webDir = join(dir, 'web'); mkdirSync(webDir); writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Souls</title>'); writeFileSync(join(webDir, 'changelog.html'), '<!doctype html>'); writeFileSync(join(webDir, 'llms.txt'), '# Souls\n');
 const born = join(dir, 'born.mjs');
 writeFileSync(born, `import { DatabaseSync } from 'node:sqlite'; import { join } from 'node:path';
 const db = new DatabaseSync(join(process.env.DATA_DIR, 'sim.db')); db.exec('CREATE TABLE IF NOT EXISTS world_meta_v1 (world_id TEXT PRIMARY KEY, body TEXT)');
@@ -69,8 +69,14 @@ test('through the launcher: robots and sitemap answered without a world, a liste
   r = await api('/w/garden/v1/config'); assert.equal(r.status, 200); assert.equal(r.headers.get('x-robots-tag'), null, 'a listed world passes its own headers');
   r = await api('/w/hidden-garden/v1/config'); assert.equal(r.status, 200); assert.equal(r.headers.get('x-robots-tag'), NOINDEX, 'an unlisted world is noindex');
   r = await api('/w/hidden-garden/v1/world/snapshot'); assert.equal(r.headers.get('x-robots-tag'), NOINDEX);
+  // #897: the root llms.txt lists listed worlds' readers; an unlisted world has none; the MCP card is served
+  const llms = await (await api('/llms.txt')).text();
+  assert.ok(llms.includes(`(http://127.0.0.1:${PORT}/w/garden/llms.txt)`) && !llms.includes('hidden-garden'), llms);
+  for (const p of ['/w/hidden-garden/llms.txt', '/w/hidden-garden/llms%2Etxt', '/w/hidden-garden/%6Clms.txt']) { r = await api(p); assert.equal(r.status, 404, p); assert.equal((await r.json()).code, 'world.unlisted', p); }
+  r = await api('/w/garden/llms.txt'); assert.notEqual((await r.text()).includes('world.unlisted'), true, 'a listed world answers its own reader');
+  r = await api('/.well-known/mcp/server.json'); assert.equal(r.status, 200); assert.equal((await r.json()).remotes[0].url, `http://127.0.0.1:${PORT}/w/{world}/mcp`);
   // a root path a world answers (whichever runs, maybe the unlisted one) is never indexable under the site root
-  for (const p of ['/llms.txt', '/skill.md', '/v1/world/snapshot']) { r = await api(p); assert.equal(r.headers.get('x-robots-tag'), NOINDEX, p); }
+  for (const p of ['/skill.md', '/v1/world/snapshot']) { r = await api(p); assert.equal(r.headers.get('x-robots-tag'), NOINDEX, p); }
 
   // listing and unlisting apply at once, to both the sitemap and the header
   assert.equal((await post('/__sim/op/set-unlisted', { slug: 'hidden-garden', unlisted: false })).status, 200);
