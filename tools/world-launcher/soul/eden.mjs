@@ -72,6 +72,12 @@ function reportRequest(url, method, t0, r) {
   if (!REPORTS) return;
   try { reportWrite("http", reportPrune({ method, route: reportRoute(url), status: r?.status, durationMs: Math.round((performance.now() - t0) * 1000) / 1000, retryAfterMs: reportInt(r?.retryAfterMs), facts: reportFacts(r?.data) })); } catch { report.failures++; }
 }
+/** A serve's own world call (inbox, stream, receipt poll), which no CLI process records for it. */
+async function serveCall(url, o) {
+  const t0 = performance.now(), r = await worldOnce(url, o);
+  reportRequest(url, o.method, t0, r);
+  return r;
+}
 async function note(expected, observed) {
   if (typeof expected !== "string" || typeof observed !== "string" || !expected.trim() || !observed.trim()) throw new Error('usage: note "<expected>" "<observed>"');
   reportWrite("note", { annotation: "agent", expected: expected.slice(0, REPORT_LIMITS.noteChars), observed: observed.slice(0, REPORT_LIMITS.noteChars) });
@@ -1455,7 +1461,7 @@ async function serveForeground() {
     let attempt = 0, code, recovered = false;
     while (!stopping && !terminal) {
       const q = new URLSearchParams({ timeoutMs: recovered ? "50000" : "0", ...(recovered && st.inboxAfter ? { after: st.inboxAfter } : {}) });
-      const r = await worldOnce(`${world}/v1/edge/inbox/listen?${q}`, { method: "GET", headers: auth, timeoutMs: 60_000, recoverRead: true });
+      const r = await serveCall(`${world}/v1/edge/inbox/listen?${q}`, { method: "GET", headers: auth, timeoutMs: 60_000, recoverRead: true });
       if (r.status === 401 || r.status === 403) { terminal = r; log(`inbox: control ended (${codeOf(r.data) ?? r.status})`); wake(); return; }
       if (r.status === 0 || r.status === 429 || r.status === 409 || r.status >= 500) {
         const next = codeOf(r.data) ?? `http-${r.status}`, ms = r.retryAfterMs != null ? statedJitter(r.retryAfterMs) : fullJitter(attempt);
@@ -1475,7 +1481,7 @@ async function serveForeground() {
   async function eventLoop() {
     let attempt = 0, code;
     while (!stopping && !terminal) {
-      const r = await worldOnce(`${world}/v1/edge/wait?timeout=55&after=${encodeURIComponent(st.cursor ?? s.cursor ?? "c_0")}`, { method: "GET", headers: auth, timeoutMs: 65_000, recoverRead: true });
+      const r = await serveCall(`${world}/v1/edge/wait?timeout=55&after=${encodeURIComponent(st.cursor ?? s.cursor ?? "c_0")}`, { method: "GET", headers: auth, timeoutMs: 65_000, recoverRead: true });
       if (r.status === 401 || r.status === 403) { terminal = r; wake(); return; }
       if (r.status < 200 || r.status >= 300) {
         const next = codeOf(r.data) ?? `http-${r.status}`, ms = r.retryAfterMs != null ? statedJitter(r.retryAfterMs) : fullJitter(attempt);
@@ -1651,7 +1657,7 @@ async function serveForeground() {
     const p = st.plan, s = p?.steps[p.at];
     if (p?.state === "running" && s?.receipt && Date.now() - planReadAt >= 15_000) {
       planReadAt = Date.now();
-      const r = await worldOnce(`${world}/v1/edge/receipts/${encodeURIComponent(s.receipt)}`, { method: "GET", headers: auth, timeoutMs: 25_000 });
+      const r = await serveCall(`${world}/v1/edge/receipts/${encodeURIComponent(s.receipt)}`, { method: "GET", headers: auth, timeoutMs: 25_000 });
       if (st.plan === p && r.status === 200 && r.data?.receipt) { planPhase(p, r.data.receipt); persist(); }
     }
     await planTick();

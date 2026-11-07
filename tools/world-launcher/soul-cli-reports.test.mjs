@@ -13,13 +13,14 @@ import { factsOf, routeOf } from '../soul-trace/tap.mjs';
 import { reconstruct } from '../soul-trace/readout.mjs';
 
 const cli = fileURLToPath(new URL('./soul/eden.mjs', import.meta.url));
+const ACT_RECEIPT = 'r_1';
 const TOKEN = 'sim_s_ada_PLANTEDTOKEN', SPEECH = 'PLANTEDSPEECH said the world';
 
-function world() {
+function world({ actPhase = 'completed' } = {}) {
   const seen = [];
   const answer = (req, body) => {
     const p = new URL(req.url, 'http://x').pathname.replace(/^\/w\/t/, '');
-    if (p === '/v1/edge/act') return JSON.parse(body).capability === 'walk:no' ? { accepted: false, code: 'route.unreachable', reason: SPEECH, alternatives: [{ id: 'walk:yes', label: SPEECH }] } : { accepted: true, receipt: { id: 'r_1', capability: 'walk:yes', phase: 'completed', endedTick: 9 } };
+    if (p === '/v1/edge/act') return JSON.parse(body).capability === 'walk:no' ? { accepted: false, code: 'route.unreachable', reason: SPEECH, alternatives: [{ id: 'walk:yes', label: SPEECH }] } : { accepted: true, receipt: { id: ACT_RECEIPT, capability: 'walk:yes', phase: actPhase, ...(actPhase === 'completed' ? { endedTick: 9 } : {}) } };
     if (p === '/v1/edge/here') return { me: { name: 'Ada', posture: 'standing' }, heard: [{ text: SPEECH }], inbox: { queued: 0 } };
     if (p === '/v1/agent/me') return { soul: { id: 's_ada', name: 'Ada' } };
     return {};
@@ -27,7 +28,11 @@ function world() {
   const server = createServer((req, res) => {
     let body = ''; req.on('data', (d) => { body += d; }); req.on('end', () => {
       seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, body: body.replace(/"clientRef":"[^"]+"/, '"clientRef":"x"') });
-      if (req.url.includes('/events') || req.url.includes('/listen') || req.url.includes('/wait')) { setTimeout(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }, 200); return; }
+      if (req.url.includes('/events') || req.url.includes('/listen') || req.url.includes('/wait')) {
+        // the stream reports the receipt once an act has been accepted, as it does for a plan's step
+        const acted = seen.some((s) => s.url.includes('/v1/edge/act')), events = acted && req.url.includes('/wait') ? { cursor: 'c_1', events: [{ kind: 'receipt', at: 1, receipt: { id: ACT_RECEIPT, capability: 'walk:yes', phase: 'completed', endedTick: 9 } }] } : {};
+        setTimeout(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(events)); }, 200); return;
+      }
       res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(answer(req, body)));
     });
   });
@@ -109,14 +114,18 @@ test('a symlink where the report file goes turns reports off', { timeout: 60_000
   } finally { w.close(); rmSync(d, { recursive: true, force: true }); }
 });
 
-test('with serve up, a request is recorded once', { timeout: 60_000 }, async () => {
-  const w = await world(), d = folder(w.url, true);
+test('with serve up, a request is recorded once, and a plan step reaches its end in the record', { timeout: 60_000 }, async () => {
+  const w = await world({ actPhase: 'started' }), d = folder(w.url, true);
   try {
     await run(d, 'serve');
     await run(d, 'here');
     await run(d, 'plan', '["walk:yes"]');   // a plan's steps run inside serve, so serve records them
     for (let i = 0; i < 40 && !records(d).some((r) => r.route === '/v1/edge/act'); i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 40 && !records(d).some((r) => r.facts?.events?.some((e) => e.phase === 'completed')); i++) await new Promise((r) => setTimeout(r, 100));
     await run(d, 'serve', '--stop');
+    for (let i = 0; i < 40 && records(d).filter((r) => r.kind === 'proc.start').length !== records(d).filter((r) => r.kind === 'proc.end').length; i++) await new Promise((r) => setTimeout(r, 100));
+    const seenBy = reconstruct(readFileSync(join(d, '.eden-report.jsonl'), 'utf8'));
+    assert.deepEqual(seenBy.anomalies.filter((a) => ['receipt-unresolved', 'unclosed-process'].includes(a.type)), [], 'a plan step ends in the record, and serve closes its process');
     const here = records(d).filter((r) => r.kind === 'http' && /^\/v1\/edge\/here\b/.test(r.route));
     assert.equal(records(d).filter((r) => r.route === '/v1/edge/act').length, w.seen.filter((s) => s.url.includes('/v1/edge/act')).length, 'plan steps are recorded once');
     assert.ok(w.seen.some((s) => s.url.includes('/v1/edge/act')), 'the plan acted');
