@@ -57,6 +57,20 @@ relative files; only its own state moves. A folder with no home keeps `.eden-god
 `node eden.mjs import` moves it in. Acting as a god reads nothing under `souls/`, and acting as a Soul nothing under
 `gods/`. A seat also holds the look keeper's per-start localhost secret (`.eden-god.wire.json`, 0600).
 
+One client and one project skill (`.claude/skills/souls/`, `.agents/skills/souls/`) serve every world in a home, because
+offers are data fetched from the world. `/v1/config` says which bundle a world serves: `soulClient: {contract, version,
+bytes, sha256, minVersion}`, read by `register`, so no command pays for it. A home records that per world. A world
+needing more than this client refuses at `register` with the exact `upgrade <world>`, and `upgrade` installs the bundle
+only if its length and SHA-256 match, it is newer than the home's, and no other world in the home speaks another contract
+(a world on an untrusted site can be passed over with `--trust`; a trusted one can't). Every copy of the CLI in the home hands over to `bin/eden.mjs` once that is newer. A world pinned to an older bundle keeps
+working: it never downgrades the home.
+
+Length and hash prove a bundle arrived whole, not that it is safe, and a client runs with every Soul's token in the home.
+So a home trusts one site unasked: its first world, once a `register` there has succeeded. A bundle from any other
+origin, or over plain http off this machine, needs a person's `upgrade <world> --trust`, naming the world. A home from
+before this client trusts nothing until a person says so. Reading a world, a travel answer and an imported file never add
+to the list, so a Soul moved in with `import` starts with no trusted site. `upgrade` follows no redirect.
+
 Reconciling needs the account's list, which `/v1/me` gives a dev identity. A delegated Soul token sees only its own Soul,
 so on an account world `doctor` checks each Soul through its token and only the world saying `retired` retires one, and
 `adopt` takes an id. A folder with `.eden-agent.json` stays a legacy one-Soul folder, even inside a home. So does a Soul
