@@ -8,7 +8,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { validateDiagnostics, attachTrace, traceLaunch, summarizeTraces, checkTap, correlateRun, traceCapability, TRACE } from './diagnostics.mjs';
+import { validateDiagnostics, attachTrace, attachReports, collectReports, reportDisagreements, traceLaunch, summarizeTraces, checkTap, correlateRun, traceCapability, TRACE, REPORTS } from './diagnostics.mjs';
+import { actOutput, receiptOutcome } from './controllability.mjs';
+import { createSeat } from '../arena/seat.mjs';
 import { validateSpec } from './spec.mjs';
 import { startRun } from './lifecycle.mjs';
 import { turn } from '../arena/adapters/scripted-owner.mjs';
@@ -151,3 +153,50 @@ test('correlation joins run, seat, owner message, seat turn and receipt stages w
   assert.equal(c.seats.bo.foreignProcesses, 0);
   assert.equal((await correlateRun(runDir, { root: toolsRoot({ readout: null }) })).analysis, 'unavailable');
 });
+
+// #590 A17: experience reports on every seat, triangulated against the run's own records.
+function reportsRoot(on = true) { const root = toolsRoot(); mkdirSync(join(root, 'tools/world-launcher/soul'), { recursive: true }); writeFileSync(join(root, REPORTS.cli), on ? `const REPORT_ON = "${REPORTS.switchFile}";` : '// an older client'); return root; }
+
+test('reports: off adds nothing; on takes any kind of seat, or a list; a client without them is refused', () => {
+  assert.deepEqual(validateDiagnostics(undefined, seats, { root: reportsRoot() }), { errors: [], effective: null });
+  assert.deepEqual(validateDiagnostics({ reports: false }, seats, { root: reportsRoot() }), { errors: [], effective: null });
+  assert.deepEqual(validateDiagnostics({ reports: true }, seats, { root: reportsRoot() }).effective, { reports: { seats: ['bo', 'pip'] } }, 'a live seat needs no preload');
+  assert.deepEqual(validateDiagnostics({ reports: ['pip'] }, seats, { root: reportsRoot() }).effective, { reports: { seats: ['pip'] } });
+  assert.deepEqual(validateDiagnostics({ reports: ['nobody'] }, seats, { root: reportsRoot() }).errors.map((e) => e.code), ['diagnostics.seat']);
+  assert.deepEqual(validateDiagnostics({ reports: true }, seats, { root: reportsRoot(false) }).errors.map((e) => e.code), ['diagnostics.reports-unavailable']);
+  const both = validateDiagnostics({ trace: ['bo'], reports: ['pip'] }, seats, { root: reportsRoot() }).effective;
+  assert.deepEqual([both.trace.seats, both.reports.seats], [['bo'], ['pip']]);
+});
+
+test('reports: the seat gets the switch only when asked, and the run copies the report out of its folder', () => {
+  const runDir = mkdtempSync(join(tmpdir(), 'sr-reports-')), scenario = { seats: seats.map((s) => ({ ...s })) };
+  assert.equal(attachReports(scenario, { effective: null }), null);
+  const section = attachReports(scenario, { effective: { reports: { seats: ['bo'] } } });
+  assert.deepEqual(scenario.seats.map((s) => s.diagnostics?.reports ?? false), [true, false]);
+  const [bo, pip] = scenario.seats.map((seat) => createSeat({ runDir: join(runDir, 'playtest'), seat, worldBase: 'https://example.test/w/x', rails: {} }));
+  assert.equal(existsSync(join(bo.folder, REPORTS.switchFile)), true); assert.equal(existsSync(join(pip.folder, REPORTS.switchFile)), false);
+  writeFileSync(join(bo.folder, REPORTS.file), [JSON.stringify({ kind: 'http', route: '/v1/edge/here' }), JSON.stringify({ kind: 'note', annotation: 'agent' })].join('\n') + '\n');
+  const result = collectReports(runDir, join(runDir, 'playtest'), section);
+  assert.equal(result.bo.present, true); assert.deepEqual([result.bo.records, result.bo.http, result.bo.notes], [2, 1, 1]);
+  assert.equal(existsSync(join(runDir, 'diagnostics/bo.report.jsonl')), true);
+  const none = collectReports(runDir, join(runDir, 'playtest'), { seats: { pip: { file: 'diagnostics/pip.report.jsonl' } } });
+  assert.equal(none.pip.present, false, 'a seat whose client wrote nothing says so');
+});
+
+test('reports: every kind of disagreement is listed, with both sides, and agreement lists none', () => {
+  const row = (facts) => ({ kind: 'http', route: '/v1/edge/act', facts }), act = (out) => ({ verb: 'act', args: [], out });
+  const rows = [row({ accepted: true, receipt: { id: 'r1', phase: 'started' } }), row({ accepted: false, code: 'capability.unknown' }), row({ accepted: true, receipt: { id: 'r2', phase: 'started' } })];
+  const same = [act({ accepted: true, receipt: { id: 'r1', phase: 'started' } }), act({ accepted: false, code: 'capability.unknown' }), act({ accepted: true, receipt: { id: 'r2', phase: 'started' } })];
+  const check = (o) => reportDisagreements({ seat: 'bo', rows, steps: same, actOutput, receiptOutcome, ...o });
+  assert.deepEqual(check({}), []);
+  const card = { intentions: [{ seat: 'bo', acts: [{ state: 'accepted', receipt: 'r1' }, { state: 'refused' }, { state: 'accepted', receipt: 'r2' }] }, { seat: 'other', acts: [{ state: 'refused' }] }] };
+  assert.deepEqual(check({ card }), [], 'the scorecard counts only this seat');
+  const kinds = (o) => check(o).map((d) => d.kind);
+  assert.deepEqual(kinds({ steps: same.slice(0, 2) }), ['receipt.report-only'], 'a plan step the seat never saw');
+  assert.deepEqual(kinds({ rows: rows.slice(0, 2) }), ['receipt.transcript-only']);
+  assert.deepEqual(check({ steps: [same[0], same[2]] }).map((d) => [d.kind, d.report, d.transcript]), [['refusals.count', 1, 0]]);
+  const ended = [...same, { verb: 'receipt', args: ['r1'], out: { phase: 'completed' } }];
+  assert.deepEqual(check({ steps: ended }).map((d) => [d.kind, d.report, d.world]), [['receipt.outcome', 'started', 'completed']]);
+  assert.deepEqual(kinds({ card: { intentions: [] } }), ['scorecard.accepted', 'scorecard.refused']);
+});
+

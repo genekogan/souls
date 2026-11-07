@@ -44,7 +44,7 @@ flags (`--scenario`, `--cast`, `--port`, `--duration`, `--name`).
 | `observer` | `{check: true, required: false, cameras: null, timeoutMs: 60000, mode: "cameras", record: null, recordSize: "compact", recordStart: "arrival", freeComposition: null}` | `mode`: `cameras` (browser cameras, the default), `passive` (world-truth evidence packs, no browser) or `off`. Bounded observer check (import plus one browser launch and close) in `cameras` mode; failure is recorded and cameras are disabled; `required: true` fails the start instead. `cameras`: `wide` and/or `free` beside the per-seat follow cameras. `record`: `true` or camera names (`wide`, `free`, `follow` for every seat, or a seat id). `recordSize`: `compact`, `viewport` or `{width, height}` (needs `record`). `recordStart`: `arrival` or `load`. See Recording. |
 | `limits` | `{maxWallSec: 1800, maxControllers: 4, cleanupWaitMs: 15000}` | Hard wall limit for the whole run, controller count, per-resource release wait. |
 | `controllers.allowLiveModels` | `false` | A scenario whose seats, persona director or model review need claude/codex is refused unless this is `true`. Set it only with explicit authorization for live models. |
-| `diagnostics` | none (off) | `{trace: true | [seat ids]}`: passive soul-trace capture for those seats (see Diagnostics). |
+| `diagnostics` | none (off) | `{trace: true | [seat ids], reports: true | [seat ids]}`: passive soul-trace capture for those seats, and the client's own experience reports (see Diagnostics). |
 | `evaluation` | none | `{questions: [file]}`: question scorers predeclared before the run (see Evaluation); each is hashed into the effective spec. |
 | `retention` | `{worldData: "keep", controllerState: "keep"}` | `delete` applies only after a completed run with clean cleanup. Failed and cancelled runs keep everything. |
 
@@ -228,6 +228,28 @@ Viewing and analysis are separate, explicit commands that start nothing else:
 node tools/playtest/runs/run.mjs inspect   <run> --seat bo     # the local read-only inspector (#624) over that trace
 node tools/playtest/runs/run.mjs correlate <run>               # trace ↔ director request ↔ seat transcript ↔ receipt
 ```
+
+### Experience reports
+
+`diagnostics.reports` turns on the client's opt-in record (#590) for the named seats, live agent seats included, because the
+client writes it and needs no preload. The run creates `.eden-report-on` in each seat's folder before the seat starts, which is
+the same switch an owner uses. After the run it copies `.eden-report.jsonl` to `diagnostics/<seat>.report.jsonl`, ahead of
+retention, and the receipt's `diagnostics.reports.result` gives bytes, hash, record and note counts. Off adds nothing. A checkout
+whose `eden.mjs` has no reports is refused (`diagnostics.reports-unavailable`). A seat's client comes from the world it joins, so
+a server root with an older CLI leaves `present: false`.
+
+`run.mjs correlate <run>` adds `reports`: per seat, the readout's anomalies, any notes, and `disagreements`. Each entry names both
+sides and picks neither:
+
+| `kind` | Sides |
+|---|---|
+| `receipt.report-only` | In the report, never printed to the seat, such as a plan step `serve` ran. |
+| `receipt.transcript-only` | Printed to the seat, with no report row. |
+| `refusals.count` | Refusals of one code, by the report and by the transcript. |
+| `receipt.outcome` | What the report saw become of a receipt, and what the world's records say. |
+| `scorecard.accepted`, `scorecard.refused` | The report's counts, and the latest saved scorecard's. No scorecard, no entry. |
+
+A report only sees what its client saw, so a final phase that reached the seat some other way can show as `receipt.outcome`.
 
 `correlate` keeps every original id and clock domain, never equates the seat's ack, the world's admission, the start
 tick and the terminal phase, and lists missing links (for example a delivery the trace did not see).

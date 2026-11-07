@@ -281,6 +281,8 @@ export function createSeat({ runDir, seat, worldBase, rails }) {
     writeFileSync(join(s.folder, '.eden-agent.json'), JSON.stringify({ identity }) + '\n', { mode: 0o600 });
     s.info.ownerIdentity = identity;
   }
+  // #590 A17: the owner's switch for experience reports, set by the run for this seat. Nothing is added when it's off.
+  if (seat.diagnostics?.reports) writeFileSync(join(s.folder, '.eden-report-on'), '');
   s.save();
   return s;
 }
