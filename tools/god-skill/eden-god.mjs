@@ -169,8 +169,8 @@ function acquireLock(path, { label = "eden-god", ttlMs = LOCK_TTL_MS, reentrant 
 }
 
 // lib/doctor.mjs
-import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync4, unlinkSync as unlinkSync2, statSync as statSync2 } from "node:fs";
-import { resolve as resolve2 } from "node:path";
+import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync6, unlinkSync as unlinkSync3, statSync as statSync3 } from "node:fs";
+import { resolve as resolve4 } from "node:path";
 
 // lib/chrome-lease.mjs
 var CHROME_SLOTS = 3;
@@ -208,7 +208,7 @@ async function chromeLease(label = "unknown", { waitMs = 11e4, staleMs = LOCK_TT
 }
 
 // lib/state.mjs
-import { existsSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2, renameSync, unlinkSync } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync3, renameSync as renameSync2, unlinkSync as unlinkSync2 } from "node:fs";
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -224,11 +224,11 @@ async function fetchWithRetry(url, options, runtime = {}, budget = { waited: 0, 
   runtime = { ...retryDefaults, ...runtime };
   const send = runtime.fetch ?? fetch, clock = runtime.now ?? Date.now, random = runtime.random ?? Math.random;
   const { timeoutMs, deadlineAt, signal, ...init } = options ?? {};
-  const wait = runtime.sleep ?? ((ms) => new Promise((resolve8, reject) => {
+  const wait = runtime.sleep ?? ((ms) => new Promise((resolve10, reject) => {
     if (signal?.aborted) return reject(signal.reason);
     const done = () => {
       signal?.removeEventListener("abort", stop);
-      resolve8();
+      resolve10();
     };
     const timer = setTimeout(done, ms);
     function stop() {
@@ -290,7 +290,532 @@ import http from "node:http";
 import https from "node:https";
 import http2 from "node:http2";
 import { randomBytes } from "node:crypto";
-import { readFileSync as readFileSync2, rmSync as rmSync2 } from "node:fs";
+import { readFileSync as readFileSync4, rmSync as rmSync3 } from "node:fs";
+
+// lib/seat.mjs
+import { readFileSync as readFileSync3, realpathSync as realpathSync2 } from "node:fs";
+import { homedir } from "node:os";
+import { join as join2, resolve as resolve3 } from "node:path";
+
+// ../world-launcher/soul/home.mjs
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync as mkdirSync2, openSync, readdirSync, readFileSync as readFileSync2, realpathSync, renameSync, rmSync as rmSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { basename, dirname, join, resolve as resolve2 } from "node:path";
+var HOME_NAME = ".souls";
+var LEGACY_STATE = ".eden-agent.json";
+var STATE_FILE = "state.json";
+var CREDENTIALS = "credentials.json";
+var RUNTIME_LOCKS = [".listen.lock", ".eden-serve.lock"];
+var SERVE_SOCKET = ".eden-serve.sock";
+var IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
+var IMPORTED_RUNTIME = [".eden-serve.json"];
+var GOD_LEGACY = ".eden-god.json";
+var GOD_KEPT = /^\.eden-god\.(cache|bakes|claim-c_[0-9a-f]{8})\.json$/;
+var real = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve2(p);
+  }
+};
+var isHome = (root) => existsSync(join(root, "config.json"));
+function findHome({ cwd, env: env2 = {}, homedir: homedir2 }) {
+  if (env2.SOULS_HOME) {
+    const root = resolve2(cwd, env2.SOULS_HOME);
+    return { kind: isHome(root) ? "home" : "none", root };
+  }
+  const start = real(cwd), stop = homedir2 ? real(homedir2) : null;
+  if (!isHome(join(start, HOME_NAME)) && existsSync(join(start, LEGACY_STATE))) return { kind: "legacy", root: join(start, HOME_NAME) };
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (isHome(join(dir, HOME_NAME))) return { kind: "home", root: join(dir, HOME_NAME) };
+    if (dir === stop || dirname(dir) === dir) return { kind: "none", root: join(start, HOME_NAME) };
+  }
+}
+function writeJson(file, value, mode = 384) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync2(tmp, JSON.stringify(value, null, 1) + "\n", { mode });
+  renameSync(tmp, file);
+}
+function readJson(file, fallback) {
+  try {
+    return JSON.parse(readFileSync2(file, "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") return fallback;
+    throw new Error(`${basename(file)} cannot be read: ${e.message}`);
+  }
+}
+function slugOf(url) {
+  const m = /\/w\/([a-z0-9-]+)\/*$/.exec(String(url));
+  if (m) return m[1];
+  try {
+    const u = new URL(url);
+    return `${u.hostname}${u.port ? `-${u.port}` : ""}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+  } catch {
+    return "world";
+  }
+}
+var keyOf = (worlds, url) => Object.keys(worlds).find((k) => worlds[k].url === url) ?? null;
+var norm = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+function splitSecrets(s) {
+  const { token, identity, home, pendingApproval, ...open } = s;
+  if (home) open.home = { world: home.world, soul: home.soul };
+  if (pendingApproval) {
+    const { pollSecret, ...input } = pendingApproval.input ?? {};
+    open.pendingApproval = { ...pendingApproval, input };
+  }
+  return { open, secrets: { token, identity, homeToken: home?.token, pollSecret: pendingApproval?.input?.pollSecret } };
+}
+function selectSoul(cfg, sel) {
+  const at = sel.lastIndexOf("@"), who2 = at > 0 ? sel.slice(0, at) : sel, world = at > 0 ? sel.slice(at + 1) : null;
+  const named = Object.entries(cfg.souls).filter(([id, e]) => (id === who2 || norm(e.name) === norm(who2)) && (!world || e.world === world || e.at === world));
+  const live = named.filter(([, e]) => e.state === "active");
+  if (live.length === 1) return live[0][0];
+  if (live.length > 1) throw new Error(`Several Souls answer to ${who2}: ${live.map(([, e]) => `${norm(e.name)}@${e.world}`).join(", ")}. Say which.`);
+  if (named.length) throw new Error(`${named[0][1].name} is ${named[0][1].state} and takes no commands here. See: list, doctor, adopt.`);
+  return null;
+}
+function runtimeLocks(dir, alive2) {
+  const out = [];
+  for (const name of RUNTIME_LOCKS) {
+    const lock = readJsonQuietly(join(dir, name));
+    if (lock) out.push({ name, pid: lock.pid ?? null, alive: Number.isSafeInteger(lock.pid) && lock.pid > 0 && alive2(lock.pid) });
+  }
+  return out;
+}
+function readJsonQuietly(file) {
+  try {
+    return JSON.parse(readFileSync2(file, "utf8"));
+  } catch {
+    return existsSync(file) ? {} : null;
+  }
+}
+function openHome(root, { reserved = /* @__PURE__ */ new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+  const at = (...p) => join(root, ...p);
+  const config = () => ({ worlds: {}, souls: {}, gods: {}, ...readJson(at("config.json"), {}) });
+  const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, gods: {}, ...readJson(at(CREDENTIALS), {}) });
+  function locked(fn) {
+    const lock = at(".lock");
+    for (let i = 0; ; i++) {
+      try {
+        closeSync(openSync(lock, "wx", 384));
+        break;
+      } catch (e) {
+        if (e.code !== "EEXIST") throw e;
+        if (i >= 100) {
+          try {
+            unlinkSync(lock);
+          } catch {
+          }
+        } else sleepMs(20);
+      }
+    }
+    try {
+      return fn();
+    } finally {
+      try {
+        unlinkSync(lock);
+      } catch {
+      }
+    }
+  }
+  const updateConfig = (fn) => locked(() => {
+    const c = config(), r = fn(c);
+    writeJson(at("config.json"), c);
+    return r;
+  });
+  function updateCredentials(fn) {
+    const c = credentials(), before = JSON.stringify(c);
+    fn(c);
+    if (JSON.stringify(c) !== before) locked(() => {
+      const fresh = credentials();
+      fn(fresh);
+      writeJson(at(CREDENTIALS), fresh);
+    });
+  }
+  function ensureWorld(url, facts = {}) {
+    return updateConfig((c) => {
+      let key = keyOf(c.worlds, url);
+      if (!key) {
+        const base = slugOf(url);
+        key = base;
+        for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`;
+        c.worlds[key] = { url };
+      }
+      Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== void 0)));
+      return key;
+    });
+  }
+  const setCurrentWorld = (key) => updateConfig((c) => {
+    c.currentWorld = key;
+  });
+  const seat2 = (key) => {
+    const dir = at("pending", key);
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    return { kind: "seat", key, dir };
+  };
+  const soul = (id) => {
+    const dir = at("souls", id, "runtime");
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    return { kind: "soul", id, dir };
+  };
+  const seatState = (key) => readJson(at("pending", key, STATE_FILE), {});
+  function load2(ctx) {
+    const s = { ...readJson(join(ctx.dir, STATE_FILE), {}) }, cfg = config(), creds = credentials();
+    const key = keyOf(cfg.worlds, s.world) ?? ctx.key;
+    const identity = (ctx.kind === "soul" ? creds.souls[ctx.id]?.[cfg.souls[ctx.id]?.world]?.identity : null) ?? creds.worlds[key]?.identity;
+    if (identity) s.identity = identity;
+    if (ctx.kind === "soul") {
+      const token = creds.souls[ctx.id]?.[key]?.token;
+      if (token) s.token = token;
+      if (s.home) {
+        const t = creds.souls[ctx.id]?.[keyOf(cfg.worlds, s.home.world)]?.token;
+        if (t) s.home = { ...s.home, token: t };
+      }
+    }
+    if (s.pendingApproval) {
+      const pollSecret = creds.approvals[key]?.pollSecret;
+      if (pollSecret) s.pendingApproval = { ...s.pendingApproval, input: { ...s.pendingApproval.input, pollSecret } };
+    }
+    return s;
+  }
+  function promote(ctx, open) {
+    const id = open.home?.soul ?? open.soul;
+    const { world, worldId, accountAuth } = open;
+    writeJson(join(ctx.dir, STATE_FILE), Object.fromEntries(Object.entries({ world, worldId, accountAuth }).filter(([, v]) => v !== void 0)));
+    Object.assign(ctx, soul(id));
+    process.chdir(ctx.dir);
+    const kept = readJson(join(ctx.dir, STATE_FILE), {});
+    if (kept.world === world) {
+      for (const [k, v] of Object.entries(kept)) if (!(k in open)) open[k] = v;
+    }
+    enlist(id, open, ctx.key);
+  }
+  function enlist(id, open, fallbackKey) {
+    updateConfig((c) => {
+      const { retiredAt, at: was, ...old } = c.souls[id] ?? {}, key = keyOf(c.worlds, open.world) ?? fallbackKey, home = open.home ? keyOf(c.worlds, open.home.world) ?? key : key;
+      c.souls[id] = { name: id, ...old, world: old.world ?? home, ...home !== key ? { at: key } : {}, state: "active" };
+      c.currentWorld = key;
+    });
+    identify(id);
+  }
+  function identify(id) {
+    const c = config(), e = c.souls[id];
+    if (e) writeJson(at("souls", id, "soul.json"), { id, name: e.name, world: c.worlds[e.world]?.url ?? null });
+  }
+  function save2(ctx, s) {
+    const { open, secrets } = splitSecrets(s);
+    let key = ctx.key;
+    if (open.world) key = keyOf(config().worlds, open.world) ?? ensureWorld(open.world);
+    const seatKey = ctx.kind === "seat" ? ctx.key : null;
+    if (seatKey && open.soul && secrets.token) promote(ctx, open);
+    writeJson(join(ctx.dir, STATE_FILE), open);
+    if (ctx.kind === "soul") {
+      const e = config().souls[ctx.id];
+      if (e && (e.at ?? e.world) !== key) updateConfig((c) => {
+        c.souls[ctx.id].at = key;
+      });
+    }
+    updateCredentials((c) => {
+      if (secrets.identity && seatKey) (c.worlds[seatKey] ??= {}).identity ??= secrets.identity;
+      if (seatKey && secrets.pollSecret && ctx.kind === "seat") c.approvals[seatKey] = { pollSecret: secrets.pollSecret };
+      else if (seatKey) delete c.approvals[seatKey];
+      if (ctx.kind !== "soul") return;
+      const mine = c.souls[ctx.id] ??= {}, homeKey = open.home ? keyOf(config().worlds, open.home.world) ?? key : key;
+      if (secrets.token) (mine[key] ??= {}).token = secrets.token;
+      if (secrets.homeToken && homeKey !== key) (mine[homeKey] ??= {}).token = secrets.homeToken;
+      if (secrets.identity) (mine[config().souls[ctx.id]?.world ?? homeKey] ??= {}).identity = secrets.identity;
+    });
+    return s;
+  }
+  function ensureGod(url) {
+    const key = ensureWorld(url);
+    updateConfig((c) => {
+      c.gods[key] ??= {};
+    });
+    return key;
+  }
+  function dropGod(key, { world = false } = {}) {
+    updateConfig((c) => {
+      delete c.gods[key];
+      if (world) delete c.worlds[key];
+    });
+    updateCredentials((c) => {
+      delete c.gods[key];
+    });
+    rmSync2(at("gods", key), { recursive: true, force: true });
+    if (!readdirSync(at("gods")).length) rmSync2(at("gods"), { recursive: true, force: true });
+  }
+  const godSeat = (key) => {
+    const dir = at("gods", key);
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    return dir;
+  };
+  const godSecrets = (key) => {
+    const { token, identity } = credentials().gods[key] ?? {};
+    return { ...token ? { token } : {}, ...identity ? { identity } : {} };
+  };
+  const saveGodSecrets = (key, patch) => updateCredentials((c) => {
+    for (const k of ["token", "identity"]) if (patch[k]) (c.gods[key] ??= {})[k] = patch[k];
+  });
+  function importGod(folder) {
+    const legacy = JSON.parse(readFileSync2(join(folder, GOD_LEGACY), "utf8"));
+    if (!legacy.world) throw new Error(`${GOD_LEGACY} names no world; nothing to import.`);
+    const key = ensureGod(legacy.world);
+    if (godSecrets(key).token) return { imported: false, world: key, reason: "This world already has a god seat in this home." };
+    const dir = godSeat(key), { token, identity, ...open } = legacy;
+    writeJson(join(dir, GOD_LEGACY), open);
+    saveGodSecrets(key, { token, identity });
+    updateConfig((c) => {
+      c.gods[key].importedFrom = real(folder);
+    });
+    for (const f of readdirSync(folder)) if (GOD_KEPT.test(f)) copyFileSync(join(folder, f), join(dir, f));
+    return { imported: true, world: key, reusedToken: !!token, note: `${GOD_LEGACY} stays where it was and still holds the token: delete it once the seat works.` };
+  }
+  function named(id, name) {
+    if (config().souls[id]?.name === name) return;
+    updateConfig((c) => {
+      if (c.souls[id]) c.souls[id].name = name;
+    });
+    identify(id);
+  }
+  function principals() {
+    const c = config(), all = Object.entries(c.souls);
+    return all.map(([id, e]) => {
+      const twin = reserved.has(norm(e.name)) || all.some(([other, o]) => other !== id && o.state === "active" && norm(o.name) === norm(e.name));
+      const state = readJson(at("souls", id, "runtime", STATE_FILE), {});
+      return { name: e.name, id, world: e.world, ...e.at && e.at !== e.world ? { visiting: e.at } : {}, state: e.state, address: twin ? `${norm(e.name)}@${e.world}` : norm(e.name), ...c.default === id ? { default: true } : {}, lastSeen: state.lastActAt ?? null };
+    });
+  }
+  function list2() {
+    const c = config();
+    return {
+      home: root,
+      souls: principals(),
+      gods: Object.keys(c.gods).map((world) => ({ world, paired: !!credentials().gods[world]?.token })),
+      worlds: Object.entries(c.worlds).map(([key, w]) => ({ key, url: w.url, name: w.name ?? null, current: c.currentWorld === key })),
+      waiting: Object.keys(c.worlds).filter((k) => seatState(k).pendingApproval).map((world) => ({ world, approvalId: seatState(world).pendingApproval.approvalId }))
+    };
+  }
+  function setDefault(sel) {
+    const id = selectSoul(config(), sel);
+    if (!id) throw new Error(`No Soul here answers to ${sel}.`);
+    updateConfig((c) => {
+      c.default = id;
+    });
+    return id;
+  }
+  function importLegacy(folder) {
+    const legacy = JSON.parse(readFileSync2(join(folder, LEGACY_STATE), "utf8"));
+    if (!legacy.world) throw new Error(`${LEGACY_STATE} names no world; nothing to import.`);
+    const s = Object.fromEntries(IMPORTED_FIELDS.filter((k) => legacy[k] !== void 0).map((k) => [k, legacy[k]]));
+    s.token ??= legacy.delegations?.[s.soul]?.token;
+    if (!s.token) delete s.token;
+    const id = s.home?.soul ?? s.soul;
+    if (id && config().souls[id]?.state === "active") return { imported: false, soul: id, reason: "This Soul already lives in this home." };
+    const key = ensureWorld(s.world, { worldId: s.worldId, accountAuth: s.accountAuth });
+    if (s.home?.world) ensureWorld(s.home.world);
+    if (!id || !s.token) {
+      if (seatState(key).pendingApproval) throw new Error(`An approval already waits in ${key}. Finish it first: approval wait`);
+      save2(seat2(key), { ...s, ...legacy.pendingApproval ? { pendingApproval: legacy.pendingApproval } : {} });
+      setCurrentWorld(key);
+      return { imported: true, soul: null, world: key };
+    }
+    if (!seatState(key).world) writeJson(join(seat2(key).dir, STATE_FILE), Object.fromEntries(Object.entries({ world: s.world, worldId: s.worldId, accountAuth: s.accountAuth }).filter(([, v]) => v !== void 0)));
+    const ctx = soul(id);
+    enlist(id, s, key);
+    save2(ctx, s);
+    updateCredentials((c) => {
+      if (s.identity) (c.worlds[key] ??= {}).identity ??= s.identity;
+    });
+    for (const f of IMPORTED_RUNTIME) if (existsSync(join(folder, f))) copyFileSync(join(folder, f), join(ctx.dir, f));
+    return { imported: true, soul: id, world: key, ctx };
+  }
+  function exportSoul(id, out) {
+    if (existsSync(out)) throw new Error(`${out} already exists; choose another --out.`);
+    cpSync(at("souls", id), out, { recursive: true, filter: (p) => basename(p) !== "runtime" });
+    return out;
+  }
+  function importExport(folder) {
+    const me = JSON.parse(readFileSync2(join(folder, "soul.json"), "utf8"));
+    if (!/^s_[A-Za-z0-9_-]+$/.test(me.id ?? "")) throw new Error("soul.json names no Soul.");
+    if (config().souls[me.id]) return { imported: false, soul: me.id, reason: "This Soul already lives in this home." };
+    const key = me.world ? ensureWorld(me.world) : null;
+    cpSync(folder, at("souls", me.id), { recursive: true, filter: (p) => basename(p) !== "runtime" && basename(p) !== CREDENTIALS });
+    updateConfig((c) => {
+      c.souls[me.id] = { name: me.name ?? me.id, world: key, state: "unpaired" };
+    });
+    return { imported: true, soul: me.id, world: key, paired: false };
+  }
+  async function doctor2(ask, { alive: alive2 }) {
+    const out = { home: root, worlds: [], retired: [], adoptable: [], controlLost: [], orphanCredentials: [], locksCleared: [] };
+    const retire = (id) => {
+      updateConfig((c) => {
+        c.souls[id].state = "retired";
+        c.souls[id].retiredAt = (/* @__PURE__ */ new Date()).toISOString();
+      });
+      out.retired.push({ id, name: config().souls[id].name });
+    };
+    const cfg = config(), creds = credentials();
+    for (const [key, w] of Object.entries(cfg.worlds)) {
+      const local = Object.entries(cfg.souls).filter(([, e]) => e.world === key && e.state === "active");
+      const identities = [...new Set([creds.worlds[key]?.identity, ...local.map(([id]) => creds.souls[id]?.[key]?.identity)].filter(Boolean))];
+      const answers = [];
+      for (const identity of identities) answers.push(await ask(`${w.url}/v1/me`, `dev:${identity}`));
+      const me = answers.find((a) => a.status === 0) ?? answers.find((a) => a.status !== 200) ?? answers[0];
+      if (me?.status === 200 && answers.every((a) => Array.isArray(a.data?.souls))) {
+        const owned2 = answers.flatMap((a) => a.data.souls), ids = new Set(owned2.map((s) => s.id));
+        for (const [id, e] of local) if (!ids.has(id) && !(e.at && e.at !== e.world)) retire(id);
+        for (const s of owned2) {
+          named(s.id, s.name);
+          if (config().souls[s.id]?.state !== "active") out.adoptable.push({ id: s.id, name: s.name, world: key });
+        }
+        out.worlds.push({ world: key, checked: "account" });
+        continue;
+      }
+      if (me?.status === 0) {
+        out.worlds.push({ world: key, checked: "unreachable" });
+        continue;
+      }
+      let reachable = true;
+      for (const [id] of local) {
+        const token = creds.souls[id]?.[key]?.token;
+        if (!token) {
+          out.controlLost.push({ id, name: cfg.souls[id].name, why: "no token in this home" });
+          continue;
+        }
+        const r = await ask(`${w.url}/v1/agent/me`, token);
+        if (r.status === 0) {
+          reachable = false;
+          break;
+        }
+        if (r.status === 200) {
+          if (r.data?.soul?.name) named(id, r.data.soul.name);
+          continue;
+        }
+        if (r.status === 401 && r.data?.code === "control.revoked" && r.data?.reason === "retired") retire(id);
+        else out.controlLost.push({ id, name: cfg.souls[id].name, why: r.data?.reason ?? r.data?.code ?? `http-${r.status}` });
+      }
+      out.worlds.push({ world: key, checked: reachable ? "souls" : "unreachable", ...reachable ? { note: "This world shows a Soul token its own Soul only, so account Souls that are not here cannot be listed. Adopt one by its id from the Soul card." } : {} });
+    }
+    const after = config();
+    for (const [id, worlds] of Object.entries(creds.souls)) if (!after.souls[id]) for (const world of Object.keys(worlds)) out.orphanCredentials.push({ principal: id, world });
+    for (const world of Object.keys(creds.worlds)) if (!after.worlds[world]) out.orphanCredentials.push({ principal: "account", world });
+    for (const world of Object.keys(creds.gods)) if (!after.gods[world]) out.orphanCredentials.push({ principal: "god", world });
+    for (const id of existsSync(at("souls")) ? readdirSync(at("souls")) : []) {
+      const dir = at("souls", id, "runtime");
+      for (const lock of runtimeLocks(dir, alive2)) {
+        if (lock.alive) continue;
+        try {
+          unlinkSync(join(dir, lock.name));
+          out.locksCleared.push({ soul: id, lock: lock.name });
+        } catch {
+        }
+        if (lock.name === ".eden-serve.lock") try {
+          unlinkSync(join(dir, SERVE_SOCKET));
+        } catch {
+        }
+      }
+    }
+    if ((statSync2(at(CREDENTIALS)).mode & 511) !== 384) {
+      chmodSync(at(CREDENTIALS), 384);
+      out.credentialsMode = "was too open; now 0600";
+    }
+    out.healthy = !out.retired.length && !out.controlLost.length && !out.orphanCredentials.length && out.worlds.every((w) => w.checked !== "unreachable");
+    return out;
+  }
+  return { root, config, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat: seat2, soul, seatState, load: load2, save: save2, named, principals, list: list2, setDefault, importLegacy, exportSoul, importExport, doctor: doctor2 };
+}
+
+// lib/seat.mjs
+var seat = null;
+var registering = null;
+var registerAs = null;
+var godFile = (name) => seat ? join2(seat.dir, name) : name;
+var seatDir = () => seat?.dir ?? null;
+var seatSecrets = () => seat?.home.godSecrets(seat.key) ?? null;
+var keepSecrets = (patch) => seat?.home.saveGodSecrets(seat.key, patch);
+function sit(home, key) {
+  seat = { home, key, dir: home.godSeat(key) };
+  process.env.SOULS_HOME = home.root;
+  process.env.EDEN_GOD_SEAT = key;
+}
+var LEGACY = ".eden-god.json";
+var readWorld = (file) => {
+  try {
+    return JSON.parse(readFileSync3(file, "utf8")).world ?? null;
+  } catch {
+    return null;
+  }
+};
+function fileHolds(h, cfg, cwd) {
+  let raw;
+  try {
+    raw = readFileSync3(join2(cwd, LEGACY), "utf8");
+  } catch {
+    return null;
+  }
+  let world;
+  try {
+    world = JSON.parse(raw).world;
+  } catch {
+    return { key: null };
+  }
+  if (!world) return null;
+  const key = keyOf(cfg.worlds, world);
+  return key && cfg.gods[key]?.importedFrom === realpathSync2(cwd) ? null : { key };
+}
+function seatForRegister(url) {
+  if (!registering) return () => {
+  };
+  const h = registering, before = h.config(), known2 = keyOf(before.worlds, url), held = known2 && before.gods[known2];
+  if (registerAs !== null && known2 !== registerAs) throw new Error(`The seat ${registerAs} is for ${before.worlds[registerAs]?.url}, not ${url}. For another world: node eden-god.mjs register <world-url>`);
+  const key = h.ensureGod(url);
+  sit(h, key);
+  return held ? () => {
+  } : () => {
+    h.dropGod(key, { world: !known2 });
+    seat = null;
+    delete process.env.EDEN_GOD_SEAT;
+  };
+}
+function enterGodSeat(argv, commands, { cwd = process.cwd(), env: env2 = process.env, home = homedir() } = {}) {
+  const found = findHome({ cwd, env: env2, homedir: home });
+  if (found.kind !== "home") return argv;
+  const h = openHome(found.root), cfg = h.config(), first = argv[0] ?? "", say = (w) => commands[w] ? `@${w}` : w;
+  const inherited = env2.EDEN_GOD_SEAT || null;
+  const worded = inherited ? null : first.startsWith("@") ? first.slice(1) : !commands[first] && (cfg.gods[first] || cfg.worlds[first]) ? first : null;
+  const asked = inherited ?? worded, line2 = worded === null ? argv : argv.slice(1), cmd = line2[0];
+  if (asked !== null && !cfg.gods[asked]) throw new Error(`No god seat for ${asked} here. Run: node eden-god.mjs register <world-url>`);
+  if (env2.EDEN_GOD_HELPER) {
+    if (["register", "pair", "mint"].includes(cmd)) throw new Error("A helper works under its lead's seat; it does not pair or register.");
+    const key = keyOf(cfg.worlds, readWorld(resolve3(cwd, env2.EDEN_GOD_HELPER)));
+    if (asked !== null && asked !== key) throw new Error(`This helper works in ${key ?? "another world"}, not ${asked}.`);
+    if (key && cfg.gods[key] && h.godSecrets(key).token && !fileHolds(h, cfg, cwd)) sit(h, key);
+    return line2;
+  }
+  if (asked !== null) {
+    if (cmd === "register") {
+      registering = h;
+      registerAs = asked;
+    } else sit(h, asked);
+    return line2;
+  }
+  if (fileHolds(h, cfg, cwd)) return argv;
+  const moved = Object.keys(cfg.gods).find((k) => cfg.gods[k].importedFrom === realpathSync2(cwd));
+  if (moved && !["register", "pair", "mint", "help"].includes(cmd)) {
+    sit(h, moved);
+    return line2;
+  }
+  if (cmd === "register") {
+    registering = h;
+    return line2;
+  }
+  const seats = Object.keys(cfg.gods);
+  if (seats.length === 1 && cmd !== "help") sit(h, seats[0]);
+  else if (seats.length > 1 && commands[cmd] && cmd !== "help") throw new Error(`Several god seats here: ${seats.join(", ")}. Say which: node eden-god.mjs ${say(seats[0])} ${cmd}`);
+  return line2;
+}
+
+// lib/wire.mjs
 var WIRE = ".eden-god.wire.json";
 var HOP = /* @__PURE__ */ new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "host", "http2-settings", "te"]);
 var pidAlive = (pid) => {
@@ -302,7 +827,7 @@ var pidAlive = (pid) => {
     return e.code === "EPERM";
   }
 };
-async function startWire(world, { file = WIRE } = {}) {
+async function startWire(world, { file = godFile(WIRE) } = {}) {
   const origin = new URL(world).origin, secret2 = randomBytes(18).toString("base64url");
   let used = 0, closed = false, mode = origin.startsWith("https:") ? "h2" : "h1", session = null;
   const agent = new (origin.startsWith("https:") ? https : http).Agent({ keepAlive: true, maxSockets: 8, keepAliveMsecs: 3e4 });
@@ -409,9 +934,9 @@ async function startWire(world, { file = WIRE } = {}) {
     }
   });
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve8, reject) => {
+  await new Promise((resolve10, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve8);
+    server.listen(0, "127.0.0.1", resolve10);
   });
   server.unref();
   const port = server.address().port;
@@ -436,7 +961,7 @@ async function startWire(world, { file = WIRE } = {}) {
       session?.close();
       agent.destroy();
       try {
-        if (JSON.parse(readFileSync2(file, "utf8")).pid === process.pid) rmSync2(file, { force: true });
+        if (JSON.parse(readFileSync4(file, "utf8")).pid === process.pid) rmSync3(file, { force: true });
       } catch {
       }
     }
@@ -447,7 +972,7 @@ function relayFor(url) {
   if (known === void 0) {
     known = null;
     if (!/^(0|off|false|no)$/i.test(process.env.EDEN_GOD_WIRE ?? "")) try {
-      const w = JSON.parse(readFileSync2(WIRE, "utf8"));
+      const w = JSON.parse(readFileSync4(godFile(WIRE), "utf8"));
       if (w?.port && w.secret && w.world && pidAlive(w.pid)) known = w;
     } catch {
     }
@@ -505,16 +1030,17 @@ function noticeInboxHeader(headers) {
 
 // lib/state.mjs
 var STATE = ".eden-god.json";
-var read = (file) => existsSync(file) ? JSON.parse(readFileSync3(file, "utf8")) : {};
-var claimFile = (id) => {
+var read = (file) => existsSync2(file) ? JSON.parse(readFileSync5(file, "utf8")) : {};
+var claimName = (id) => {
   if (!/^c_[0-9a-f]{8}$/.test(id)) throw new Error("EDEN_GOD_CLAIM must be c_ followed by eight hexadecimal digits");
   return `.eden-god.claim-${id}.json`;
 };
-var helperFile = (id) => `.eden-god.helper-${claimFile(id).slice(".eden-god.claim-".length, -".json".length)}.json`;
+var claimFile = (id) => godFile(claimName(id));
+var helperFile = (id) => `.eden-god.helper-${claimName(id).slice(".eden-god.claim-".length, -".json".length)}.json`;
 function helperState() {
   const file = process.env.EDEN_GOD_HELPER;
   if (!file) return null;
-  if (!existsSync(file)) throw new Error(`EDEN_GOD_HELPER names a missing file: ${file}`);
+  if (!existsSync2(file)) throw new Error(`EDEN_GOD_HELPER names a missing file: ${file}`);
   const s = read(file), cid = s.helper?.claim;
   if (!cid) throw new Error(`${file} is not a helper file (no helper.claim)`);
   if (process.env.EDEN_GOD_CLAIM && process.env.EDEN_GOD_CLAIM !== cid) throw new Error(`EDEN_GOD_CLAIM=${process.env.EDEN_GOD_CLAIM} differs from the helper file's claim ${cid}`);
@@ -524,18 +1050,18 @@ var activeClaim = () => process.env.EDEN_GOD_CLAIM || helperState()?.helper.clai
 function atomicWrite(file, text) {
   const temp = `${file}.${process.pid}.${randomUUID2()}.tmp`;
   try {
-    writeFileSync2(temp, text, { mode: 384, flag: "wx" });
-    renameSync(temp, file);
+    writeFileSync3(temp, text, { mode: 384, flag: "wx" });
+    renameSync2(temp, file);
   } finally {
     try {
-      unlinkSync(temp);
+      unlinkSync2(temp);
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
     }
   }
 }
 function load() {
-  const s = helperState() ?? read(STATE), cid = activeClaim();
+  const s = helperState() ?? { ...read(godFile(STATE)), ...seatSecrets() }, cid = activeClaim();
   if (!cid) return s;
   const local = read(claimFile(cid)), b = s.build;
   const merged = { ...s, group: void 0, build: b ? { id: b.id, claim: cid, n: 1, label: b.steps?.[0] ?? "step 1", steps: b.steps } : void 0, ...local };
@@ -546,7 +1072,7 @@ function load() {
   return merged;
 }
 function withStateLock(run) {
-  const cid = activeClaim(), file = cid ? claimFile(cid) : STATE;
+  const cid = activeClaim(), file = cid ? claimFile(cid) : godFile(STATE);
   const release = acquireLock(`${file}.lock`, { label: "claim/step state", reentrant: true });
   try {
     const out = run();
@@ -562,9 +1088,15 @@ function save(patch) {
   return withStateLock(() => saveUnlocked(patch));
 }
 function saveUnlocked(patch) {
-  const cid = activeClaim(), file = cid ? claimFile(cid) : STATE;
+  const cid = activeClaim(), file = cid ? claimFile(cid) : godFile(STATE);
   const s = { ...read(file), ...patch };
   for (const k of Object.keys(s)) if (s[k] === void 0) delete s[k];
+  if (seatSecrets()) {
+    const { token, identity } = patch;
+    keepSecrets({ token, identity });
+    delete s.token;
+    delete s.identity;
+  }
   if (cid && Object.hasOwn(patch, "build") && !patch.build) s.build = null;
   atomicWrite(file, JSON.stringify(s, null, 2) + "\n");
   return load();
@@ -763,34 +1295,34 @@ var num = (v) => {
 var r2 = (v) => Math.round(v * 100) / 100;
 
 // lib/doctor.mjs
-function localDoctor({ fix = false, cwd = process.cwd(), chrome = CHROME_LOCK } = {}) {
-  const slots = chromeSlotDirs(chrome), paths = [...slots, resolve2(cwd, ".eden-god.look.json.lock"), resolve2(cwd, ".eden-god.json.lock"), ...readdirSync(cwd).filter((n) => /^\.eden-god\.claim-c_[0-9a-f]{8}\.json\.lock$/.test(n)).map((n) => resolve2(cwd, n))];
-  for (let i = 0; i < paths.length; i++) if (existsSync2(paths[i] + ".reclaim")) paths.push(paths[i] + ".reclaim");
+function localDoctor({ fix = false, cwd = seatDir() ?? process.cwd(), chrome = CHROME_LOCK } = {}) {
+  const slots = chromeSlotDirs(chrome), paths = [...slots, resolve4(cwd, ".eden-god.look.json.lock"), resolve4(cwd, ".eden-god.json.lock"), ...readdirSync2(cwd).filter((n) => /^\.eden-god\.claim-c_[0-9a-f]{8}\.json\.lock$/.test(n)).map((n) => resolve4(cwd, n))];
+  for (let i = 0; i < paths.length; i++) if (existsSync3(paths[i] + ".reclaim")) paths.push(paths[i] + ".reclaim");
   const locks = paths.map((path2) => {
     const slot = slots.indexOf(path2), row = { kind: slot >= 0 ? "chrome" : "state", ...slot >= 0 ? { slot } : {}, ...inspectLock(path2) };
     if (fix && row.stale) row.fixed = breakLock(path2);
     return row;
   });
-  const path = resolve2(cwd, ".eden-god.look.json");
-  if (existsSync2(path)) {
+  const path = resolve4(cwd, ".eden-god.look.json");
+  if (existsSync3(path)) {
     let raw, k;
     try {
-      raw = readFileSync4(path, "utf8");
+      raw = readFileSync6(path, "utf8");
       k = JSON.parse(raw);
     } catch {
     }
-    const status2 = lockStatus(parseHolder(k?.holder), k?.heartbeatAt ?? statSync2(path).mtimeMs, k?.ttlMs ?? 3e4);
+    const status2 = lockStatus(parseHolder(k?.holder), k?.heartbeatAt ?? statSync3(path).mtimeMs, k?.ttlMs ?? 3e4);
     const row = { kind: "look-keeper", path, present: true, ...status2 };
-    if (fix && row.stale && readFileSync4(path, "utf8") === raw) {
-      unlinkSync2(path);
+    if (fix && row.stale && readFileSync6(path, "utf8") === raw) {
+      unlinkSync3(path);
       row.fixed = true;
     }
     locks.push(row);
   } else locks.push({ kind: "look-keeper", path, present: false, stale: false, holder: null });
-  for (const name of readdirSync(cwd).filter((n) => /^\.eden-god(?:\.claim-c_[0-9a-f]{8})?\.json$/.test(n))) {
+  for (const name of readdirSync2(cwd).filter((n) => /^\.eden-god(?:\.claim-c_[0-9a-f]{8})?\.json$/.test(n))) {
     try {
-      const b = JSON.parse(readFileSync4(resolve2(cwd, name), "utf8")).build;
-      if (b) locks.push({ kind: b.claim ? "claim/step-file" : "build/step-file", path: resolve2(cwd, name), present: true, stale: false, durable: true, build: b.id, step: b.n, claim: b.claim, note: "durable workflow state; server lease below is authoritative" });
+      const b = JSON.parse(readFileSync6(resolve4(cwd, name), "utf8")).build;
+      if (b) locks.push({ kind: b.claim ? "claim/step-file" : "build/step-file", path: resolve4(cwd, name), present: true, stale: false, durable: true, build: b.id, step: b.n, claim: b.claim, note: "durable workflow state; server lease below is authoritative" });
     } catch {
     }
   }
@@ -854,11 +1386,11 @@ async function taxonomy(flags2 = {}) {
 }
 
 // cli.mjs
-import { readFileSync as readFileSync11, writeFileSync as writeFileSync6, existsSync as existsSync9, mkdirSync as mkdirSync3, appendFileSync } from "node:fs";
-import { resolve as resolve7 } from "node:path";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync10, mkdirSync as mkdirSync4, appendFileSync } from "node:fs";
+import { resolve as resolve9 } from "node:path";
 
 // lib/mirror.mjs
-import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync7 } from "node:fs";
 import { createHash } from "node:crypto";
 
 // lib/solver.mjs
@@ -881,7 +1413,7 @@ var unrot = (yaw, x, z) => {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   return [x * c - z * s, x * s + z * c];
 };
-var norm = ([x, z]) => {
+var norm2 = ([x, z]) => {
   const l = Math.hypot(x, z) || 1;
   return [x / l, z / l];
 };
@@ -1083,7 +1615,7 @@ function solve(v, thing, rel) {
     let A2 = refPoint(v, a), B = refPoint(v, b);
     const toEdge = (P, Q) => {
       if (P.kind !== "region") return P;
-      const d = norm(COMPASS[P.word]), h = v.extent / 2 - 2;
+      const d = norm2(COMPASS[P.word]), h = v.extent / 2 - 2;
       const k = Math.min(...[0, 1].map((i) => Math.abs(d[i]) < 1e-9 ? Infinity : (Math.sign(d[i]) * h - (i ? Q.z : Q.x)) / d[i]));
       return { x: r22(Q.x + d[0] * k), z: r22(Q.z + d[1] * k), kind: "point", ref: `the ${P.word} edge` };
     };
@@ -1100,7 +1632,7 @@ function solve(v, thing, rel) {
         if (ENDS_ONLY.test(v.def?.(P.row.def)?.ref ?? P.row.def)) return nearerEnd();
         const q = nearestOnPath(sh.path, [Q.x, Q.z]);
         if (Math.hypot(q.p[0] - a2[0], q.p[1] - a2[1]) < 3 || Math.hypot(q.p[0] - b2[0], q.p[1] - b2[1]) < 3) return nearerEnd();
-        const inset = P.row.layer === "surface" ? Math.max(0, (sh.width ?? 4) / 2 - 0.5) : 0, u2 = norm([Q.x - q.p[0], Q.z - q.p[1]]);
+        const inset = P.row.layer === "surface" ? Math.max(0, (sh.width ?? 4) / 2 - 0.5) : 0, u2 = norm2([Q.x - q.p[0], Q.z - q.p[1]]);
         return [r22(q.p[0] + u2[0] * inset), r22(q.p[1] + u2[1] * inset)];
       }
       const doors = (P.row.doors ?? []).filter((d) => d.out && (d.level ?? 0) === 0);
@@ -1110,7 +1642,7 @@ function solve(v, thing, rel) {
         doorUsed.set(P.row.path, d.id);
         return [r22(d.at[0] + f[0]), r22(d.at[1] + f[1])];
       }
-      const u = norm([Q.x - P.x, Q.z - P.z]);
+      const u = norm2([Q.x - P.x, Q.z - P.z]);
       if (sh?.area) {
         const k = rayExit(sh.area, [P.x, P.z], u);
         const wet = P.row.layer === "volume" || P.row.water !== void 0 && P.row.water !== null;
@@ -1600,7 +2132,7 @@ function sideDir(word, frontL) {
   }
   if (!n || w || a === 0 && b === 0) return null;
   const l = leftOf(frontL);
-  return norm([a * frontL[0] + b * l[0], a * frontL[1] + b * l[1]]);
+  return norm2([a * frontL[0] + b * l[0], a * frontL[1] + b * l[1]]);
 }
 var steps = (max, step) => {
   const out = [0];
@@ -1713,7 +2245,7 @@ function solveInRoom(v, host, room, thing, rel, ctx) {
     const rd = sideDir(w, fL);
     if (rd) return rd;
     const k = compassKey(w);
-    if (k) return norm(unrot(F.PY, COMPASS[k][0], COMPASS[k][1]));
+    if (k) return norm2(unrot(F.PY, COMPASS[k][0], COMPASS[k][1]));
     return null;
   };
   const round = !isRect;
@@ -1788,14 +2320,14 @@ var wasTrusted = () => trustedRead;
 var speaksMirror = () => speaks && !oldServer;
 function readCache() {
   try {
-    return existsSync3(CACHE) ? JSON.parse(readFileSync5(CACHE, "utf8")) : null;
+    return existsSync4(godFile(CACHE)) ? JSON.parse(readFileSync7(godFile(CACHE), "utf8")) : null;
   } catch {
     return null;
   }
 }
 function writeCache(c) {
   try {
-    atomicWrite(CACHE, JSON.stringify(c));
+    atomicWrite(godFile(CACHE), JSON.stringify(c));
   } catch {
   }
 }
@@ -2230,15 +2762,15 @@ function exportGenesis(snapshot3, { name } = {}) {
 
 // lib/look.mjs
 import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync6, mkdirSync as mkdirSync2, readFileSync as readFileSync7, writeFileSync as writeFileSync4, rmSync as rmSync4, statSync as statSync3, utimesSync as utimesSync2 } from "node:fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync9, writeFileSync as writeFileSync5, rmSync as rmSync5, statSync as statSync4, utimesSync as utimesSync2 } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer as createServer2 } from "node:net";
-import { dirname, resolve as resolve4 } from "node:path";
+import { dirname as dirname2, resolve as resolve6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // lib/remote-look.mjs
-import { existsSync as existsSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { resolve as resolve3, win32 } from "node:path";
+import { existsSync as existsSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { resolve as resolve5, win32 } from "node:path";
 var needsLocalBrowser = (args) => !!args.views || args.frames > 1 || !!args.studio;
 var localBrowserError = () => Error("look: sheets (--views/--site), motion frames and kit workbench require local Playwright and Google Chrome; the remote renderer supports single views only");
 async function remoteLook(args, runtime = {}) {
@@ -2267,8 +2799,8 @@ async function remoteLook(args, runtime = {}) {
   const png = Buffer.from(await r.arrayBuffer());
   runtime.signal?.throwIfAborted();
   if (!r.headers.get("content-type")?.startsWith("image/png") || !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw Error("look: world renderer did not return a PNG");
-  writeFileSync3(resolve3(args.out), png);
-  return { file: resolve3(args.out), ms: now() - t0, via: "remote", size: r.headers.get("x-look-size") ?? void 0 };
+  writeFileSync4(resolve5(args.out), png);
+  return { file: resolve5(args.out), ms: now() - t0, via: "remote", size: r.headers.get("x-look-size") ?? void 0 };
 }
 function chromeCandidates(platform = process.platform, env2 = process.env) {
   if (platform === "darwin") return ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
@@ -2280,7 +2812,7 @@ function chromeCandidates(platform = process.platform, env2 = process.env) {
 async function withRemoteLook(args, runtime, local) {
   if (args.remote || process.env.EDEN_GOD_LOOK === "remote") return remoteLook(args, runtime);
   const candidates = (runtime.chromeCandidates ?? chromeCandidates)();
-  if (runtime.pw === void 0 && candidates && !(runtime.chromeExists ?? (() => candidates.some(existsSync4)))()) {
+  if (runtime.pw === void 0 && candidates && !(runtime.chromeExists ?? (() => candidates.some(existsSync5)))()) {
     try {
       return await remoteLook(args, runtime);
     } catch (remote) {
@@ -2303,7 +2835,7 @@ async function withRemoteLook(args, runtime, local) {
 
 // lib/warm.mjs
 import { spawn } from "node:child_process";
-import { existsSync as existsSync5, readFileSync as readFileSync6, rmSync as rmSync3 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync8, rmSync as rmSync4 } from "node:fs";
 var WARM = ".eden-god.warm.json";
 var LISTENER = ".eden-god.listen.json";
 var KEEPER = ".eden-god.look.json";
@@ -2312,7 +2844,7 @@ var FAILED_RETRY_MS = 10 * 6e4;
 var REMOTE_RETRY_MS = 60 * 6e4;
 var read2 = (f) => {
   try {
-    return JSON.parse(readFileSync6(f, "utf8"));
+    return JSON.parse(readFileSync8(f, "utf8"));
   } catch {
     return null;
   }
@@ -2326,10 +2858,10 @@ var pidAlive2 = (pid) => {
     return e.code === "EPERM";
   }
 };
-var readWarm = () => read2(WARM);
+var readWarm = () => read2(godFile(WARM));
 var writeWarm = (patch) => {
   try {
-    atomicWrite(WARM, JSON.stringify({ ...readWarm() ?? {}, ...patch, at: Date.now() }));
+    atomicWrite(godFile(WARM), JSON.stringify({ ...readWarm() ?? {}, ...patch, at: Date.now() }));
   } catch {
   }
 };
@@ -2341,7 +2873,7 @@ function warmEnabled(state = (() => {
   }
 })(), env2 = process.env, chrome = () => {
   const c = chromeCandidates();
-  return !c || c.some(existsSync5);
+  return !c || c.some(existsSync6);
 }) {
   if (env2.EDEN_GOD_WARM === "0" || env2.EDEN_GOD_LOOK === "remote") return false;
   if (!state?.world) return false;
@@ -2350,7 +2882,7 @@ function warmEnabled(state = (() => {
   return !!state.token && !state.identity && chrome();
 }
 function warmStatus(world, now = Date.now()) {
-  const k = read2(KEEPER);
+  const k = read2(godFile(KEEPER));
   if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale) return k.world === world ? "ready" : "other";
   const w = readWarm();
   if (!w || w.world && w.world !== world) return "none";
@@ -2386,11 +2918,11 @@ function autoWarm(cliPath, { force = false, pairing = false } = {}) {
 }
 function listenerBeat() {
   try {
-    atomicWrite(LISTENER, JSON.stringify({ holder: holder("eden-god listen"), at: Date.now() }));
+    atomicWrite(godFile(LISTENER), JSON.stringify({ holder: holder("eden-god listen"), at: Date.now() }));
   } catch {
   }
 }
-var listenerAt = () => read2(LISTENER)?.at ?? 0;
+var listenerAt = () => read2(godFile(LISTENER))?.at ?? 0;
 var remoteKnownUnavailable = (s = load(), now = Date.now()) => s.remoteLook?.ok === false && now - (s.remoteLook.at ?? 0) < REMOTE_RETRY_MS;
 var markRemote = (ok2) => {
   try {
@@ -2462,14 +2994,14 @@ var MAX_MB = () => Number(process.env.EDEN_GOD_KEEPER_MAX_MB ?? 1536);
 function findPlaywright({ timeoutMs = 6e4 } = {}) {
   const here = (() => {
     try {
-      return dirname(fileURLToPath(import.meta.url));
+      return dirname2(fileURLToPath(import.meta.url));
     } catch {
       return process.cwd();
     }
   })();
-  const bases = [process.env.EDEN_GOD_PLAYWRIGHT_FROM, readWarm()?.pwFrom, process.cwd(), here, resolve4(here, "../.."), resolve4(here, "../../.."), resolve4(here, "../../../mars/viewer"), resolve4(here, "../../mars/viewer"), resolve4(here, "../mars/viewer")].filter(Boolean);
+  const bases = [process.env.EDEN_GOD_PLAYWRIGHT_FROM, readWarm()?.pwFrom, process.cwd(), here, resolve6(here, "../.."), resolve6(here, "../../.."), resolve6(here, "../../../mars/viewer"), resolve6(here, "../../mars/viewer"), resolve6(here, "../mars/viewer")].filter(Boolean);
   for (const b of bases) {
-    const pkg = existsSync6(resolve4(b, "package.json")) ? resolve4(b, "package.json") : resolve4(b, "noop.js");
+    const pkg = existsSync7(resolve6(b, "package.json")) ? resolve6(b, "package.json") : resolve6(b, "noop.js");
     for (const name of ["playwright-core", "playwright", "@playwright/test"]) {
       try {
         const m = createRequire(pkg)(name);
@@ -2483,7 +3015,7 @@ function findPlaywright({ timeoutMs = 6e4 } = {}) {
     const r = spawnSync2("npx", ["-y", "-p", "playwright-core@1", "-c", 'echo "$PATH"'], { encoding: "utf8", timeout: Math.max(1, Math.min(6e4, timeoutMs)), killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"] });
     const bin = (r.stdout ?? "").trim().split(":").find((d) => /[\\/]_npx[\\/][^\\/]+[\\/]node_modules[\\/]\.bin$/.test(d));
     if (bin) {
-      const base = resolve4(bin, "../.."), m = createRequire(resolve4(base, "noop.js"))("playwright-core");
+      const base = resolve6(bin, "../.."), m = createRequire(resolve6(base, "noop.js"))("playwright-core");
       if (m?.chromium) {
         process.env.EDEN_GOD_PLAYWRIGHT_FROM = base;
         return m;
@@ -2522,7 +3054,7 @@ var alive = async (port) => {
 };
 var readKeeper = () => {
   try {
-    return JSON.parse(readFileSync7(KEEPER2, "utf8"));
+    return JSON.parse(readFileSync9(godFile(KEEPER2), "utf8"));
   } catch {
     return null;
   }
@@ -2530,7 +3062,7 @@ var readKeeper = () => {
 async function keeper(worldUrl, port, { warm = false } = {}) {
   let release;
   try {
-    release = acquireLock(`${KEEPER2}.lock`, { label: "look keeper" });
+    release = acquireLock(`${godFile(KEEPER2)}.lock`, { label: "look keeper" });
   } catch (e) {
     if (warm) process.exit(0);
     throw e;
@@ -2555,13 +3087,13 @@ async function keeper(worldUrl, port, { warm = false } = {}) {
     await page.goto(`${worldUrl}?shot=1&eye=0,60,60&at=0,0,0`, { waitUntil: "commit", timeout: 25e3 });
     const identity = me;
     let rssMb = null;
-    const write = () => atomicWrite(KEEPER2, JSON.stringify({ world: worldUrl, port, pid: process.pid, at: Date.now(), holder: identity, heartbeatAt: Date.now(), ttlMs: 3e4, ...rssMb != null ? { rssMb } : {} }));
+    const write = () => atomicWrite(godFile(KEEPER2), JSON.stringify({ world: worldUrl, port, pid: process.pid, at: Date.now(), holder: identity, heartbeatAt: Date.now(), ttlMs: 3e4, ...rssMb != null ? { rssMb } : {} }));
     write();
     phase("ready");
-    let lastUse = statSync3(KEEPER2).mtimeMs, nextMem = Date.now() + MEM_EVERY_MS, over = false;
+    let lastUse = statSync4(godFile(KEEPER2)).mtimeMs, nextMem = Date.now() + MEM_EVERY_MS, over = false;
     process.once("exit", () => {
       try {
-        if (readKeeper()?.holder?.start === identity.start && readKeeper()?.pid === identity.pid) rmSync4(KEEPER2, { force: true });
+        if (readKeeper()?.holder?.start === identity.start && readKeeper()?.pid === identity.pid) rmSync5(godFile(KEEPER2), { force: true });
       } finally {
         release();
       }
@@ -2570,7 +3102,7 @@ async function keeper(worldUrl, port, { warm = false } = {}) {
       await new Promise((r) => setTimeout(r, 5e3));
       let last = 0;
       try {
-        last = statSync3(KEEPER2).mtimeMs;
+        last = statSync4(godFile(KEEPER2)).mtimeMs;
       } catch {
         break;
       }
@@ -2591,7 +3123,7 @@ async function keeper(worldUrl, port, { warm = false } = {}) {
         } else over = false;
       }
       write();
-      utimesSync2(KEEPER2, new Date(lastUse), new Date(lastUse));
+      utimesSync2(godFile(KEEPER2), new Date(lastUse), new Date(lastUse));
     }
   } catch (e) {
     phase("failed", { error: String(e?.message ?? e).split("\n")[0].slice(0, 200) });
@@ -2613,7 +3145,7 @@ async function ensureKeeper(worldUrl, cliPath, runtime = {}) {
   if (k && !lockStatus(parseHolder(k.holder), k.heartbeatAt ?? 0).stale && k.world === worldUrl && await alive(k.port)) {
     const now = /* @__PURE__ */ new Date();
     try {
-      utimesSync2(KEEPER2, now, now);
+      utimesSync2(godFile(KEEPER2), now, now);
     } catch {
     }
     return k;
@@ -2623,7 +3155,7 @@ async function ensureKeeper(worldUrl, cliPath, runtime = {}) {
     process.kill(k.pid);
   } catch {
   }
-  rmSync4(KEEPER2, { force: true });
+  rmSync5(godFile(KEEPER2), { force: true });
   const port = await freePort();
   const child = spawn2(process.execPath, [cliPath, "look-keeper", worldUrl, String(port)], { detached: true, stdio: "ignore", cwd: process.cwd(), env: process.env });
   let failure;
@@ -2652,7 +3184,7 @@ async function ensureKeeper(worldUrl, cliPath, runtime = {}) {
       process.kill(process.platform === "win32" ? child.pid : -child.pid);
     } catch {
     }
-    if (readKeeper()?.pid === child.pid) rmSync4(KEEPER2, { force: true });
+    if (readKeeper()?.pid === child.pid) rmSync5(godFile(KEEPER2), { force: true });
     runtime.keeperChild = null;
     throw e;
   }
@@ -2668,7 +3200,7 @@ function stopKeeper() {
     process.kill(w.pid);
   } catch {
   }
-  rmSync4(KEEPER2, { force: true });
+  rmSync5(godFile(KEEPER2), { force: true });
   writeWarm({ ...w ?? {}, holder: void 0, phase: "stopped" });
   return k ? `stopped the look keeper (pid ${k.pid})` : starting ? `stopped the look keeper warm-up (pid ${w.pid})` : "no look keeper running";
 }
@@ -2691,7 +3223,7 @@ function drawableCount(snapshot3 = {}) {
   return (snapshot3.entities ?? []).filter((e) => drawable(e.def)).length;
 }
 function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve10, reject) => {
     let raf, timer, stable = 0, last = -1;
     const cleanup = () => {
       clearTimeout(timer);
@@ -2712,7 +3244,7 @@ function waitForShot({ expect = 0, timeoutMs = 6e5 } = {}) {
       last = drawn?.size ?? -1;
       if (ready && stable >= 2) {
         cleanup();
-        resolve8({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
+        resolve10({ ready, drawn: drawn?.size ?? 0, want: expect, easing, shotReady: true });
       } else raf = requestAnimationFrame(tick);
     };
     timer = setTimeout(() => {
@@ -2755,7 +3287,7 @@ function validateShot({ views, frames: frameCount = 1, every = 250, width = 1024
 async function shootLocal({ worldUrl, eye, at, out, hour, weather: weather2, hideRoofs = false, cut = null, span = 0, expect = 0, timeoutMs = Number(process.env.EDEN_GOD_LOOK_TIMEOUT_MS ?? LOOK_DEFAULT_MS), settleMs, cliPath, keep = false, width = 1024, height = 640, views, frames: frameCount = 1, every = 250, studio }, runtime = {}) {
   const sequence = views ?? [{ eye, at }], sheet = !!views || frameCount > 1;
   settleMs ??= sheet ? 0 : 800;
-  mkdirSync2(dirname(resolve4(out)), { recursive: true });
+  mkdirSync3(dirname2(resolve6(out)), { recursive: true });
   const now = runtime.now ?? Date.now, t0 = now();
   const overrides = { ...hour != null ? { hour } : {}, ...weather2 != null ? { weather: weather2 } : {} };
   const pw = runtime.pw === void 0 ? findPlaywright({ timeoutMs }) : runtime.pw;
@@ -2763,9 +3295,9 @@ async function shootLocal({ worldUrl, eye, at, out, hour, weather: weather2, hid
   if (!pw) {
     if (keep || sheet || studio) throw new Error("look: no Playwright found; sheets, motion frames and workbench need local Playwright and Google Chrome (--keep can fall back for a single view)");
     const q2 = new URLSearchParams({ shot: "1", eye: eye.join(","), at: at.join(","), ...hideRoofs ? { hideRoofs: "1", ...cut !== null ? { cut: String(cut) } : {} } : {}, ...overrides });
-    const r = (runtime.spawnSync ?? spawnSync2)("npx", ["-y", "playwright-core@1", "screenshot", "--channel", "chrome", "--wait-for-timeout", "30000", "--viewport-size", "1024,640", `${worldUrl}?${q2}`, resolve4(out)], { stdio: "pipe", encoding: "utf8", timeout: Math.max(1, timeoutMs - (now() - t0)), killSignal: "SIGKILL" });
+    const r = (runtime.spawnSync ?? spawnSync2)("npx", ["-y", "playwright-core@1", "screenshot", "--channel", "chrome", "--wait-for-timeout", "30000", "--viewport-size", "1024,640", `${worldUrl}?${q2}`, resolve6(out)], { stdio: "pipe", encoding: "utf8", timeout: Math.max(1, timeoutMs - (now() - t0)), killSignal: "SIGKILL" });
     if (r.status !== 0) throw new Error(`look: no Playwright found and npx playwright-core failed: ${(r.stderr || r.stdout || "").slice(0, 300)}. Install one (npm i -g playwright-core) and Google Chrome`);
-    return { file: resolve4(out), ms: now() - t0, via: "npx playwright-core screenshot" };
+    return { file: resolve6(out), ms: now() - t0, via: "npx playwright-core screenshot" };
   }
   let page, browser, release = () => {
   };
@@ -2826,8 +3358,8 @@ async function shootLocal({ worldUrl, eye, at, out, hour, weather: weather2, hid
       await page.waitForFunction(() => !!window.workbench, null, { timeout: timeoutMs, polling: "raf" });
       const result = await page.evaluate(async (payload) => window.workbench.render(payload), { ...studio, hour, width, height });
       runtime.signal?.throwIfAborted();
-      writeFileSync4(resolve4(out), Buffer.from(result.data.split(",")[1], "base64"));
-      return { file: resolve4(out), ms: now() - t0, via: "studio", ...result, data: void 0 };
+      writeFileSync5(resolve6(out), Buffer.from(result.data.split(",")[1], "base64"));
+      return { file: resolve6(out), ms: now() - t0, via: "studio", ...result, data: void 0 };
     }
     const waitMs = Math.max(1e3, timeoutMs - (now() - t0) - 2e3);
     const state = await (runtime.waitReady ? runtime.waitReady(page, { expect, timeoutMs: waitMs }) : page.evaluate(waitForShot, { expect, timeoutMs: waitMs }));
@@ -2921,8 +3453,8 @@ async function shootLocal({ worldUrl, eye, at, out, hour, weather: weather2, hid
     }
     const data = sheet ? await page.evaluate(composeSheet, { cells, width, height, strip: frameCount > 1 }) : cells[0].data;
     runtime.signal?.throwIfAborted();
-    writeFileSync4(resolve4(out), Buffer.from(data.split(",")[1], "base64"));
-    return { file: resolve4(out), ms: now() - t0, state, frames: sheet ? receipts : receipts[0], cells: cells.length, via: keep ? "keeper" : "chrome" };
+    writeFileSync5(resolve6(out), Buffer.from(data.split(",")[1], "base64"));
+    return { file: resolve6(out), ms: now() - t0, state, frames: sheet ? receipts : receipts[0], cells: cells.length, via: keep ? "keeper" : "chrome" };
   } finally {
     release();
     if (keep && page && !runtime.signal?.aborted) await page.evaluate(() => window.__lookRestore?.()).catch(() => {
@@ -2953,7 +3485,7 @@ async function shoot(options, runtime = {}) {
     }, ms);
   });
   try {
-    mkdirSync2(dirname(resolve4(options.out)), { recursive: true });
+    mkdirSync3(dirname2(resolve6(options.out)), { recursive: true });
     const args = { ...options, timeoutMs: ms };
     return await Promise.race([expired, withRemoteLook(args, scoped, () => shootLocal(args, scoped))]);
   } finally {
@@ -3437,7 +3969,7 @@ var LAYERS_POS = { hours: 1, event: 2, own: 2, access: 2, price: 2, currency: 1,
 var LAYERS_HELP = `layers: hours <ref> --open 07:00-15:00 (or 07:00-15:00@sat,sun) [--event "market 09:00 240 sat"] [--follow locked@open=false/true | on@dark=true/false] [--clear] (replaces the whole schedule) \xB7 event <ref> "market 09:00 240 sat" [--set market|concert] [--piece def@x,z[@yawdeg]] [--shift dx,dz] [--label "\u2026"] (adds one event; its set appears while it is on) \xB7 event <ref> <name> --remove \xB7 own <ref> <soul|god|group:x|none> [--private|--public] \xB7 access <ref> private|public|none \xB7 zone <name> <residential|commercial|park|farm|civic|industrial|wild> --rect|--circle|--area \xB7 zone-suggest <use> \xB7 layers \xB7 only where the world opts in (LAYERS=1): price <ref> <n|none> [--service "a coffee"] \xB7 currency <name> \xB7 give <soul> <n> \xB7 pay <from> <to> <n> \xB7 relate <a> <friend|neighbour|family|works-at|lives-at|member-of> <b> [--off]`;
 
 // lib/governance.mjs
-import { existsSync as existsSync7, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync10 } from "node:fs";
 var clip = (s, n) => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
   return t.length > n ? t.slice(0, n - 1) + "\u2026" : t;
@@ -3482,7 +4014,7 @@ function decideBody(id, decision, f = {}) {
   let text;
   if (f.text !== void 0) {
     if (typeof f.text !== "string" || !f.text.trim()) throw new Error("--text needs the new constitution (markdown, or a file holding it)");
-    text = existsSync7(f.text) && !f.text.includes("\n") ? readFileSync8(f.text, "utf8") : f.text;
+    text = existsSync8(f.text) && !f.text.includes("\n") ? readFileSync10(f.text, "utf8") : f.text;
   }
   return { decision, ...reason ? { reason } : {}, ...text !== void 0 ? { text } : {} };
 }
@@ -3546,11 +4078,11 @@ function missingAbout(m, { kind, limit = 30 } = {}) {
 }
 
 // lib/version.mjs
-var SKILL_VERSION = "1.7";
+var SKILL_VERSION = "1.8";
 
 // lib/upload.mjs
-import { existsSync as existsSync8, readFileSync as readFileSync9 } from "node:fs";
-import { basename, dirname as dirname2, resolve as resolve5 } from "node:path";
+import { existsSync as existsSync9, readFileSync as readFileSync11 } from "node:fs";
+import { basename as basename2, dirname as dirname3, resolve as resolve7 } from "node:path";
 
 // lib/glb.mjs
 var DEFAULT_BUDGET = Object.freeze({ tris: 8e4, bytes: 3e6, texPx: 2048 });
@@ -3796,14 +4328,14 @@ function inspectFile(bytes, { footprint } = {}, budget = DEFAULT_BUDGET) {
 var refusalLine = (file, r) => `REFUSED ${file}: ${r.code}${r.field ? ` ${r.field}` : ""}: ${r.message}${r.measured !== void 0 && typeof r.measured !== "object" ? ` (measured ${r.measured}, allowed ${r.allowed})` : ""}${r.fix ? `
   fix: ${r.fix}` : ""}`;
 async function uploadOne(entry, { dry = false, budget = DEFAULT_BUDGET, send = postAsset } = {}) {
-  const file = entry.file, label = basename(file);
-  if (!existsSync8(file)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such file ${file}`] };
-  const bytes = new Uint8Array(readFileSync9(file));
+  const file = entry.file, label = basename2(file);
+  if (!existsSync9(file)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such file ${file}`] };
+  const bytes = new Uint8Array(readFileSync11(file));
   if (!bytes.byteLength) return { ok: false, refused: true, lines: [`REFUSED ${label}: the file is empty`] };
   let footprint;
   if (entry.footprint) {
-    if (!existsSync8(entry.footprint)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such footprint ${entry.footprint}`] };
-    footprint = new Uint8Array(readFileSync9(entry.footprint));
+    if (!existsSync9(entry.footprint)) return { ok: false, refused: true, lines: [`REFUSED ${label}: no such footprint ${entry.footprint}`] };
+    footprint = new Uint8Array(readFileSync11(entry.footprint));
   }
   const height = entry.height !== void 0 && entry.height !== "" ? Number(entry.height) : void 0;
   if (height !== void 0 && !(height > 0 && height < 400)) return { ok: false, refused: true, lines: [`REFUSED ${label}: --height must be metres in (0, 400), got ${entry.height}`] };
@@ -3860,8 +4392,8 @@ async function postAsset({ bytes, mime, filename, footprint, fields }, { timeout
 }
 async function upload(path, flags2 = {}, deps = {}) {
   if (!path) throw new Error(USAGE);
-  if (!existsSync8(path)) throw new Error(`upload: no such file ${path}`);
-  const bytes = new Uint8Array(readFileSync9(path));
+  if (!existsSync9(path)) throw new Error(`upload: no such file ${path}`);
+  const bytes = new Uint8Array(readFileSync11(path));
   const dry = !!flags2.dry;
   let entries;
   if (sniff(bytes) === "json") {
@@ -3873,8 +4405,8 @@ async function upload(path, flags2 = {}, deps = {}) {
     }
     if (doc?.schema !== MANIFEST_SCHEMA) throw new Error(`upload: a JSON argument must be a ${MANIFEST_SCHEMA} (schema: "${MANIFEST_SCHEMA}", assets: [{ file, name, height, \u2026 }]); a footprint goes with --footprint beside its GLB`);
     for (const k of UPLOAD_FIELDS) if (flags2[k] !== void 0) throw new Error(`upload <manifest>: --${k} belongs in the manifest's entries, not on the command`);
-    const dir = dirname2(resolve5(path));
-    entries = readManifest(doc).map((a) => ({ ...a, file: resolve5(dir, a.file), ...a.footprint ? { footprint: resolve5(dir, a.footprint) } : {} }));
+    const dir = dirname3(resolve7(path));
+    entries = readManifest(doc).map((a) => ({ ...a, file: resolve7(dir, a.file), ...a.footprint ? { footprint: resolve7(dir, a.footprint) } : {} }));
   } else {
     const entry = { file: path };
     for (const k of UPLOAD_FIELDS) if (flags2[k] !== void 0) entry[k] = k === "tags" ? [].concat(flags2[k]).join(",") : one(flags2[k]);
@@ -3888,15 +4420,15 @@ async function upload(path, flags2 = {}, deps = {}) {
   const out = results.flatMap((r) => r.lines);
   if (entries.length > 1) {
     const sent = results.filter((r) => r.ok).length, refused3 = results.filter((r) => !r.ok);
-    out.push(`${dry ? "would upload" : "uploaded"} ${sent} of ${entries.length}${refused3.length ? `; refused ${refused3.length}: ${refused3.map((r) => basename(r.file)).join(", ")}` : ""}`);
+    out.push(`${dry ? "would upload" : "uploaded"} ${sent} of ${entries.length}${refused3.length ? `; refused ${refused3.length}: ${refused3.map((r) => basename2(r.file)).join(", ")}` : ""}`);
   }
   return out.join("\n");
 }
 
 // lib/thumbnail.mjs
-import { mkdtempSync, readFileSync as readFileSync10, rmSync as rmSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdtempSync, readFileSync as readFileSync12, rmSync as rmSync6, writeFileSync as writeFileSync6 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve as resolve6 } from "node:path";
+import { join as join3, resolve as resolve8 } from "node:path";
 
 // lib/jpeg.mjs
 import { inflateSync } from "node:zlib";
@@ -4478,25 +5010,25 @@ async function thumbnail(flags2 = {}, runtime = {}) {
   }
   let jpeg, how;
   if (flags2.file) {
-    const file = resolve6(String(one2(flags2.file)));
-    const t = toJpeg(readFileSync10(file));
+    const file = resolve8(String(one2(flags2.file)));
+    const t = toJpeg(readFileSync12(file));
     const wrong = precheck(t);
     if (wrong) throw Error(`thumbnail: ${file}: ${wrong}`);
     jpeg = t.jpeg;
     how = t.quality ? `${file}, re-encoded as JPEG q${t.quality}` : `${file}, metadata removed`;
   } else {
-    const dir = mkdtempSync(join(tmpdir(), "eden-god-thumb-"));
+    const dir = mkdtempSync(join3(tmpdir(), "eden-god-thumb-"));
     try {
-      const shot = await runtime.look({ ...framing(flags2), out: join(dir, "look.png") });
-      const t = toJpeg(readFileSync10(shot.file));
+      const shot = await runtime.look({ ...framing(flags2), out: join3(dir, "look.png") });
+      const t = toJpeg(readFileSync12(shot.file));
       jpeg = t.jpeg;
       how = `a look from the ${framing(flags2).from} at ${framing(flags2).hour} toward (${(shot.at ?? []).join(", ")}), ${t.width}\xD7${t.height}, JPEG q${t.quality}`;
     } finally {
-      rmSync5(dir, { recursive: true, force: true });
+      rmSync6(dir, { recursive: true, force: true });
     }
   }
-  const out = flags2.out ? resolve6(String(one2(flags2.out))) : null;
-  if (out) writeFileSync5(out, jpeg);
+  const out = flags2.out ? resolve8(String(one2(flags2.out))) : null;
+  if (out) writeFileSync6(out, jpeg);
   if (flags2.dry) return `thumbnail (dry): ${how}, ${kb2(jpeg.length)}${out ? ` \u2192 ${out}` : ""}; nothing sent`;
   const r = await send(url, { method: "POST", headers: { ...headers, "content-type": "image/jpeg" }, body: jpeg, signal: AbortSignal.timeout(6e4) });
   const e = await r.json().catch(() => ({}));
@@ -4521,8 +5053,12 @@ var SELF = (() => {
 async function register(url, identity) {
   if (!url) throw new Error("usage: register <world-url> [dev:identity]");
   const base = url.replace(/[?#].*$/, "").replace(/\/$/, "");
+  const leaveSeat = seatForRegister(base);
   save({ world: base, ...identity ? { identity } : {} });
-  const cfg = ok(await call("/v1/config", { as: "none" }), "register");
+  const cfg = await call("/v1/config", { as: "none" }).then((r) => ok(r, "register")).catch((e) => {
+    leaveSeat();
+    throw e;
+  });
   return { world: base, worldId: cfg.worldId, devAuth: !!cfg.devAuth, next: cfg.devAuth && identity ? "Run: mint" : "Run: pair (your human approves in the browser)" };
 }
 async function pair(agent = "eden-god " + SKILL_VERSION) {
@@ -4985,7 +5521,7 @@ var bakeCache = /* @__PURE__ */ new Map();
 var BAKES = ".eden-god.bakes.json";
 var readBakes = (lib) => {
   try {
-    const b = JSON.parse(readFileSync11(BAKES, "utf8"));
+    const b = JSON.parse(readFileSync13(godFile(BAKES), "utf8"));
     return b.lib === lib ? b.bakes : {};
   } catch {
     return {};
@@ -4995,7 +5531,7 @@ function saveBakes(lib, fresh) {
   if (!lib || !Object.keys(fresh).length) return;
   try {
     const all = Object.entries({ ...readBakes(lib), ...fresh }).slice(-300);
-    atomicWrite(BAKES, JSON.stringify({ lib, bakes: Object.fromEntries(all) }));
+    atomicWrite(godFile(BAKES), JSON.stringify({ lib, bakes: Object.fromEntries(all) }));
   } catch {
   }
 }
@@ -5700,7 +6236,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
       if (typeof f.file !== "string") throw new Error("--file needs a plan file or inline JSON");
       let plan;
       try {
-        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync11(f.file, "utf8"));
+        plan = JSON.parse(f.file.trim().startsWith("{") ? f.file : readFileSync13(f.file, "utf8"));
       } catch (e) {
         throw new Error(`--file: cannot read the plan (${e.message})`);
       }
@@ -5760,7 +6296,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     for (const k of ["at", "offset", "size", "yaw", "mass", "root"]) if (f[k] !== void 0) throw new Error(`--${k} does not apply to a district chapter: the plan holds each plot's rectangle and massing`);
     const plots = buildValues(f.plots, ",", "plots", 8, 8), steps2 = f.steps === void 0 ? void 0 : buildValues(f.steps, ",", "steps", 24, 60);
     if (f.title !== void 0 && (typeof f.title !== "string" || !f.title.trim() || f.title.length > 80)) throw new Error("--title is 1..80 characters");
-    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync11(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync10(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, district: { id: f.district, ...plots ? { plots } : {} }, ...f.title ? { title: f.title } : {}, ...steps2 ? { steps: steps2 } : {}, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {} };
@@ -5771,7 +6307,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
     const steps2 = f.steps.split(",").map((x) => x.trim());
     if (steps2.length > 24 || steps2.some((x) => !x || x.length > 60)) throw new Error("--steps needs 1..24 labels, each 1..60 characters");
     const massing = inheritedMassing ?? parseMassing(f.mass), site = await buildSite(f);
-    const brief = f.brief === void 0 ? void 0 : existsSync9(f.brief) ? readFileSync11(f.brief, "utf8") : f.brief;
+    const brief = f.brief === void 0 ? void 0 : existsSync10(f.brief) ? readFileSync13(f.brief, "utf8") : f.brief;
     if (brief !== void 0 && (typeof brief !== "string" || brief.length > 4e3)) throw new Error("--brief is at most 4000 characters");
     const asks = buildValues(f.asks, ";", "asks", 64, 500), include = buildValues(f.include, ",", "include", 512, 300);
     body = { id: arg, title: f.title, steps: steps2, site, massing, ...asks ? { asks } : {}, ...include ? { include } : {}, ...brief !== void 0 ? { brief } : {}, ...f.root ? { root: f.root } : {} };
@@ -5823,7 +6359,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
   if (sub === "claim") {
     const file = claimFile(r.claim.id), release = acquireLock(`${file}.lock`, { label: "claim state creation" });
     try {
-      const previous = existsSync9(file) ? JSON.parse(readFileSync11(file, "utf8")) : null;
+      const previous = existsSync10(file) ? JSON.parse(readFileSync13(file, "utf8")) : null;
       if (previous?.build?.id !== r.build.id || previous.build.claim !== r.claim.id) atomicWrite(file, JSON.stringify({ build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
     } finally {
       release();
@@ -5841,7 +6377,7 @@ async function build2(sub = "show", args = [], f = {}, inheritedMassing) {
 async function helperEnv(s, r, f) {
   const m = ok(await call(BUILD_API.path(r.build.id, `claims/${encodeURIComponent(r.claim.id)}/helper`), { body: { ...f.ttl !== void 0 ? { ttlMs: Math.round(Number(f.ttl) * 6e4) } : {} } }), "build claim --helper");
   if (!m.ok) return f.json ? m : `${r.claim.id}: ${r.claim.part} claimed, but no helper token: ${m.failures.map(explainFailure).join("; ")}`;
-  const file = resolve7(helperFile(r.claim.id));
+  const file = resolve9(helperFile(r.claim.id));
   atomicWrite(file, JSON.stringify({ world: s.world, token: m.token, helper: m.helper, build: BUILD_API.claim(r.build, r.claim) }, null, 2) + "\n");
   if (f.json) return { ...r, helper: m.helper, helperFile: file };
   return [
@@ -6014,7 +6550,7 @@ async function kitLookInner(json2, flags2, runtime, signal) {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     worldUrl: load().world,
     studio: admitted,
-    out: resolve7(flags2.out ?? "looks/kit-workbench.png"),
+    out: resolve9(flags2.out ?? "looks/kit-workbench.png"),
     ...overrides,
     ...flags2.width ? { width: num(flags2.width) } : {},
     ...flags2.h ? { height: num(flags2.h) } : {}
@@ -6077,7 +6613,7 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
   const cam = views[0];
   signal.throwIfAborted();
   void attention(cam.at, cam.eye);
-  const out = resolve7(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
+  const out = resolve9(flags2.out ?? `looks/look-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
   const args = {
     timeoutMs: Math.max(1, runtime.deadlineAt - Date.now()),
     remote: !!flags2.remote,
@@ -6119,13 +6655,13 @@ async function lookInner(flags2 = {}, runtime = {}, signal) {
 async function exportWorld(file, flags2 = {}) {
   const s = await snapshot2();
   const g = exportGenesis(s, flags2);
-  const out = resolve7(file ?? `${s.worldId}.genesis.json`);
-  writeFileSync6(out, JSON.stringify(g, null, 1));
+  const out = resolve9(file ?? `${s.worldId}.genesis.json`);
+  writeFileSync7(out, JSON.stringify(g, null, 1));
   const ops = g.batches.flatMap((b) => b.ops), things = ops.filter((op) => op.op === "place").length, defs2 = ops.filter((op) => op.op === "define").length;
   return `exported ${things} things${defs2 ? ` and ${defs2} defs` : ""} in ${g.batches.length} batches to ${out}`;
 }
 var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
-  const g = JSON.parse(readFileSync11(file, "utf8"));
+  const g = JSON.parse(readFileSync13(file, "utf8"));
   if (g.schema !== "genesis/1") throw new Error("import: file must be genesis/1");
   const out = [];
   const s = await snapshot2();
@@ -6145,7 +6681,7 @@ var importWorld = (file, flags2 = {}) => withoutBuild(async () => {
   return out.join("\n");
 });
 async function define(json2, ignored = []) {
-  const def = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync11(json2, "utf8") : json2) : json2;
+  const def = typeof json2 === "string" ? JSON.parse(existsSync10(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
   if (def.make?.kind === "gen" && !def.params) {
     const g = (await schema()).generators?.find((x) => x.id === def.make.gen);
     if (g && Object.keys(g.params).length) def.params = g.params;
@@ -6161,7 +6697,7 @@ function correctedLine(warnings = [], ignored = []) {
   return shown.length ? `corrected${refs.length === 1 ? ` ${refs[0]}` : ""}: ${shown.join("; ")}` : "";
 }
 async function defineKit(json2, flags2 = {}) {
-  const k = typeof json2 === "string" ? JSON.parse(existsSync9(json2) ? readFileSync11(json2, "utf8") : json2) : json2;
+  const k = typeof json2 === "string" ? JSON.parse(existsSync10(json2) ? readFileSync13(json2, "utf8") : json2) : json2;
   if (!k.name || !Array.isArray(k.shapes)) throw new Error("define-kit needs {name, shapes:[\u2026]} (see SKILL.md, kit primitives in SCHEMA.md)");
   const matches = (await searchDefs([k.name.replace(/[-_.]/g, " "), ...k.tags ?? []].join(" "))).defs;
   const picks = [...matches.filter((d) => usedIn(d).length), ...matches.filter((d) => !usedIn(d).length)].slice(0, 5);
@@ -6191,13 +6727,13 @@ var EXAMPLES = { hamlet: "a hamlet in 8 commands: knoll, cottage, pond + bench, 
 async function examples(name) {
   if (!name) return ["worked examples (each = the exact commands a god agent typed and the answers it got):", ...Object.entries(EXAMPLES).map(([k, d]) => `- ${k}: ${d}`), `read one: examples <name>  (saves examples/<name>.log and .mjs here; also served at ${load().world}/god/examples/<name>.log)`].join("\n");
   if (!EXAMPLES[name]) throw new Error(`no example ${name}; examples: ${Object.keys(EXAMPLES).join(", ")}`);
-  mkdirSync3("examples", { recursive: true });
+  mkdirSync4("examples", { recursive: true });
   const out = [];
   for (const ext of ["log", "mjs"]) {
     const r = await fetch(`${load().world}/god/examples/${name}.${ext}`);
     if (!r.ok) throw new Error(`the world did not serve ${name}.${ext} (${r.status})`);
     const t = await r.text();
-    writeFileSync6(`examples/${name}.${ext}`, t);
+    writeFileSync7(`examples/${name}.${ext}`, t);
     if (ext === "log") out.push(t);
   }
   return `${out[0].trim()}
@@ -6335,7 +6871,7 @@ function helpFor(cmd) {
   return [...lines.length ? lines : [`${cmd}: see help`], `${cmd} options: ${opts.map((x) => "--" + x).join(" ")}`].join("\n");
 }
 var CLI_SHAPE = { POS, FLAGS, BOOL, NUMERIC, boolsFor };
-var readArg = (r) => r[0] !== void 0 ? existsSync9(r[0]) && !r[0].trim().startsWith("{") ? readFileSync11(r[0], "utf8") : r[0] : readFileSync11(0, "utf8");
+var readArg = (r) => r[0] !== void 0 ? existsSync10(r[0]) && !r[0].trim().startsWith("{") ? readFileSync13(r[0], "utf8") : r[0] : readFileSync13(0, "utf8");
 var COMMANDS = {
   doctor: (r, f) => doctor(f),
   trace: (r, f) => trace(f),
@@ -6448,6 +6984,7 @@ for (const [feature, verbs] of Object.entries(OFF_VERBS)) for (const verb of ver
 }
 for (const [name, fn] of Object.entries(COMMANDS)) COMMANDS[name] = (r = [], f = {}) => withBuildOptions(f, () => ["build", "group"].includes(name) ? withStateLock(() => fn(r, f)) : fn(r, f));
 var HELP = `eden-god ${SKILL_VERSION} \u2014 god mode for one Eden world. Read SKILL.md.
+home:   in a Souls home, several seats: <world> <command> (or @<world> when a command has that name); a legacy god folder moves in with: node eden.mjs import
 locks:  doctor [--fix] [--local] [--json] (holders, stale locks; --fix breaks only stale ownership)
 trace:  trace [--build id] [--limit n] (the world's recent god requests: route, outcome, ms, no payloads; LOOP = the same refusal 3+ times in 2 min, also in build show)
 read:   verify-use <target> [--seat ref] [--from ref|x,z] [--uses enter,sit] \xB7 map \xB7 defs <words> \xB7 describe <ref> \xB7 where <x,z|ref> ([bounds] containment / [collider] hit) \xB7 reach <from> <to> \xB7 clear <x,z|ref> --size WxD \xB7 free WxD [--near ref] \xB7 look [--at ref|x,z] [--from s|n|e|w|above] [--dist m] [--span m] [--inside [--floor k]] \xB7 history \xB7 resolve \xB7 schema [--md]
@@ -6476,7 +7013,14 @@ ${SECRET_HELP}
 ${godFeature("constitution") ? GOV_HELP + "\n" : ""}learn:  examples [name] \xB7 defs <name|core/x@1> (one def in full) \xB7 sky (palettes) \xB7 a row named stall = the set "stall"`;
 var NO_WARM = /* @__PURE__ */ new Set(["help", "register", "mint", "pair", "doctor", "look", "look-shot", "look-keeper"]);
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("eden-god.mjs")) {
-  const [cmd, ...argv] = process.argv.slice(2);
+  let line2;
+  try {
+    line2 = enterGodSeat(process.argv.slice(2), COMMANDS);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
+  const [cmd, ...argv] = line2;
   const { flags: f, rest, argv: readAs, notes, hint } = readArgs(cmd, argv);
   const fn = COMMANDS[cmd ?? "help"];
   if (!fn) {
@@ -6587,7 +7131,7 @@ export {
   map,
   mint,
   mirror,
-  mkdirSync3 as mkdirSync,
+  mkdirSync4 as mkdirSync,
   move,
   movedNote,
   pair,
