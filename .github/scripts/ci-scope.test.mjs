@@ -42,6 +42,15 @@ test('server changes run server shards and latency, not native', () => {
   assert.ok(!picked.includes('native'));
 });
 
+test('the god-bundle job checks the bundle on god-skill paths, full scope included, and on nothing else', () => {
+  for (const f of ['tools/god-skill/eden-god.mjs', 'tools/god-skill/lib/upload.mjs', 'tools/god-skill/cli.mjs']) assert.ok(names([f]).includes('god-bundle'), f);
+  for (const f of ['apps/server/src/god/buildsafe-rule.ts', 'tools/world-launcher/launcher.mjs', 'docs/testing.md']) assert.ok(!names([f]).includes('god-bundle'), f);
+  assert.ok(names(['pnpm-lock.yaml']).includes('god-bundle'), 'a lockfile change can move esbuild');
+  const job = jobsFor(['tools/god-skill/cli.mjs']).include.find(j => j.name === 'god-bundle');
+  assert.equal(job.assets, false); assert.ok(!('paths' in job));
+  assert.match(readFileSync(fileURLToPath(new URL('../workflows/ci.yml', import.meta.url)), 'utf8'), /god-bundle\)\n.*\n\s+node tools\/god-skill\/build\.mjs --check\n/);
+});
+
 test('the soul-actions job runs on its own paths, full scope included, and on nothing else (#1061)', () => {
   for (const f of ['tools/soul-actions/shared-crew.test.mjs', 'apps/server/src/edge/ledger/together.ts', 'apps/server/test/native-owner-fixture.ts', 'packages/world-compiler/src/model.ts', 'packages/engine-mars/src/x.ts']) assert.ok(names([f]).includes('soul-actions'), f);
   for (const f of ['apps/web/src/App.tsx', 'docs/testing.md', 'tools/world-launcher/launcher.mjs', 'packages/edge-cli/x.ts']) assert.ok(!names([f]).includes('soul-actions'), f);
