@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {intentAdapter} from './intent-adapter.ts';import {intentResponse,intentLookupResponse} from './intent-response.ts';
-import {intentRequestV2Schema} from '@sim/protocol';
+import {intentRequestV2Schema} from '@souls/protocol';
 test('private membership authority keeps recorded owner separate and refuses foreign current-account projections',()=>{
  const scope={worldId:'w',soulId:'s_old',ownerId:'did:privy:current'},control={worldId:'w',soulId:'s_old',ownerId:'dev:recorded',accountOwnerId:scope.ownerId,intentContract:'soul-intent/2'};
  assert.equal(intentAdapter(200,{status:{},control},scope,false).kind,'candidate');assert.equal(intentAdapter(200,{status:{},control:{...control,accountOwnerId:'did:privy:other'}},scope,false).kind,'unavailable');assert.equal(intentAdapter(200,{status:{},control:{...control,accountOwnerId:undefined}},scope,false).kind,'unavailable');

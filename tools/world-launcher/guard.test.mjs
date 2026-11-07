@@ -59,6 +59,25 @@ test('(a) wedged, live.json: the watchdog shows the main thread stuck; SIGUSR2, 
   await p.closeAll();
 });
 
+test('#1150 halted: live.json says the clock stopped; a `halted` problem and status, not wedged and not restarted, gone once a restart boots it', async () => {
+  const p = pool([5101, 5103], { FAKE_LIVE: '1', FAKE_STOP_MS: '50' });
+  const port = await p.ensure(world('wh')); const pid = p.state('wh').child.pid;
+  p.startGuard();
+  await sleep(250);
+  assert.deepEqual(p.problems(), []); assert.equal(p.status('wh').halted, undefined);
+  await get(port, 'wh', '/halt');
+  await until(() => p.problems().some((x) => x.code === 'halted'), 2000, 'halted in problems');
+  assert.equal(p.status('wh').halted, true);
+  await sleep(800);   // past liveStaleMs: still answering, so not judged wedged
+  assert.deepEqual(p.problems().map((x) => x.code), ['halted']); assert.equal(p.status('wh').pid, pid, 'the guard leaves it: its process and evidence stay up');
+  await p.stop('wh');
+  assert.deepEqual(p.problems(), [], 'stopped: nothing is halted now');
+  const again = await p.ensure(world('wh'));
+  await sleep(250);
+  assert.ok(again); assert.deepEqual(p.problems(), [], 'the restarted process has its own live.json');
+  await p.closeAll();
+});
+
 test('(a) wedged, no live.json (a release before the watchdog): /healthz unanswered 6 looks in a row', async () => {
   const p = pool(R);
   const port = await p.ensure(world('wb')); const pid = p.state('wb').child.pid;

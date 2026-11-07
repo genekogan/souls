@@ -2,8 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { worldPresentationFixtures } from '../../server/test/fixtures/w.ts';
-import { recordedTakeStreamSchema, scenePublicationSchema } from '@sim/protocol';
-import { hashOf } from '@sim/engine-contract';
+import { recordedTakeStreamSchema, scenePublicationSchema } from '@souls/protocol';
+import { hashOf } from '@souls/engine-contract';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import { floaterBodiesOfTake } from '../../../mars/viewer/engine/bodies/index.ts';
 import { validChunks, chunkAt, parseSceneInfo, WorldGeometry, mergeWindow, MAX_PAST_CHUNKS, recordingTick } from '../src/WorldGeometry.ts';

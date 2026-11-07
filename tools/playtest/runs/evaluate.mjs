@@ -13,9 +13,11 @@ import { readJson, readJsonl } from '../lib/jsonl.mjs';
 import { loadRun } from '../review/run.mjs';
 import { computeMetrics, readLedger } from '../review/metrics.mjs';
 import { runOracles } from '../review/oracles.mjs';
+import { SCORER, scoreRun, scorecardMeasures, renderScorecard } from './controllability.mjs';
 
-// v2 (#839): the arm also covers the condition identity (server root, tools checkout, served CLI/skill) and the label.
-export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '2' });
+// v2: the controllability scorecard (#1097). v3 (#839): the arm also covers the condition identity (server root, tools
+// checkout, served CLI/skill) and the label.
+export const EVALUATOR = Object.freeze({ name: 'soul-runs/evaluate', version: '3' });
 export const SCHEMA = 'soul-run-evaluation/1';
 export const INDEX_SCHEMA = 'soul-run-index/2';
 const VERDICTS = ['pass', 'fail', 'unknown'];
@@ -341,7 +343,7 @@ export const CONDITION_FIELDS = Object.freeze(['serverCommit', 'serverDirtyTrack
 
 function evaluatorFiles() {
   const here = dirname(new URL(import.meta.url).pathname);
-  const files = ['runs/evaluate.mjs', 'review/run.mjs', 'review/metrics.mjs', 'review/oracles.mjs'];
+  const files = ['runs/evaluate.mjs', 'runs/controllability.mjs', 'review/run.mjs', 'review/metrics.mjs', 'review/oracles.mjs'];
   const root = resolve(here, '..');
   const out = Object.fromEntries(files.map((f) => [f, existsSync(join(root, f)) ? sha256(readFileSync(join(root, f))).slice(0, 16) : null]));
   let commit = null, dirty = null;
@@ -367,6 +369,11 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
   for (const q of sr.receipt?.spec?.effective?.evaluation?.questions ?? []) if (!loaded.some((l) => l.sha256 === q.sha256)) answers.push({ id: q.id ?? basename(q.path), basis: 'predeclared', verdict: 'unknown', uncertainty: 'the predeclared scorer file is missing or changed since the run (hash mismatch)', evidence: [], scorer: q });
   const review = sr.playtestDir ? readJson(join(sr.playtestDir, 'receipts', '5-review.json'), null) : null;
   const identity = runIdentity(sr);
+  // The scorecard's definitions are predeclared the way questions are: their hash is in the effective spec at the run.
+  const scorerSha = sha256(readFileSync(new URL('./controllability.mjs', import.meta.url)));
+  const declaredScorer = sr.receipt?.spec?.effective?.scorer ?? null;
+  const scorecard = scoreRun(sr, { answers, scorer: { sha256: scorerSha, predeclared: declaredScorer?.sha256 === scorerSha, ...(declaredScorer && declaredScorer.sha256 !== scorerSha ? { note: `the scorer changed since the run (spec had ${declaredScorer.sha256.slice(0, 16)})` } : !declaredScorer ? { note: 'the run\'s spec names no scorer hash (an earlier run)' } : {}) } });
+  measures.push(...scorecardMeasures(scorecard));
   const evaluation = {
     schema: SCHEMA, evaluator: evaluatorFiles(), createdAt: now().toISOString(),
     offline: { worldStarted: false, controllersStarted: false, network: false, modelCalls: 0 },
@@ -381,6 +388,7 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
       semanticReview: review ? { mode: sr.scenario?.review?.mode ?? 'model', provider: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'claude' : null, model: (sr.scenario?.review?.mode ?? 'model') === 'model' ? (sr.scenario?.review?.reviewerModel ?? 'opus') : null, requests: review.requests ?? 0, inputs: (sr.scenario?.review?.mode ?? 'model') === 'model' ? 'bounded per-request evidence projections (review/run.mjs projectEvidence)' : 'deterministic oracles only', outputs: ['ledger.tsv', 'reviews.jsonl'].map((f) => sr.at(f)).filter((f) => before[f]), note: 'indexed, not re-run; evaluate makes no model call' } : null,
     },
     measures,
+    scorecard: { file: 'scorecard.json', scorer: scorecard.scorer },
     acceptance: { scenario: sr.playtestDir ? scenarioAcceptance(sr) : null, predeclared: answers.filter((a) => a.basis === 'predeclared') },
     questions: answers.filter((a) => a.basis === 'exploratory'),
     requests,
@@ -394,15 +402,16 @@ export async function evaluateRun(dir, { questions = [], write = true, now = () 
   };
   const after = indexSources(sr.runDir);
   evaluation.sources.unchanged = JSON.stringify(before) === JSON.stringify(after);
-  if (!write) return { evaluation, dir: null };
+  if (!write) return { evaluation, scorecard, dir: null };
   const root = join(sr.runDir, 'evaluations');
   mkdirSync(root, { recursive: true });
   const n = readdirSync(root).filter((d) => /^\d{3}-/.test(d)).length + 1;
   const out = join(root, `${String(n).padStart(3, '0')}-v${EVALUATOR.version}`);
   mkdirSync(out);
   writeFileSync(join(out, 'evaluation.json'), JSON.stringify(evaluation, null, 1) + '\n');
-  writeFileSync(join(out, 'EVALUATION.md'), renderEvaluation(evaluation));
-  return { evaluation, dir: out };
+  writeFileSync(join(out, 'scorecard.json'), JSON.stringify(scorecard, null, 1) + '\n');
+  writeFileSync(join(out, 'EVALUATION.md'), renderEvaluation(evaluation) + '\n' + renderScorecard(scorecard));
+  return { evaluation, scorecard, dir: out };
 }
 
 const fmt = (v) => (v == null ? '—' : typeof v === 'number' ? String(v) : String(v));

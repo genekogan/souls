@@ -1,4 +1,4 @@
-import {localClassroomObservationV1Schema,type LocalClassroomObservationV1} from '@sim/engine-contract';
+import {localClassroomObservationV1Schema,type LocalClassroomObservationV1} from '@souls/engine-contract';
 import {readClassroom} from '../../../mars/viewer/engine/activities/index.ts';
 import type {Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
 

@@ -27,12 +27,12 @@ test('drum kit: seated play-music offer, two players at once, bounded perception
  const here=async(s)=>{soul=s;const r=await app.request('/v1/edge/here?include=doHere');assert.equal(r.status,200);return (await r.json()).here;};
  const body=s=>f.host.engine.world.entities[s.entityId];
  const absent=await here(ana);
- const distant=Array.from({length:100},(_,i)=>({op:'place',def:'core/drum-kit@1',name:`distant-drums-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2]}));
+ const distant=Array.from({length:100},(_,i)=>({op:'place',def:'core/drum-kit@2',name:`distant-drums-${i}`,p:[120+i%10*2,120+Math.floor(i/10)*2]}));
  assert.equal(god.act({ops:distant}).accepted,true);await tick(45);const far=await here(ana);
  if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/here-far.json`,JSON.stringify(far,null,1));}
  assert.ok(!/distant-drums/.test(JSON.stringify(far)),'distant drum kits add nothing to here');
  const [ax,az]=[body(ana).pose.p[0],body(ana).pose.p[2]];
- assert.equal(god.act({ops:[{op:'place',def:'core/drum-kit@1',name:'drums',p:[ax+1.6,az+3]},{op:'place',def:'core/piano@1',name:'piano',p:[ax-1.6,az+3]}]}).accepted,true);await tick(45);
+ assert.equal(god.act({ops:[{op:'place',def:'core/drum-kit@2',name:'drums',p:[ax+1.6,az+3]},{op:'place',def:'core/piano@1',name:'piano',p:[ax-1.6,az+3]}]}).accepted,true);await tick(45);
  const near=await here(ana),id=n=>god.model.get(n).id;
  const caps=edge.capabilities(ana),drumCap=caps.find(c=>/play-music/.test(c.id)&&c.id.includes(id('drums')));assert.ok(drumCap,'the drum kit offers play-music: '+caps.filter(c=>/play/.test(c.id)).map(c=>c.id).join(' '));
  let retries=0;const act=async(s,capability,params,accepted=true)=>{let b;for(let k=0;k<20;k++){soul=s;const r=await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability,...(params?{params}:{})})}));b=await r.json();if(b.code!=='object.admission-failed')break;retries++;await tick(10);}assert.equal(b.accepted,accepted,JSON.stringify(b));return b;};

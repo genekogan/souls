@@ -4,6 +4,7 @@
 import type {WorldState as NativeWorld} from '../../../../../mars/viewer/engine/world/types.ts';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import type {EdgeCapability, EdgeSoul} from '../contract.ts';
+import {offerParams, paramsProblem, type ParamSchema} from './offer-schema.ts';
 
 /** An id, not words: lower-case, no spaces, at least one of - . _ (e.g. eden-pond-north, region-park.pond, s_123). */
 export const ID_SHAPED = /^[a-z0-9]+(?:[-._][a-z0-9]+)+$/;
@@ -40,4 +41,66 @@ export function strictCheck(ledger: EdgeLedger, soul: EdgeSoul, input: string, c
     .sort((a, b) => b.s - a.s || a.c.id.localeCompare(b.c.id)).slice(0, 5).map(({c}) => ({id: c.id, label: c.label}));
   void soul;
   return {code: 'capability.unknown', reason: `"${target}" is not an id in this world (no place, Soul or thing has it), so nothing was done. Use an id from capabilities or the map, or say it in plain words.`, did_you_mean: did};
+}
+
+// ------------------------------------------------------------------ CTRL-1 (#1093): strict offers
+/** Rollback for one release: `EDGE_FREE_TEXT_ACT=1` lets a strict client's words execute again. The CLI refuses words before
+ *  it posts them, so `resolve` tells it the flag is on (`freeTextAct`), and it then posts them. */
+export const freeTextAct = () => process.env.EDGE_FREE_TEXT_ACT === '1';
+/** An offered id is `<verb>:<target>` with no spaces. */
+export const OFFER_ID = /^[a-z][\w-]*:\S+$/i;
+/** Attention never touches the body, and its target is any direction or thing in sight (the intent path checks it). */
+const ATTENTION_ID = /^(?:look|turn|face|look-at|turn-to):\S+$/i;
+/** Ids whose refusal says more than `capability.unknown`: a closed proposal, a shared stop, a named place or seat. */
+const ANSWER_ID = /^(?:accept|decline):inv_|^stop-carry:/;
+const ON_DEMAND_VERB = /^(?:walk|jog|run|sit)$/;
+
+export type Candidate = {id: string; verb: string; label: string; available: boolean; blocked?: {code: string; reason: string}; params?: ParamSchema; args?: Record<string, unknown>};
+
+/** `resolve`: the words read as ranked offers, each with its schema and availability. It never executes and never chooses;
+ *  the first candidate is the parser's reading, and `args` are the values it read from the words. */
+export function resolveCandidates(L: EdgeLedger, soul: EdgeSoul, d: Record<string, unknown>, limit = 5): Candidate[] {
+  const would = d.would as {capability?: string; label?: string; available?: boolean; params?: Record<string, unknown>} | undefined;
+  const ids = [...(typeof would?.capability === 'string' ? [would.capability] : []), ...((d.did_you_mean as {id: string}[] | undefined) ?? []).map(x => x.id)];
+  const out: Candidate[] = [];
+  for (const id of new Set(ids)) {
+    if (out.length >= limit) break;
+    const cap = L.bindOne(soul, id)?.cap, first = id === would?.capability, args = first && would?.params && Object.keys(would.params).length ? would.params : undefined;
+    const params = cap ? offerParams(cap) : {};
+    out.push({id, verb: cap?.verb ?? id.split(':')[0]!, label: cap?.label ?? (first ? would?.label : undefined) ?? id, available: cap?.available ?? (first ? would?.available !== false : true),
+      ...(cap?.blocked ? {blocked: cap.blocked} : {}), ...(Object.keys(params).length ? {params} : {}), ...(args ? {args} : {})});
+  }
+  return out;
+}
+
+export type OfferRefusal = {accepted: false; code: string; reason: string; capability: string; did_you_mean?: {id: string; label: string}[]; candidates?: Candidate[]; params?: ParamSchema};
+
+const paramsRefusal = (cap: Pick<EdgeCapability, 'id' | 'verb' | 'params'>, params: unknown, asked: string): OfferRefusal | null => {
+  const problem = paramsProblem(cap, params);
+  return problem ? {accepted: false, code: 'capability.params', reason: problem, capability: asked, params: offerParams(cap)} : null;
+};
+
+/** A strict act: null when `capability` is an id on offer to this Soul and its params fit, else why not. */
+export function offerCheck(L: EdgeLedger, soul: EdgeSoul, input: {capability?: unknown; params?: unknown; verb?: unknown; target?: unknown; clientRef?: unknown}): OfferRefusal | null {
+  const asked = typeof input.capability === 'string' ? input.capability.trim() : '';
+  if (typeof input.clientRef === 'string' && input.clientRef.length <= 100 && L.coreA.byClientRef(soul.soulId, input.clientRef)) return null;   // a retry returns the first result
+  // an offer's id is whatever the menu calls it: `pray` and `propose-amendment` have no target, so look it up before any shape
+  if (OFFER_ID.test(asked)) {
+    const verb = asked.slice(0, asked.indexOf(':'));
+    if (ATTENTION_ID.test(asked) || ANSWER_ID.test(asked) || L.bodyVerbProblem(soul, verb)) return null;
+  }
+  const cap = asked ? L.bindOne(soul, asked)?.cap ?? L.coreA.binds(soul).caps.find(c => c.id === asked) : undefined;
+  if (cap) return paramsRefusal(cap, input.params, asked);
+  // far offers the page leaves out, and places that refuse for a reason of their own: by id only, never by a name
+  const byId = {id: asked, verb: asked.slice(0, Math.max(0, asked.indexOf(':')))};
+  if (OFFER_ID.test(asked) && ON_DEMAND_VERB.test(byId.verb) && knownIds(L, []).has(asked.slice(asked.indexOf(':') + 1))) return paramsRefusal(byId, input.params, asked);
+  const body = input.capability !== undefined ? {capability: asked, ...(input.params ? {params: input.params} : {})} : input;
+  const d = asked || input.verb !== undefined ? L.intents.dryRun(soul, body as Parameters<EdgeLedger['intents']['dryRun']>[1]) : {};
+  // an id `resolve` itself reads as this very act is an offer, on or off the menu's page; a candidate is always takeable
+  if (asked && (d as {would?: {capability?: unknown}}).would?.capability === asked) return paramsRefusal(byId, input.params, asked);
+  const candidates = resolveCandidates(L, soul, d);
+  const label = asked || String(input.verb ?? '');
+  return {accepted: false, code: 'capability.unknown', capability: label,
+    reason: `"${label}" is not an offer on this Soul right now, so nothing was done. Send an offered id; candidates lists the closest.`,
+    ...(candidates.length ? {did_you_mean: candidates.map(c => ({id: c.id, label: c.label})), candidates} : {})};
 }

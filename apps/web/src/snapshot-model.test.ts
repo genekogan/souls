@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WorldModel, coreLibrary, type Entity } from '@sim/world-compiler';
+import { WorldModel, coreLibrary, type Entity } from '@souls/world-compiler';
 import { snapshotModel } from './snapshot-model.ts';
 
 function snapshot() {

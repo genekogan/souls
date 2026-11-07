@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateScript, classify, matchRule, stepOutcome, turn, renderChat, bindPrev } from './scripted-owner.mjs';
+import { validateScript, classify, matchRule, stepOutcome, turn, renderChat, bindPrev, keptOutput, OUTPUT_KEEP } from './scripted-owner.mjs';
+import { seatActs } from '../../review/run.mjs';
 import { brief } from '../../../world-launcher/soul/eden.mjs';
 import { ADAPTERS } from '../seat.mjs';
 import { providerPolicy } from '../../lib/provider-policy.mjs';
@@ -193,4 +194,30 @@ test('step options and {{prev}} placeholders are validated by field', () => {
   assert.deepEqual(v(['act', { onRefused: 'continue' }, 'x']), ['script.rules[0].do: a list of eden.mjs argument lists'], 'options only at the end');
   assert.deepEqual(v(['act', '{{prev.did_you_mean[0].id}}'], 0), ['script.rules[0].do[0]: {{prev.did_you_mean[0].id}} needs a previous step']);
   assert.deepEqual(v(['act', '{{prev.a..b}}']), ['script.rules[0].do[1]: {{prev.a..b}} is not a path like prev.did_you_mean[0].id']);
+});
+
+test('a long CLI output is kept whole for scoring; past the bound it carries a marker and a flag (#371)', async () => {
+  // `around` with a route and `map` with its flags run past the old 4000-character window: the scorer read them as broken strings
+  const d = mkdtempSync(join(tmpdir(), 'scripted-owner-')), route = Array.from({ length: 600 }, (_, i) => ({ step: i, toward: `the far gate ${i}` }));
+  writeFileSync(join(d, 'eden.mjs'), `const a = process.argv.slice(2);
+if (a[0] === 'around') console.log(JSON.stringify({ places: [], route: { found: true, steps: ${JSON.stringify(route)} } }));
+else if (a[0] === 'map') process.stdout.write('x'.repeat(${OUTPUT_KEEP + 512 * 1024}));
+else console.log(JSON.stringify({ ok: true }));`);
+  const t = await turn({ cwd: d, text: wake([{ id: 'm1', text: 'look around' }]), script: { rules: [{ match: 'look', do: [['around'], ['map']] }] } });
+  const results = t.stream.flatMap((e) => e.message?.content ?? []).filter((c) => c.type === 'tool_result');
+  const around = results[1], map = results[2];
+  assert.ok(around.content.length > 20000, `around is ${around.content.length} characters`);
+  assert.deepEqual(JSON.parse(around.content).route.steps, route, 'kept byte for byte');
+  assert.equal(around.truncated, undefined);
+  assert.equal(map.truncated, true);
+  assert.ok(map.content.startsWith('x'.repeat(OUTPUT_KEEP)));
+  assert.match(map.content, new RegExp(`\\n\\[scripted-owner: output truncated: ${OUTPUT_KEEP} of ${OUTPUT_KEEP + 512 * 1024} characters kept\\]$`));
+  // the scorer reads the transcript as the run stores it
+  const acts = seatActs({ seats: { pip: { turns: [{ turn: 1 }], transcript: t.stream.map((e) => ({ ...e, turn: 1 })) } } }, 'pip', [1]);
+  const a = acts.find((x) => / around$/.test(x.cmd)), m = acts.find((x) => / map$/.test(x.cmd));
+  assert.equal(a.output.route.found, true, 'parsed as JSON, not a cut string'); assert.equal(a.truncated, undefined);
+  assert.equal(m.truncated, true);
+  // short outputs are stored exactly as before
+  assert.deepEqual(keptOutput('{"ok":true}\n'), { content: '{"ok":true}\n' });
+  assert.deepEqual(keptOutput('abcdef', 4), { content: 'abcd\n[scripted-owner: output truncated: 4 of 6 characters kept]', truncated: true });
 });

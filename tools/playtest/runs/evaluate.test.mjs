@@ -115,7 +115,7 @@ test('offline rescore writes a new version and leaves sources and earlier evalua
   const a = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs')] });
   const first = readFileSync(join(a.dir, 'evaluation.json'), 'utf8');
   const b = await evaluateRun(dir, { questions: [Q('redirect-honoured.mjs'), Q('walk-seen.mjs')] });
-  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v2', '002-v2']);
+  assert.deepEqual(readdirSync(join(dir, 'evaluations')), ['001-v3', '002-v3']);
   assert.equal(readFileSync(join(a.dir, 'evaluation.json'), 'utf8'), first);
   assert.deepEqual(indexSources(dir), before, 'evaluations/ is excluded and no source changed');
   assert.equal(b.evaluation.questions.length, 2);

@@ -149,7 +149,7 @@ try {
   if (page0) {
     // frame the arrival area: zoom in with the wheel, orbit a little with a drag
     await step('V0 the world page opens; real wheel and drag move the camera', async () => {
-      const cam0 = await page.evaluate(() => JSON.stringify(window.__simCamera ?? null));
+      const cam0 = await page.evaluate(() => JSON.stringify(window.__soulsCamera ?? null));
       await input([{ wheel: -240, n: 6 }, { drag: [120, -40] }, { wait: 1500 }]);
       await snap('w0-before-look'); return { cam0 };
     });

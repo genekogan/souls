@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { recordedToyFactory } from './toy-takes.ts';
 import { sampleTake } from '../../../mars/viewer/engine/take/replay.ts';
 import type { Take } from '../../../mars/viewer/engine/take/types.ts';

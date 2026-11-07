@@ -276,4 +276,7 @@ jobs:
 
       - name: Next PR
         if: always() && (steps.pick.outputs.more == 'true' || steps.rebase.outputs.status == 'moved')
+        # The PAT lacks Actions: write; a dispatch made with GITHUB_TOKEN still starts the workflow.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh workflow run merge-train.yml --repo "$REPO" --ref "$DEFAULT_BRANCH"

@@ -8,6 +8,7 @@
 //   node tools/playtest/runs/run.mjs correlate <runDir>                 (diagnostics: trace ↔ run records, offline)
 //   node tools/playtest/runs/run.mjs inspect   <runDir> --seat <id>     (diagnostics: the local inspector, read-only)
 //   node tools/playtest/runs/run.mjs preview   <runDir> --camera <c> --from <s> --to <s>   (offline: labelled excerpt, never full proof)
+//   node tools/playtest/runs/run.mjs preview   <runDir> --camera <c> --auto [--seconds 20]   (start from the run's first act)
 //   node tools/playtest/runs/run.mjs package   <runDir> [--select <camera|preview file>]…   (offline: local index + selected projection)
 // Exit: 0 completed/valid, 1 failed, 2 refused, 130 cancelled, 124 stopped at limits.maxWallSec.
 import { resolve } from 'node:path';
@@ -80,9 +81,12 @@ async function main() {
   }
   if (cmd === 'preview') {
     // Offline: a separately labelled excerpt of one camera's recording under <run>/derived/previews; the source is untouched.
-    const { previewRecording } = await import('./recording.mjs');
-    if (!argv[1] || !flag('camera') || flag('from') == null || flag('to') == null) throw new Error('preview <runDir> --camera <name> --from <s> --to <s>');
-    const r = await previewRecording(argv[1], { camera: flag('camera'), fromSec: Number(flag('from')), toSec: Number(flag('to')) });
+    const { previewRecording, autoStart } = await import('./recording.mjs');
+    if (!argv[1] || !flag('camera') || (!has('auto') && (flag('from') == null || flag('to') == null))) throw new Error('preview <runDir> --camera <name> (--from <s> --to <s> | --auto [--seconds s])');
+    // --auto (#888): the window starts at the run's first act (else its first delivered request), from run events.
+    const a = has('auto') ? autoStart(argv[1], { camera: flag('camera'), seconds: flag('seconds') != null ? Number(flag('seconds')) : 20 }) : null;
+    if (a && !a.ok) { print(a); return 1; }
+    const r = await previewRecording(argv[1], { camera: flag('camera'), fromSec: a ? a.fromSec : Number(flag('from')), toSec: a ? a.toSec : Number(flag('to')), auto: a?.auto ?? null });
     print(r); return r.ok ? 0 : 1;
   }
   if (cmd === 'package') {

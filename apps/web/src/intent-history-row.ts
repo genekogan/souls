@@ -1,4 +1,4 @@
-import {intentHistoryEventV2Schema} from '@sim/protocol';
+import {intentHistoryEventV2Schema} from '@souls/protocol';
 
 export type IntentHistoryRow = {
   key:string;seq:number;tick:number;intentId:string;version:number;requestId?:string;

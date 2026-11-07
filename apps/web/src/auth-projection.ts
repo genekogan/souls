@@ -1,4 +1,4 @@
-import type {Me} from '@sim/protocol';
+import type {Me} from '@souls/protocol';
 import type {AuthCtx} from './Shell.tsx';
 /** Canonical provider ID, or the explicit local development identity from main.
  * Display names/emails are never treated as ownership identities. */

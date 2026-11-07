@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Hono, type Context } from 'hono';
-import { CREATION_LIMITS } from '@sim/generators';
+import { CREATION_LIMITS } from '@souls/generators';
 import { hashToken } from '../auth.ts';
 import { Db } from '../db.ts';
 import { ApiError } from '../souls.ts';

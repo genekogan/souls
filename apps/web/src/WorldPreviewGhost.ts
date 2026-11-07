@@ -5,9 +5,9 @@
 // pose, removed things in red where they stand, and changed terrain tiles as a
 // lifted translucent sheet. Nothing here talks to the god API's write side.
 import * as THREE from 'three';
-import { TILE_M, Terrain, type Ground } from '@sim/ground';
-import { WorldModel, plan, type Entity, type StoredDef } from '@sim/world-compiler';
-import { GENERATORS } from '@sim/generators';
+import { TILE_M, Terrain, type Ground } from '@souls/ground';
+import { WorldModel, plan, type Entity, type StoredDef } from '@souls/world-compiler';
+import { GENERATORS } from '@souls/generators';
 import { meshFor, type MeshCtx } from './gen-mesh/index.ts';
 import { MaterialLib } from './gen-mesh/materials.ts';
 
@@ -196,17 +196,17 @@ export class WorldPreviewGhost {
   }
 }
 
-type SimEntity = { scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: { target: THREE.Vector3; update?: () => void } };
+type SoulsEntity = { scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: { target: THREE.Vector3; update?: () => void } };
 /**
  * The page's ghost layer: mounted once into the entity world's scene (LiveWorld
- * exposes it as window.__simEntity). Returns null until that scene exists.
+ * exposes it as window.__soulsEntity). Returns null until that scene exists.
  */
 export function previewGhost(api: (p: string) => string): WorldPreviewGhost | null {
-  const w = window as unknown as { __simEntity?: SimEntity; __simGhost?: WorldPreviewGhost };
-  const sim = w.__simEntity;
-  const ghost = w.__simGhost ?? (sim?.scene ? (w.__simGhost = new WorldPreviewGhost(api)) : null);
+  const w = window as unknown as { __soulsEntity?: SoulsEntity; __soulsGhost?: WorldPreviewGhost };
+  const sim = w.__soulsEntity;
+  const ghost = w.__soulsGhost ?? (sim?.scene ? (w.__soulsGhost = new WorldPreviewGhost(api)) : null);
   if (!ghost) return null;
-  // the world page may rebuild its scene (and re-publish __simEntity): follow it
+  // the world page may rebuild its scene (and re-publish __soulsEntity): follow it
   if (sim?.scene && ghost.group.parent !== sim.scene) sim.scene.add(ghost.group);
   return ghost;
 }

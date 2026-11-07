@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { marsFactory,GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory,GREEN_FIELD_WORLD } from '@souls/engine-mars';
 import { fixture,invite } from '../test/native-owner-fixture.ts';
 const factory=await marsFactory({...GREEN_FIELD_WORLD,safeCrewRemoval:true});
 for(const damaged of ['body','event_hash'] as const)test(`private receipt authorizes before verifying a foreign damaged ${damaged}`,async t=>{

@@ -1,6 +1,6 @@
 // The original four generators (box, landform, lake, scatter), moved from world-compiler. Owner: L1.
-// landform/1 also hosts the new landform kinds (cliff, terrace, channel) — L3 extends @sim/ground and this file's params.
-import type { LandformBody } from '@sim/ground';
+// landform/1 also hosts the new landform kinds (cliff, terrace, channel) — L3 extends @souls/ground and this file's params.
+import type { LandformBody } from '@souls/ground';
 import { bounds2, n, rng } from './geom.ts';
 import type { Generator, Vec2 } from './types.ts';
 

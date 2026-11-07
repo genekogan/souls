@@ -1,6 +1,6 @@
 // Harvest fix kitlenient: correct kit/2 defines in a raw batch before it is parsed, so dryrun, preview, act and the
 // kit workbench admit (and store) the same corrected definition, and say what they changed.
-import { correctKitArgs, isKitProgram, kitPhysics } from '@sim/generators';
+import { correctKitArgs, isKitProgram, kitPhysics } from '@souls/generators';
 import { checkFields } from './compile.ts';
 import { defSchema } from './schemas.ts';
 

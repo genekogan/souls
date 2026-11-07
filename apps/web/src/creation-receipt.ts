@@ -1,5 +1,5 @@
 // Read projection only. This neither advertises admission nor grants control.
-import {soulLifecycleSchema,ownerLifecycleListSchema,type SoulLifecycle} from '@sim/protocol';
+import {soulLifecycleSchema,ownerLifecycleListSchema,type SoulLifecycle} from '@souls/protocol';
 export type CreationReceipt={kind:'pending'|'recorded'|'refused'|'unconfirmed';detail:string;lifecycle?:SoulLifecycle;soulId?:string};
 const unknown:CreationReceipt={kind:'unconfirmed',detail:'We could not confirm the arrival request. Check your account before trying again.'};
 export function creationReceipt(status:number,body:unknown,worldId:string,name:string):CreationReceipt{

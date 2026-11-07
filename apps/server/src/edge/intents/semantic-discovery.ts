@@ -9,6 +9,8 @@ type Candidate={capability:string;name:string;place:string;target?:MeaningPart['
 const names=(p:Place)=>[p.name,...(p.aliases??[]),...(p.ref?[p.ref]:[])];
 const words=(xs:string[])=>new Set(xs.flatMap(tokens));
 const covers=(q:string[],set:Set<string>)=>q.every(w=>set.has(w));
+/** A bound object seat's own names: its label's name, the id after the verb, the target id, the label's words after the verb. */
+const seatNames=(c:EdgeCapability)=>[c.label.split(/\s*[([]|,\s*by\s/)[0]!,c.id.slice(c.id.indexOf(':')+1),c.target!.id,parseCapability(c.label,new Set(['sit'])).rest];
 const GENERIC_SEAT=new Set(['down','here','nearby','nearest','closest','somewhere','seat','chair','bench']);
 export const PURPOSE=/^(?:(?:find|show|suggest|choose|take me to|go to|head to)\s+)?(?:somewhere|(?:a|the|any)\s+(?:place|venue|spot))\s+(?:to|for)\s+(.+)$|^where\s+(?:can|could|should)\s+(?:i|we)\s+(.+)$/i;
 const stem=(w:string)=>w.length>5&&w.endsWith('ing')?w.slice(0,-3):w.length>4&&w.endsWith('ed')?w.slice(0,-2):w.length>3&&w.endsWith('s')?w.slice(0,-1):w;
@@ -64,7 +66,7 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  // Existing exact fixture identities retain the normal vocabulary/admission path. A shared
  // word in a semantic part must not intercept a fully named ordinary object.
  const identity=q.join(' ');
- if(caps.some(c=>c.verb==='sit'&&c.target?.kind==='object'&&[c.id.slice(c.id.indexOf(':')+1),c.target.id,c.label.split(/\s*[([]|,\s*by\s/)[0],parseCapability(c.label,new Set(['sit'])).rest].some(n=>tokens(n).join(' ')===identity)))return null;
+ if(caps.some(c=>c.verb==='sit'&&c.target?.kind==='object'&&seatNames(c).some(n=>tokens(n).join(' ')===identity)))return null;
  const entries=known.flatMap(p=>(p.parts??[]).filter(part=>knownPart(L,soul,p,part)).map(part=>({p,part,scope:words(contexts(L,p,soul)),own:words([part.title,...(part.aliases??[])])})))
   .filter(x=>covers(q,new Set([...x.scope,...x.own])));
  // Do not relax an explicit target to a nearby fixture if a named part/place is missing or unsupported.
@@ -72,6 +74,17 @@ export function semanticDiscovery(L:EdgeLedger,soul:EdgeSoul,text:string,caps:Ed
  if(!relevant)return null;
  const ranked=entries.sort((a,b)=>q.filter(w=>b.own.has(w)).length-q.filter(w=>a.own.has(w)).length||a.p.id.localeCompare(b.p.id)||a.part.id.localeCompare(b.part.id));
  const candidates=ranked.filter(x=>x.part.sit).slice(0,8).map(({p,part})=>({...candidate(L,soul,part.sit!,p,`${part.title} — ${p.name}`,part.target,caps,plans),...(part.what?{what:part.what}:{})}));
+ // F5 (#376): no part matches, but bound seats hold every word in their own name ("presenter box" names presenter-timber-box):
+ // one seat (or numbered copies of one, which the vocabulary already reads as the nearest) keeps the normal path; seats
+ // of different names are ambiguous and are named, never chosen.
+ if(!candidates.length){
+  // own names only (label head, id, target id): the label's "by <neighbours>" and kind words never name a seat
+  const own=caps.filter(c=>c.verb==='sit'&&c.target?.kind==='object'&&covers(q,words(seatNames(c).slice(0,3))));
+  const base=(c:EdgeCapability)=>{const t=tokens(seatNames(c)[0]!);return (/^\d+$/.test(t.at(-1)??'')&&t.length>1?t.slice(0,-1):t).join(' ');};
+  const byBase=new Map<string,EdgeCapability>();for(const c of own)if(!byBase.has(base(c)))byBase.set(base(c),c);
+  if(byBase.size===1)return null;
+  if(byBase.size>1){const kept=[...byBase.values()].slice(0,8),named=kept.map(c=>({capability:c.id,name:seatNames(c)[0]!,place:c.target!.id,available:c.available,...(c.blocked?{reason:c.blocked.reason}:{})}));return choice('interaction','sit',named,`Several seats are named that way (${named.map(c=>c.name).join(', ')}); choose one by its exact sit capability ID. No seat has been selected.`);}
+ }
  return choice('interaction','sit',candidates,candidates.length?'Choose a bound seat by its exact sit capability ID. No seat has been selected.':'No bound sit action matches that named target; no nearby seat or walk was substituted.');
 }
 
