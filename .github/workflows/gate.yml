@@ -82,7 +82,7 @@ jobs:
             echo "::error::Daily gate cap reached: $used runs today (gate.yml + release.yml) against modal_gates_per_day=$cap. A dry run is still allowed."
             exit 1
           fi
-          node_version=$(grep -E '^\s*node-version:' .github/workflows/gate.yml | head -1 | grep -oE '[0-9]+')
+          node_version=$(grep -oE 'node-version: [0-9]+' .github/workflows/gate.yml | head -1 | grep -oE '[0-9]+' || true)
           { echo "sha=$sha"; echo "baseline=$bsha"; echo "baseline_ref=$baseline"; echo "node=${node_version:-22}"; } >> "$GITHUB_OUTPUT"
           echo "Gate: candidate $(git rev-parse --short "$sha"), baseline $baseline ($(git rev-parse --short "$bsha")), scope $SCOPE, dry_run=$DRY, gates today $used/$cap" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
