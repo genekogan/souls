@@ -376,7 +376,7 @@ export class Intents {
   /** POST /v1/edge/resolve: what act would do, without doing anything. */
   dryRun(soul: EdgeSoul, input: IntentInput & {capability?: unknown}): Record<string, unknown> {
     // #1152: how an owner asks ("could you ...?") is not what is asked
-    if (typeof input.capability === 'string' && input.verb === undefined && !input.capability.includes(':')) input = {...input, capability: input.capability.replace(/^\s*(?:(?:could|can|would|will)\s+you\s+)?(?:please\s+)?(?:go\s+and\s+)?/i, '').replace(/[\s,]*(?:please)?[\s.?!]*$/i, '')};
+    if (typeof input.capability === 'string' && input.verb === undefined && !input.capability.includes(':')) input = {...input, capability: input.capability.replace(/^\s*(?:(?:that'?s\s+all|ok(?:ay)?|alright|now|then|next)[,\s]+)*(?:(?:could|can|would|will)\s+you\s+)?(?:please\s+)?(?:go\s+and\s+)?/i, '').replace(/[\s,]*(?:please)?[\s.?!]*$/i, '')};
     if (typeof input.capability === 'string' && input.verb === undefined) {
       const walk=walkWithDestinationWords(input.capability,[...this.L.host.minds.values()].map(m=>m.name));if(walk){const out=this.dryRun(soul,{...walk,...(input.params?{params:input.params}:{})});if(out.ok!==false)return out;
         // quality case 27: an ambiguous destination name ("the library") falls back to the walk the plain words resolve to, still inviting the companions

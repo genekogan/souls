@@ -14,7 +14,7 @@ test('#1152: words that name a place resolve to its walk; the casts\' own lines 
     orchard: 'walk:flag-orchard', 'reading room': 'walk:lab-reading-room',
     // the casts' lines
     'stop by the orchard first': 'walk:flag-orchard', 'go on to the pond hall': 'walk:lab-pond-hall', 'could you pop into the reading room?': 'walk:lab-reading-room',
-    'walk over to the orchard, please': 'walk:flag-orchard', 'please walk over to the orchard': 'walk:flag-orchard', 'walk to the pond hall': 'walk:lab-pond-hall',
+    'walk over to the orchard, please': 'walk:flag-orchard', 'please walk over to the orchard': 'walk:flag-orchard', 'walk to the pond hall': 'walk:lab-pond-hall', "that's all, now walk to the pond hall": 'walk:lab-pond-hall',
     // the same word, however it's put
     'the orchard': 'walk:flag-orchard', 'to the orchard': 'walk:flag-orchard', 'pond hall': 'walk:lab-pond-hall', 'waterside hall': 'walk:lab-pond-hall', cottage: 'walk:cottage', pond: 'walk:pond',
   };
