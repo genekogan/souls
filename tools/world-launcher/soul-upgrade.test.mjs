@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -123,6 +123,23 @@ test('a client from a site this home does not know needs a person', async (t) =>
   assert.match(refused.err, /Ask your human/); assert.match(refused.err, /--trust/);
   assert.equal(JSON.parse(readFileSync(join(d, '.souls/config.json'), 'utf8')).client, ours);
   assert.equal((await run('upgrade', 'next-2', '--trust')).d.upgraded, true);
+});
+
+test('trust is never earned by asking twice: a home with no list stays refused until a person says so', async (t) => {
+  const w = await world(t, { next: { manifest: describe(newer, NEWER), bytes: newer } });
+  const { d, run } = folder(t), file = join(d, '.souls/config.json');
+  await run('register', `${w.base}/next`);
+  const c = JSON.parse(readFileSync(file, 'utf8')); delete c.trustedOrigins; writeFileSync(file, JSON.stringify(c));   // what 2.15 and 2.16 wrote
+  const list = () => JSON.parse(readFileSync(file, 'utf8')).trustedOrigins;
+  assert.match((await run('upgrade', 'next')).err, /Ask your human/);
+  assert.equal(list(), undefined, 'a refusal grants nothing');
+  assert.match((await run('upgrade', 'next')).err, /Ask your human/, 'the second try is refused too');
+  await run('register', `${w.base}/next`); await run('doctor');
+  assert.equal(list(), undefined, 'neither does register or doctor');
+  assert.match((await run('upgrade', 'next')).err, /Ask your human/);
+  assert.deepEqual(readFileSync(join(d, 'eden.mjs')), readFileSync(cli), 'nothing was installed');
+  assert.equal((await run('upgrade', 'next', '--trust')).d.upgraded, true);
+  assert.equal(list().length, 1);
 });
 
 test('a refused world does not become the current world', async (t) => {

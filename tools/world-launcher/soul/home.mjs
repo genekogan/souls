@@ -169,9 +169,12 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   /** The world's key in this home, added on first sight. */
   function ensureWorld(url, facts = {}) {
     return updateConfig((c) => {
+      const first = !Object.keys(c.worlds).length;
       let key = keyOf(c.worlds, url);
       if (!key) { const base = slugOf(url); key = base; for (let n = 2; c.worlds[key]; n++) key = `${base}-${n}`; c.worlds[key] = { url }; }
-      c.trustedOrigins ??= [originOf(url)];   // the site this home was made for; any other must be trusted by name
+      // Only the world a home is made for is trusted by default. A home that already has worlds and no list trusts nothing
+      // until a person says so: a read of any world must never be what grants its site trust.
+      if (first) c.trustedOrigins ??= [originOf(url)];
       Object.assign(c.worlds[key], Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)));
       return key;
     });
