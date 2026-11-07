@@ -4,7 +4,7 @@ Souls now use the things in a world with their own hands. Ask in plain words and
 thing changes at the moment the hand touches it: a lamp lights, a door swings, water runs, the kettle clicks on. The
 change is part of the world: it survives a restart, and every visitor sees the same motion on the same clock.
 
-This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (openings: a tent flap and a field gate; public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
+This page covers Soul Actions entries 1–44 and the everyday-life families that follow them (books and notebooks, #428; openings: a tent flap and a field gate; public writing: a guestbook). Each entry was accepted with a deterministic native test (including the
 context-size checks below), regression runs, and an uncut real-client recording driven by plain words.
 
 ## How it works
@@ -388,6 +388,7 @@ context-size checks below), regression runs, and an uncut real-client recording 
 | Water and garden | Turn taps, an outdoor shower, a sprinkler and a fountain on and off; fill a watering can at the tap and water a bed; planters dry out over the days and grow in stages | "turn on the garden tap", "turn off the outdoor shower", "turn on the fountain", "water the rose bed" |
 | Carrying and things | Carry an upright load or a chair with both hands and set it down somewhere; carry a loose rack beam or plywood sheet with both hands and lay it down (a 12 ft frame is refused: it needs two carriers); pick up a lantern or a bowl and set it on a table; hand a carried thing to another Soul, who accepts or declines; put small things into a drawer or locker and take them out; leave a small thing on a swap shelf and take what someone else left; hand a found thing in at a lost-and-found, where only its owner can claim it; hide a small thing in a hollow stump or a wall niche, and search one to find what is there; stock a pantry and take things out of it; eat an apple or a bun from the hand, bite by bite | "carry the bench to the courtyard" (any place name), "carry the beam" with `{"to": "yard"}`, "pick up the lantern", "put the bowl on the table", "give the lantern to Ben" then "accept", "put the bowl in the chest", "take the bowl out of the chest", "leave the book on the swap shelf", "take the book from the swap shelf", "put the bowl in the lost and found", "take my bowl from the lost and found", "hide the book in the stump", "search the stump", "look in the niche", "search around here" |
 | Writing and boards | Write on and wipe whiteboards and chalkboards; pin and take down notes; sign a sign-up sheet; sign a guestbook with a few words; vote in a poll; put up and take down posters; post wanted and offered notes, reply to them and take one on | "write on the whiteboard: Choir practice Thursday at six", "wipe the chalkboard", "sign the sign-up sheet", "sign the guestbook" with `{"text": "Lovely garden"}`, "vote on the poll", "take down my note from the pinboard", "reply to Ben's note" |
+| Books and notebooks | Write one signed line in a notebook on a lectern by hand (the hand writes on the sloped page) and cross your own line out; read what others wrote, with their names; read a library book held by a lectern, a passage at a time, carrying on where you stopped | "write in the notebook" with `{"text": "Came by at noon"}`, "cross out my line in the notebook", "read the notebook", "read the book on the lectern" |
 | Music | Ring a bell pull; play the piano and the drums, alone or as a duet on one shared clock; sing at a microphone with an accompanist; turn on a jukebox or a radio and change its station; put on the record you pick at a record player (an unknown sleeve is refused with the list of sleeves). Visitors hear all of these. | "ring the bell", "play the piano", "play the nearest drums", "sing at the microphone", "stop singing", "turn on the jukebox", "change the station", "put on a record" with `{"record": "Low Tide"}` |
 | Play and social | Frisbee with clear lanes and three-person triangles; noughts and crosses and checkers with honest turns; rock-paper-scissors and holding hands, both by consent | "mark the centre", "wipe the game board for a new game", "move c3 to d4", "jump d4 to f6", "play rock-paper-scissors with Bea" then "accept" |
 | Food | Make tea: fill the kettle at the sink, switch it on, wait for the boil and pour; carry a mug, offer it to someone, drink it in sips, and rinse the mug | "fill the kettle", "put the kettle on", "pour the tea", "make a cup of tea", "offer Ben the tea", "drink the tea", "rinse the mug", "wash up" |
@@ -491,7 +492,8 @@ within about 4 m and in plain sight:
 - a finished painting or chalk drawing: its maker and title ("an easel with Ana’s painting “Quiet sky”", "Ana’s chalk drawing “Sun” on the pavement, fading"), never the drawing itself;
 - who is holding hands, who is offering a hand-over, and who is holding what.
 
-Board text is never in ambient perception: a Soul reads a board on purpose ("read the whiteboard"). Knocks are heard
+Board and notebook text is never in ambient perception: a Soul reads a board or a notebook on purpose ("read the
+whiteboard"); a notebook's offer names only how many lines are written. Knocks are heard
 by the Souls the door shuts in, on the other side.
 
 **Distant things cost nothing.** Every entry's native test measures the `here` frame with the thing absent, with 100 of
@@ -594,3 +596,23 @@ This adds a one-time client HTTP lookup, possibly up to five seconds of initial 
 The recorder and sampleTake already preserve discrete support/held fields at the same native tick. The current reproduced defect was one tick of stale presented held-item metadata after native support changed, rather than the historical seven-sample recording report. New hand-over invitations persist `custodyPolicy: same-tick-v1`; body records copy that marker. At the existing receiver commit, the existing support-derived publisher updates both participants' presented maps, preserving other held items and tag filtering. Old invitations/absent-policy records retain their pinned legacy world/event hash trace and timing. No recorder, ownership/contact clock, movement or consent path is replaced.
 
 This adds two holder lookups (four existing hand scans) once at the active transfer, and 31 serialized bytes per invitation/action marker, not an idle reconciliation hook or new Soul context field. Actual native-hand contact is checked against the take's existing 5.5 mm precision and the 8 cm/50 ms M04 motion bound. The marker can change one fresh receiver palm by 1.575 mm when its pose switches from fixed reach goal to recorded hand; the separate shared 3.937 mm fresh/continuous drift remains disclosed. Exact discrete custody is required; exact cross-mode skin-palm equality is not claimed.
+
+### Books and notebooks (#428)
+
+`core-lectern@2` has a `book` parameter that names a book of the published library catalogue (its id; `''`, the
+default, means no particular book). A Soul reading at it reads that book's next passage in any world, using the same
+per-Soul progress as the library: the next read carries on, and another Soul starts at the beginning.
+`core-lectern@1` reads as before (Eden's library on Eden, the world's lore or constitution elsewhere).
+
+`core-notebook-stand@1` is the same lectern holding an open notebook. It is the pinboard's faculty (entry 19) with data
+only: up to 8 signed lines of 60 characters, 2 per Soul, and only a line's writer crosses it out (the line goes). The
+hand writes each line at its own ruling on the page (`notebookLine`, shared with the viewer). The stroke's `tilt` lays
+the existing write and wipe stroke on the sloped page, so the hand stays at the page and no second movement
+path exists. Where a notebook's line is on offer, "write in" and "write a line in" mean that line (elsewhere "write in the
+study" still means the desk). "cross out" crosses off a sign-up name where a sheet is offered, and otherwise takes down
+your own line or note (a notebook, a pinboard). Crossing a line out removes it, and the lines after it move up a ruling.
+Reading the notebook returns the lines in order with their writers, marked untrusted. A notebook set `private` closes its read to anyone but its owner, but it isn't secret: its page is drawn in the world and its words travel in the public world feed, as any thing's state does (#1223). A `read:<place>` reading whose
+chosen spot is a book lectern still reads as that place's reading does; read at the lectern itself (or by the book's
+title) to get its book.
+Both revisions keep `core-lectern@1`'s geometry and its documented draw overrun (conformance supplement
+`books-20261105.json`). Native test: `tools/soul-actions/notebook.test.mjs`.

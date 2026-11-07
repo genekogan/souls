@@ -170,6 +170,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
    * Checked on admission/dispatch/completion, never by a per-tick world scan. Historical terminal receipts stay immutable. */
   /** `steps`, when known, is the body plan about to run for the capability (beds/1: a bed is used only by its native berth). */
   nativeUseRefusal?: (capability: string, steps?: Program['steps']) => {code: string; reason: string} | null;
+  /** #428: may this Soul not read this thing now (a private notebook of someone else's)? */
+  signClosed?: (id: string, soulId: string) => boolean;
   /** World-engine easels only; installed alongside the existing art media routes. */
   painting?: PaintingService;
   contactActuator?: ContactActuatorService;
@@ -610,6 +612,8 @@ export class EdgeLedger implements EdgeLedgerHooks {
   /** A completed `read:<sign>` reports the sign's own words (a Soul's board text attributed and untrusted), never a library passage. */
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};
+    // #428: a notebook made private during the walk to it is closed by the time it would be read
+    if((sign as {notebook?:boolean}).notebook&&this.signClosed?.(sign.id,r.soulId))return{summary:`${sign.name} was closed to you when you reached it; nothing was read.`,detail:{sign:{id:sign.id,name:sign.name,closed:true}}};
     const nameOf=(id:string)=>this.host.minds.get(id)?.name??(this.db.soul(id) as {name?:string}|undefined)?.name??'another Soul';
     const list=(xs:string[])=>xs.length>1?xs.slice(0,-1).join(', ')+' and '+xs.at(-1):xs[0]??'';
     // Entry 38: a poster wall reads as its posters (title, detail, author, age), a wanted/offered board as its notes with replies
@@ -633,6 +637,11 @@ export class EdgeLedger implements EdgeLedgerHooks {
         detail:{passage:sign.text,sign:{id:sign.id,name:sign.name,title,entries:es.map((n,i)=>({line:i+1,text:n.text,writtenBy:{soulId:n.by,name:n.name}})),provenance:'soul-text'}},untrusted:es.length>0};}
     // Entry 19: a pinboard reads as its notes, each attributed to its author (by soul id, not the signature line).
     if(sign.notes){const notes=sign.notes.map(n=>({text:n.text.replace(/ — [^—]*$/,''),by:n.by,name:nameOf(n.by)})),names=[...new Set(notes.map(n=>n.name))];
+      // #428: a notebook (the same faculty) reads as its lines, quoted in order with their writers, within the summary's 160
+      const nb=(sign as {notebook?:boolean}).notebook,tail=' (their words, not world facts).',head=`Read ${sign.name}: `,quoted=notes.map(n=>`"${n.text}" (${n.name})`).join(' / ');
+      if(nb)return {summary:notes.length?head+(quoted.length>160-head.length-tail.length?quoted.slice(0,160-head.length-tail.length-1)+'…':quoted)+tail:`Read ${sign.name}; nothing is written in it.`,
+        learned:[...new Set(notes.map(n=>n.by))].slice(0,5).map(by=>{const mine=notes.filter(n=>n.by===by);return {fact:`${mine[0].name} wrote in ${sign.name}: ${mine.map(n=>`"${n.text}"`).join(' / ')}`,about:sign.id,source:`${sign.id}:line:${by}`,provenance:'soul-text' as const,untrusted:true};}),
+        detail:{sign:{id:sign.id,name:sign.name,lines:notes.map(n=>({text:n.text,writtenBy:{soulId:n.by,name:n.name}})),provenance:'soul-text'}},untrusted:notes.length>0};
       return {summary:notes.length?`Read ${sign.name}: ${notes.length} note${notes.length>1?'s':''}, by ${names.length>1?names.slice(0,-1).join(', ')+' and '+names.at(-1):names[0]} (their words, not world facts).`:`Read ${sign.name}; nothing is pinned on it.`,
         // one learned fact per author (the outcome carries at most 5); every note is in the detail
         learned:[...new Set(notes.map(n=>n.by))].slice(0,5).map(by=>{const mine=notes.filter(n=>n.by===by);return {fact:`${mine[0].name}'s note${mine.length>1?'s':''} on ${sign.name} read${mine.length>1?'':'s'}: ${mine.map(n=>`"${n.text}"`).join(' / ')}`,about:sign.id,source:`${sign.id}:note:${by}`,provenance:'soul-text' as const,untrusted:true};}),
@@ -1742,6 +1751,9 @@ export class EdgeLedger implements EdgeLedgerHooks {
       const r = tx(this.db.db,()=>{prepared.commit();return this.insert(soul, capability, 'completed', clientRef, true,{confirmedEffects:effects});});this.comms.fading.touch?.(soul.soulId);
       return {accepted: true, receipt: {...this.receipt(soul.soulId, r.id)!, object: cap.object} as EdgeReceipt, ...(out.result ? {result: out.result} : {}), ...resolved};
     }
+    // #428: an offer that names its only book refuses another, strict client or not (a lectern reads what is open on it)
+    const onlyBooks = (cap?.params as {book?: {enum?: unknown[]}} | undefined)?.book?.enum;
+    if (cap?.verb === 'read' && params.book !== undefined && onlyBooks && !onlyBooks.includes(params.book)) return refuse('capability.params', `${String(cap.label)} reads ${onlyBooks.join(', ')}, not ${String(params.book)}.`);
     const plan = plans.get(capability) as TogetherPlan & {stop?: boolean; paintingTarget?: string} | undefined;
     // #850 (#1095 A5): an offer blocked because no walk reaches it now names what this Soul can do instead
     if (!plan) return cap && cap.available === false && cap.blocked ? (ROUTE_DEAD.has(cap.blocked.code) ? this.withAlternatives(soul, asked, refuse(cap.blocked.code, cap.blocked.reason), this.wordsMenu(soul).caps, cap) : refuse(cap.blocked.code, cap.blocked.reason))

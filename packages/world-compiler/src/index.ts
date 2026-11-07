@@ -9,6 +9,7 @@ export { GENERATORS, registerGenerator, scatterPoints, type Generator, type Bake
 export { hashOf, sha256Hex, stableStringify } from './hash.ts';
 export { CORE_KIT, coreRef } from './core-kit.ts';
 export { PIN_NOTES_MAX, PIN_TEXT_MAX, PIN_PER_SOUL, pinSlot } from './core-kit/writable-boards.ts'; // Soul Actions entry 19
+export { LECTERN_BOOKS, NOTEBOOK_LINES_MAX, NOTEBOOK_PER_SOUL, NOTEBOOK_TEXT_MAX, NOTEBOOK_TILT, notebookLine } from './core-kit/books-layout.ts'; // Soul Actions #428
 export { SIGNUP_MAX, POLL_OPTIONS_MAX, signupSlot, pollSlot, pollOptions } from './core-kit/writable-boards.ts'; // Soul Actions entry 25
 export { signupCapacity, signupNoun, signupPageStart, GUESTBOOK_WORDS_MAX } from './core-kit/writable-boards.ts'; // #429 guestbook
 export { CAN_GRIP, CAN_LITRES, CAN_OPENING, CAN_ROSE, GROWTH_STAGES, HOOK_PEG, POUR_LITRES } from './core-kit/watering-can.ts';

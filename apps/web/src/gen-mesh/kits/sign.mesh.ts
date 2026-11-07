@@ -9,7 +9,7 @@ import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';
 import { apiPath } from '../../world-path.ts';
 import { artOf, brokenLinkLines, coverWhenReady, imageBroken, imageFailed, imageLoaded, videoTexture, whenImageFails } from '../art-media.ts';
-import { CHECKERS_CELL, checkersBoard, checkersSquare, frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@souls/world-compiler';
+import { CHECKERS_CELL, checkersBoard, checkersSquare, frameMediaKind, gameSquare, gameStatus, notebookLine, NOTEBOOK_LINES_MAX, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@souls/world-compiler';
 import { posterMesh, posterAgeDays } from '../../../../../mars/viewer/app/engine-view/poster-sheet.ts';
 
 type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number; fadeDays?: number };
@@ -38,6 +38,31 @@ function textTexture(lines: string[], f: Face): THREE.Texture {
   g.fillStyle = f.ink ?? '#3a2a22'; g.textAlign = 'center'; g.textBaseline = 'middle';
   ls.forEach((l, i) => g.fillText(l, cw / 2, ch / 2 + (i - (ls.length - 1) / 2) * size * 1.1));
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; texCache.set(key, t); return t;
+}
+/** #428: a notebook's page: a printed heading, ruled lines, and each signed line ("words — Name") handwritten on its own
+ *  ruling (notebookLine, the place the hand wrote it), the writer's name after it in a second ink. */
+export function notebookTexture(lines: string[], f: Face): THREE.Texture {
+  const key = JSON.stringify(['notebook', lines, f.w, f.h, f.bg, f.ink]);
+  const hit = texCache.get(key); if (hit) return hit;
+  const cw = 1024, ch = Math.round(cw * f.h / f.w), px = cw / f.w, c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const g = c.getContext('2d')!, rowY = (i: number) => (0.5 - notebookLine(i)[1] / f.h) * ch;
+  g.fillStyle = f.bg ?? '#f4eedc'; g.fillRect(0, 0, cw, ch);
+  g.fillStyle = '#6d5a43'; g.font = `600 ${Math.round(0.02 * px)}px Georgia, 'Iowan Old Style', serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('Notes', cw / 2, rowY(0) - 0.05 * px);
+  g.strokeStyle = 'rgba(70,110,170,0.35)'; g.lineWidth = 2;
+  for (let i = 0; i < NOTEBOOK_LINES_MAX; i++) { const y = rowY(i) + 0.004 * px; g.beginPath(); g.moveTo(0.03 * px, y); g.lineTo(cw - 0.03 * px, y); g.stroke(); }
+  g.strokeStyle = 'rgba(190,60,60,0.35)'; g.beginPath(); g.moveTo(0.045 * px, 0); g.lineTo(0.045 * px, ch); g.stroke();
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  lines.slice(0, NOTEBOOK_LINES_MAX).forEach((line, i) => {
+    if (!line.trim()) return;
+    const cut = line.lastIndexOf(' — '), words = cut >= 0 ? line.slice(0, cut) : line, who = cut >= 0 ? line.slice(cut + 3) : '', y = rowY(i), x0 = 0.055 * px, room = cw - x0 - 0.03 * px;
+    let size = Math.round(0.013 * px); const hand = (s: number) => `500 ${s}px 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive`, sig = (s: number) => `italic 600 ${Math.round(s * 0.85)}px Georgia, serif`;
+    const width = (s: number) => { g.font = hand(s); const a = g.measureText(words).width; g.font = sig(s); return a + (who ? g.measureText('  — ' + who).width : 0); };
+    while (size > 12 && width(size) > room) size -= 1;
+    g.font = hand(size); g.fillStyle = f.ink ?? '#23305c'; g.fillText(words, x0, y); const w = g.measureText(words).width;
+    if (who) { g.font = sig(size); g.fillStyle = '#5a3d22'; g.fillText('  — ' + who, x0 + w, y); }
+  });
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texCache.set(key, t); return t;
 }
 /** Soul Actions entry 19: a pinboard's notes (one per line, "words — Name") as signed paper cards pinned to cork, each in
  *  its slot (pinSlot, the place the hand went). Seeded by the words, so every viewer sees the same tilt and paper. */
@@ -293,6 +318,7 @@ registerMesh({
       else if (ctx.def.tags.includes('checkers')) map = checkersTexture(typeof st.text === 'string' ? st.text : '', f);
       else if (ctx.def.tags.includes('posters')) map = posterWallTexture(f);
       else if (ctx.def.tags.includes('wanted')) map = wantedTexture(wantedList(st), f);
+      else if (ctx.def.tags.includes('notebook')) map = notebookTexture(typeof st.text === 'string' && st.text ? st.text.split('\n') : [], f);
       else if (ctx.def.tags.includes('pinboard')) map = pinboardTexture(typeof st.text === 'string' ? st.text.split('\n') : [], f);
       else if (ctx.def.tags.includes('signup')) { const names = typeof st.text === 'string' && st.text ? st.text.split('\n') : []; map = signupTexture(String(st.title ?? ''), names.slice(signupPageStart(names.length)), f); }   // #429: a guestbook shows its current page
       else if (ctx.def.tags.includes('poll')) { const opts = pollOptions(st), votes = typeof st.textBy === 'string' && st.textBy ? st.textBy.split(',').map((v) => Number(v.split(':')[1])) : []; map = pollTexture(String(st.title ?? ''), opts, opts.map((_, i) => votes.filter((v) => v === i).length), f); }

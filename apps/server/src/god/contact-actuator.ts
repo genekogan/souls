@@ -4,7 +4,7 @@ import {actuatorPoint,actuatorHand,tugPoint,opPoint,slidePoint,strokePoint,strok
 import { createHash } from 'node:crypto';
 import { isDry, stageWord } from './garden.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';
-import { opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, checkersCellOf, checkersSquare, checkersStatus, checkersRows, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@souls/world-compiler';
+import { NOTEBOOK_LINES_MAX, NOTEBOOK_TILT, notebookLine, opSchema, contactStateKey, CONTACT_EXTRA_FIELDS, DRAWER_TRAVEL, containerInside, containerOpen, containerHidden, pinSlot, signupSlot, signupCapacity, signupPageStart, SIGNUP_MAX, pollSlot, gameSquare, gameSquareOf, gameStatus, checkersCellOf, checkersSquare, checkersStatus, checkersRows, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WorldModel, type Op, type StoredDef } from '@souls/world-compiler';
 import { posterName, posterFreeSlot, posterTarget, posterAge, posterStale, wantedColumn, wantedFreeRow, wantedTarget } from './poster-boards.ts';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { actionPatch, actionsOf, actuatedState, keepsLeftBy, boardTextProblem, enumParamProblem, gamePatch, gameProblem, isGameAction, isListAction, listProblem, pinNotes, pollChoice, pollLines, whenRefusal } from './actuators.ts';
@@ -42,7 +42,19 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
    const params:Omit<HandActuatorParams,'actor'>={target,at};let root:[number,number,number],face:[number,number]|undefined,faceTo:[number,number]|undefined;
    if(contactStateKey(def,action)==='text'){
     // Stand square in front of the board's face; the hand works across the face from its centre.
-    const face=(def.make.kind==='gen'?(def.make.args as {faces?:{at?:number[];w?:number;h?:number}[]})?.faces?.[0]:undefined);if(!face?.at)return null;
+    const face=(def.make.kind==='gen'?(def.make.args as {faces?:{at?:number[];w?:number;h?:number;pitch?:number}[]})?.faces?.[0]:undefined);if(!face?.at)return null;
+    if(def.tags.includes('notebook')&&(action==='pin'||action==='unpin')){
+     // #428: a notebook's page lies on a lectern, sloped NOTEBOOK_TILT from vertical. The hand writes at (or crosses out)
+     // the line's own place on the page (notebookLine, shared with the viewer), 3 cm off the page; the body stands in
+     // front of the lectern, clear of its footprint, whatever the line.
+     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),t=NOTEBOOK_TILT,S=wp.s,[fx,fy,fz]=face.at.map(v=>v*S);
+     const local=(dx:number,dy:number,o:number):[number,number,number]=>{const along=-Math.sin(t)*dy*S+Math.cos(t)*o;return [wp.x+fx*c+fz*s+dx*S*c+along*s,wp.y+fy+Math.cos(t)*dy*S+Math.sin(t)*o,wp.z-fx*s+fz*c-dx*S*s+along*c];};
+     const notes=pinNotes(actuatedState(e,def)),i=action==='pin'?notes.length:notes.map(n=>n.by).lastIndexOf(soul.soulId),[dx,dy]=notebookLine(Math.max(0,Math.min(NOTEBOOK_LINES_MAX-1,i)));
+     params.at=local(dx,dy,.03);
+     const atZ=(params.at[0]-wp.x)*s+(params.at[2]-wp.z)*c,stand=Math.min(.7,Math.max(.3,def.size.box[2]/2*S+HUMAN_RADIUS+.03-atZ));
+     params.stroke={kind:action==='unpin'?'wipe':'write',yaw:wp.yaw,tilt:t,stand,width:action==='unpin'?.12:.2,height:.05,lines:1,seconds:action==='unpin'?1.2:2};
+     root=strokeRoot(params.at,params.stroke,wp.y);
+    }else{
     const c=Math.cos(wp.yaw),s=Math.sin(wp.yaw),[fx,fy,fz]=face.at.map(v=>v*wp.s),centre:[number,number,number]=[wp.x+fx*c+fz*s,wp.y+fy,wp.z-fx*s+fz*c];
     const text=typeof input.text==='string'?input.text.trim():'',lines=action==='write'?Math.min(3,Math.max(text.split('\n').length,Math.ceil(text.length/34),1)):1,pin=action==='pin'||action==='unpin',list=['sign','unsign','vote'].includes(action);
     // Work across the upper part of the face, near shoulder height, not at the hip.
@@ -83,6 +95,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     // Entry 38 (take 2): a Soul arriving along the wall turned to it during the reach and swung an arm out wide; posters and
     // wanted/offered notes turn to face the board on arrival first (entry 33's turn-then-reach), then the hands come up
     if(posters||wanted)faceTo=[params.at[0],params.at[2]];
+    }
    }else if(def.tags.includes('hand-drawer')){
     // a drawer slides straight out of the front (+z): the hand takes its knob, the body stands half a metre in front
     const shapes=def.make.kind==='gen'?(def.make.args as {shapes?:{role?:string;at?:number[];tint?:string}[]})?.shapes:undefined,knob=shapes?.find(s=>s.role==='drawer'&&s.tint==='brass'&&s.at);if(!knob?.at)return null;
@@ -179,7 +192,7 @@ export function createContactActuatorService(d:{levelAt?:(x:number,z:number,y:nu
     const count=(m:'X'|'O')=>`${m} ${st.men[m]+st.kings[m]} piece${st.men[m]+st.kings[m]===1?'':'s'}${st.kings[m]?` (${st.kings[m]} king${st.kings[m]===1?'':'s'})`:''}`;
     const head=st.fresh?'Checkers: a new game, X (the bottom side) to move':`Checkers: ${who('X')} (X)${names[1]?` against ${names[1]} (O)`:''}; ${st.winner?`${who(st.winner)} won`:`${who(st.turn)} to move${st.chain>=0?', jumping on':''}`}; ${count('X')}, ${count('O')}`;
     return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text:[head,...checkersRows(e.state?.text)].join('\n'),by:null,writable:true};}
-   return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text,...(def.tags?.includes('pinboard')?{notes:pinNotes(e.state??{})}:{}),...(def.tags?.includes('signup')?{title:String(e.state?.title??''),signups:pinNotes(e.state??{}),text:[String(e.state?.title??'Sign up'),...pinNotes(e.state??{}).map((n,i)=>`${i+1}. ${n.text}`)].join('\n')}:{}),...(def.tags?.includes('poll')?{title:String(e.state?.title??''),text:[String(e.state?.title??''),pollLines(e.state??{})].join('\n')}:{}),...(def.tags?.includes('posters')?{posters:posterList(e.state??{}).map(p=>({...p,age:posterAge(p),stale:posterStale(p)}))}:{}),...(def.tags?.includes('wanted')?{wanted:wantedList(e.state??{})}:{}),by:typeof e.state?.textBy==='string'&&e.state.textBy&&!def.tags?.some(t=>t==='poll'||t==='signup'||t==='posters'||t==='wanted')?e.state.textBy:null,writable:!!def.tags?.includes('hand-writable')};
+   return {id:e.id,name:e.name??def.name.replace(/^core-/,''),text,...(def.tags?.includes('pinboard')?{notes:pinNotes(e.state??{}),...(def.tags.includes('notebook')?{notebook:true}:{})}:{}),...(def.tags?.includes('signup')?{title:String(e.state?.title??''),signups:pinNotes(e.state??{}),text:[String(e.state?.title??'Sign up'),...pinNotes(e.state??{}).map((n,i)=>`${i+1}. ${n.text}`)].join('\n')}:{}),...(def.tags?.includes('poll')?{title:String(e.state?.title??''),text:[String(e.state?.title??''),pollLines(e.state??{})].join('\n')}:{}),...(def.tags?.includes('posters')?{posters:posterList(e.state??{}).map(p=>({...p,age:posterAge(p),stale:posterStale(p)}))}:{}),...(def.tags?.includes('wanted')?{wanted:wantedList(e.state??{})}:{}),by:typeof e.state?.textBy==='string'&&e.state.textBy&&!def.tags?.some(t=>t==='poll'||t==='signup'||t==='posters'||t==='wanted')?e.state.textBy:null,writable:!!def.tags?.includes('hand-writable')};
   },
   /** Entry 32: who may lock, unlock and knock on a lockable door. Its owner locks and unlocks it (key outside, thumb-turn
    *  inside); a door nobody owns locks for anyone. Knocking is for the outside (the front) of a closed door. A non-owner

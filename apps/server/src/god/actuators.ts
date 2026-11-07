@@ -4,7 +4,7 @@
 // `object:<entity>:switch-off`, walks up to it, reaches out, and the lamp's state changes in the world (an engine edit:
 // in the ledger, broadcast to viewers, never the god's to undo). Nothing in the edge changes: the object framework's own
 // capabilities, admission, receipts and body plans carry it.
-import { PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, checkersMoveProblem, checkersPlay, checkersStatus, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, containerHidden, type Entity, type StoredDef, type WorldModel } from '@souls/world-compiler';
+import { NOTEBOOK_LINES_MAX, NOTEBOOK_PER_SOUL, NOTEBOOK_TEXT_MAX, PIN_NOTES_MAX, PIN_PER_SOUL, PIN_TEXT_MAX, SIGNUP_MAX, signupCapacity, signupNoun, checkersMoveProblem, checkersPlay, checkersStatus, gameSquareOf, gameStatus, pollOptions, containerInside, containerOpen, containerHidden, type Entity, type StoredDef, type WorldModel } from '@souls/world-compiler';
 import type { EdgeSoul } from '../edge/contract.ts';
 import { isContactActuator, CONTACT_REACH } from './contact-actuator.ts';
 import { isPosterAction, isWantedAction, posterProblem, posterPatch, wantedProblem, wantedPatch } from './poster-boards.ts';
@@ -197,14 +197,18 @@ export function pinNotes(state: Record<string, unknown>): { text: string; by: st
   const lines = typeof state.text === 'string' && state.text ? state.text.split('\n') : [], by = typeof state.textBy === 'string' && state.textBy ? state.textBy.split(',') : [];
   return lines.map((text, i) => ({ text, by: by[i] ?? '' }));
 }
+/** #428: the same faculty's limits and words on a notebook (its lines) and on a pinboard (its notes). */
+const pinLimits = (def?: StoredDef) => def?.tags?.includes('notebook')
+  ? { max: NOTEBOOK_LINES_MAX, per: NOTEBOOK_PER_SOUL, text: NOTEBOOK_TEXT_MAX, none: 'You have no line in this notebook; only its writer crosses a line out.', full: `The notebook is full (${NOTEBOOK_LINES_MAX} lines); a line goes only when its writer crosses it out.`, mine: `You already have ${NOTEBOOK_PER_SOUL} lines in this notebook; cross one out first.`, one: 'A line in the notebook is one line.' }
+  : { max: PIN_NOTES_MAX, per: PIN_PER_SOUL, text: PIN_TEXT_MAX, none: 'You have no note on this board; only its author takes a note down.', full: `The board is full (${PIN_NOTES_MAX} notes); a note comes down only when its author takes it down.`, mine: `You already have ${PIN_PER_SOUL} notes on this board; take one down first.`, one: 'A note is one line.' };
 /** Why this Soul cannot pin (with these words) or take down a note here now; null = it can. `text` undefined = availability only. */
-export function pinProblem(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, text?: unknown): Refusal | null {
-  const notes = pinNotes(state), mine = notes.filter(n => n.by === soul.soulId).length;
-  if (a.name === 'unpin') return mine ? null : { code: 'object.not-yours', reason: 'You have no note on this board; only its author takes a note down.' };
-  if (notes.length >= PIN_NOTES_MAX) return { code: 'object.state', reason: `The board is full (${PIN_NOTES_MAX} notes); a note comes down only when its author takes it down.` };
-  if (mine >= PIN_PER_SOUL) return { code: 'object.state', reason: `You already have ${PIN_PER_SOUL} notes on this board; take one down first.` };
+export function pinProblem(a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, text?: unknown, def?: StoredDef): Refusal | null {
+  const notes = pinNotes(state), mine = notes.filter(n => n.by === soul.soulId).length, l = pinLimits(def);
+  if (a.name === 'unpin') return mine ? null : { code: 'object.not-yours', reason: l.none };
+  if (notes.length >= l.max) return { code: 'object.state', reason: l.full };
+  if (mine >= l.per) return { code: 'object.state', reason: l.mine };
   if (text === undefined) return null;
-  const bad = boardTextProblem(text, PIN_TEXT_MAX, 1); if (bad) return bad.reason.startsWith('At most') ? { ...bad, reason: 'A note is one line.' } : bad;
+  const bad = boardTextProblem(text, l.text, 1); if (bad) return bad.reason.startsWith('At most') ? { ...bad, reason: l.one } : bad;
   return null;
 }
 /** The pinboard's next `text`/`textBy` after this Soul pins a signed note or takes down its latest one. */
@@ -238,7 +242,7 @@ export const pollLines = (state: Record<string, unknown>, votes = pollVotes(stat
 export function listProblem(def: StoredDef, a: { name: string }, state: Record<string, unknown>, soul: EdgeSoul, params?: Record<string, unknown>): Refusal | null {
   if (isPosterAction(def, a)) return posterProblem(a, state, soul, params);   // entry 38
   if (isWantedAction(def, a)) return wantedProblem(a, state, soul, params);
-  if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined);
+  if (isPinAction(def, a)) return pinProblem(a, state, soul, a.name === 'pin' ? params?.text : undefined, def);
   if (isSignupAction(def, a)) {
     // #429: capacity, noun and page turning come from the def (signupCapacity / signupNoun / `keeps-newest`); the sheet's words stay
     const names = pinNotes(state), mine = names.some(n => n.by === soul.soulId), noun = signupNoun(def), cap = signupCapacity(def);
@@ -364,7 +368,7 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
         const contact = host.deferContacts && isContactActuator(def, a);
         const motion=contact&&s.key?host.contactPlan?.(ctx.soul,s.key,a.name,params):null;
         if(motion){const me=host.bodyAt(ctx.soul)!,far=(motion.level??0)>0||Math.hypot(me[0]-motion.root[0],me[1]-motion.root[2])>.1;
-          return {state:s,result:{action:a.name,set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul),...(def.tags?.includes('checkers')&&a.name==='move'?{summary:checkersSummary((s.key&&host.stateOf?.(s.key))||s.state||{},params,nameOf(s))}:{})},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
+          return {state:s,result:{action:a.name,...(def.tags?.includes('notebook')?{}:{set:actionPatch(def,a,(s.key&&host.stateOf?.(s.key))||s.state||{},params,ctx.soul)}),...(def.tags?.includes('checkers')&&a.name==='move'?{summary:checkersSummary((s.key&&host.stateOf?.(s.key))||s.state||{},params,nameOf(s))}:{})},bodies:[{label:a.label,steps:[{verb:'stand',params:{}},...(far?[(motion.level??0)>0||motion.params.stroke?{verb:'mars:walk_to',params:{x:motion.root[0],z:motion.root[2],level:motion.level}}:{verb:'walk_to',params:{to:[motion.root[0],motion.root[2]],standoff:0}}]:[]),...(motion.face?[{verb:'mars:face',params:{target:{point:motion.face}}}]:[]),{verb:'mars:hand_actuator_v1',params:motion.params},...stepBack(def,a,motion),...gameStepBack(def,a,motion),...(motion.after?[{verb:'walk_to',params:{to:motion.after,standoff:0}}]:[])]}]};}
 
         const me = host.bodyAt(ctx.soul)!, to = s.front ?? s.at!, far = Math.hypot(s.at![0] - me[0], s.at![1] - me[1]) > (contact ? CONTACT_REACH : ACT_REACH);
         const water = s.key ? waterPlan(a, s.key, ctx.soul, host) : null;
@@ -376,7 +380,8 @@ export function kindActions(def: StoredDef, host: ActuatorHost, nameOf: (s: Buil
           ? [2*s.at[0]-s.front[0],2*s.at[1]-s.front[1]] as Vec2 : s.front??null;
         const ap = far && s.key ? host.approach?.(s.key, ctx.soul, front, contact ? .75 : undefined) : null;
         const walk = !far ? [] : ap ? [ap.level === 0 ? { verb: 'walk_to', params: { to: ap.p, standoff: 0 } } : { verb: 'mars:walk_to', params: { x: ap.p[0], z: ap.p[1], level: ap.level } }] : [{ verb: 'walk_to', params: { to, standoff: 0.5 } }];
-        return { state: s, result: { action: a.name, set: patch, ...(water && !isRefusal(water) ? { summary: water.summary } : {}) }, bodies: [{ label: `${a.label}`, steps: contact ? [{verb:'stand',params:{}},...walk,{verb:'mars:pose_v1',params:{activity:'operate',seconds:1.2,face:s.at!}}] : [...walk, { verb: 'wave', params: { at: s.key, seconds: 1 } }] }] };
+        // #428: a notebook's lines come with a read, not with the answer to writing one
+        return { state: s, result: { action: a.name, ...(def.tags?.includes('notebook') ? {} : { set: patch }), ...(water && !isRefusal(water) ? { summary: water.summary } : {}) }, bodies: [{ label: `${a.label}`, steps: contact ? [{verb:'stand',params:{}},...walk,{verb:'mars:pose_v1',params:{activity:'operate',seconds:1.2,face:s.at!}}] : [...walk, { verb: 'wave', params: { at: s.key, seconds: 1 } }] }] };
       },
     };
   }
