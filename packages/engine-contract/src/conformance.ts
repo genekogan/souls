@@ -44,3 +44,16 @@ export function conformance(name: string, factory: EngineFactory, drive: (e: Ret
     assert.equal(r.diagnostic?.code, 'action.unknown-verb');
   });
 }
+
+/** For an engine that declares rules (#1150). `force` arranges for the next step's move to break one, by the engine's own
+ *  means. The step refuses it: no violation is left, the refusal is reported, and a second run makes the same one. */
+export function refusalConformance(name: string, factory: EngineFactory, force: (e: ReturnType<EngineFactory['create']>) => void) {
+  test(`${name}: a refusable move is refused inside the step`, () => {
+    const run = () => { const e = factory.create(factory.genesis('seed-7')); force(e); const seen = e.runtime.violations.length, out = e.step(); return { e, out, seen }; };
+    const a = run(), b = run();
+    assert.equal(a.e.runtime.violations.length, a.seen);
+    assert.ok(a.out.refusals?.length);
+    assert.deepEqual(a.out.refusals, b.out.refusals);
+    assert.equal(a.e.stateHash(), b.e.stateHash());
+  });
+}
