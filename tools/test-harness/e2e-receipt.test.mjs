@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { collect } from './e2e-receipt.mjs';
 
 function fixture(t, report) {
-  const root=mkdtempSync(join(tmpdir(),'sim-gate-e2e-'));
+  const root=mkdtempSync(join(tmpdir(),'souls-gate-e2e-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const dir=join(root,'.lane/e2e-party/fresh'); mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,'report.json'),JSON.stringify({startedAt:'2026-10-15T23:00:00Z',steps:[{name:'admitted arrival',ok:true}],summary:{steps:1,failed:0},failures:[],...report}));

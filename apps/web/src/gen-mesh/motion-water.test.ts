@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WorldModel } from '@sim/world-compiler';
-import { waterLevelAt, type Ground, type Water } from '@sim/ground';
+import { WorldModel } from '@souls/world-compiler';
+import { waterLevelAt, type Ground, type Water } from '@souls/ground';
 import { surroundings, waterAt } from './motion.ts';
 
 function world(waters: Water[], seaLevel?: number) {

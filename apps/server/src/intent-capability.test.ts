@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {getRequestListener} from '@hono/node-server';
-import {marsFactory} from '@sim/engine-mars';
+import {marsFactory} from '@souls/engine-mars';
 import {WorldHost} from './world.ts';
 import {Db} from './db.ts';
 import {Brain} from './brain.ts';
@@ -11,7 +11,7 @@ import {Souls} from './souls.ts';
 import {Auth} from './auth.ts';
 import {buildApp} from './http.ts';
 import {IntentControlV2} from './intent-control.ts';
-import {INTENT_V2,intentOwnerControlV2Schema,publicEvent} from '@sim/protocol';
+import {INTENT_V2,intentOwnerControlV2Schema,publicEvent} from '@souls/protocol';
 import {intentNativeFixture,worldId} from '../test/intent-native-fixture.ts';
 
 type Fixture=ReturnType<typeof intentNativeFixture>;

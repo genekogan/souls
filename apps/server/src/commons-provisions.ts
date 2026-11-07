@@ -1,7 +1,7 @@
 import type {WorldHost} from './world.ts';
 import type {Brain} from './brain.ts';
-import type {Card} from '@sim/kernel';
-import {COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import type {Card} from '@souls/kernel';
+import {COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 
 /** Birth-order evidence is stable through retirement/restart; slots are never
  * reassigned by a current cast sort. Only actual owned Souls receive cards. */

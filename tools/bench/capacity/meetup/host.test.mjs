@@ -1,0 +1,75 @@
+// CW2 (#736) A1/A4: the allocation probe's parsers on fixed kernel text; unknown stays null, never 0.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parseCpuMax, parseKv, parsePressure, parseProcStat, parseTaskStat, cgroupDir, between, hotThreads, probe } from './host.mjs';
+
+test('cpu.max: a quota in cores, or unlimited', () => {
+  assert.deepEqual(parseCpuMax('200000 100000\n'), { quotaCores: 2, periodUs: 100000, unlimited: false });
+  assert.deepEqual(parseCpuMax('max 100000'), { quotaCores: null, periodUs: 100000, unlimited: true });
+  assert.equal(parseCpuMax(null), null);
+});
+
+test('cgroup v2 path; v1 or absent is unknown', () => {
+  assert.equal(cgroupDir('0::/system.slice/sim-bench.scope\n'), '/sys/fs/cgroup/system.slice/sim-bench.scope');
+  assert.equal(cgroupDir('0::/\n'), '/sys/fs/cgroup');
+  assert.equal(cgroupDir('12:cpu,cpuacct:/x\n'), null);
+  assert.equal(cgroupDir(null), null);
+});
+
+test('PSI, cpu.stat and /proc/stat (steal included)', () => {
+  const p = parsePressure('some avg10=1.50 avg60=0.80 avg300=0.10 total=123456\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=10\n');
+  assert.equal(p.some.avg10, 1.5); assert.equal(p.full.total, 10);
+  assert.deepEqual(parseKv('usage_usec 5000000\nnr_periods 100\nnr_throttled 7\nthrottled_usec 350000\n'), { usage_usec: 5e6, nr_periods: 100, nr_throttled: 7, throttled_usec: 350000 });
+  const s = parseProcStat('cpu  100 0 50 800 10 0 0 40 0 0\ncpu0 1 2 3\n');
+  assert.equal(s.steal, 40); assert.equal(s.total, 1000);
+  assert.equal(parseProcStat('intr 1 2'), null);
+});
+
+test('task stat: names with spaces and parentheses', () => {
+  assert.deepEqual(parseTaskStat('4242 (node (main) x) S 1 1 1 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 9 0'), { name: 'node (main) x', cpuTicks: 300 });
+});
+
+test('between: steal share, throttling and pressure as rates; missing sources stay null', () => {
+  const a = { procStat: { steal: 10, total: 1000 }, cpuStat: { usage_usec: 0, nr_periods: 0, nr_throttled: 0, throttled_usec: 0 }, pressure: { cpu: { some: { total: 0 } }, memory: null, io: null } };
+  const b = { procStat: { steal: 60, total: 2000 }, cpuStat: { usage_usec: 15e6, nr_periods: 100, nr_throttled: 25, throttled_usec: 2e6 }, pressure: { cpu: { some: { total: 1e6 } }, memory: null, io: null } };
+  assert.deepEqual(between(a, b, 10), { stealShare: 0.05, cgroupCpuCores: 1.5, throttledPeriodShare: 0.25, throttledSecondsPerSecond: 0.2, pressureSomeShare: { cpu: 0.1, memory: null, io: null } });
+  assert.equal(between(a, null, 10), null);
+});
+
+test('hot threads: the main thread and the hottest one, in cores', () => {
+  const a = { main: 100, threads: [{ tid: 1, name: 'node', cpuTicks: 100 }, { tid: 2, name: 'worker', cpuTicks: 0 }] };
+  const b = { main: 1000, threads: [{ tid: 1, name: 'node', cpuTicks: 1000 }, { tid: 2, name: 'worker', cpuTicks: 200 }, { tid: 3, name: 'new', cpuTicks: 5 }] };
+  assert.deepEqual(hotThreads(a, b, 10), { mainCores: 0.9, hottest: { name: 'node', cores: 0.9 }, threads: 2 });
+});
+
+test('probe never invents numbers where the host has no cgroup v2 (macOS: all unknown)', () => {
+  const p = probe();
+  assert.equal(typeof p.cores, 'number');
+  if (!p.supported) { assert.equal(p.cpuMax, null); assert.equal(p.memoryMaxMb, null); assert.equal(p.cpuStat, null); }
+});
+
+test('between: no enforcement periods is 0 throttling (known); no cpu.stat is unknown', () => {
+  const at = (periods, throttled) => ({ procStat: { steal: 0, total: 1000 }, cpuStat: { usage_usec: 0, nr_periods: periods, nr_throttled: throttled, throttled_usec: 0 }, pressure: {} });
+  assert.equal(between(at(0, 0), at(0, 0), 10).throttledPeriodShare, 0);
+  assert.equal(between({ ...at(0, 0), cpuStat: null }, { ...at(0, 0), cpuStat: null }, 10).throttledPeriodShare, null);
+});
+
+test('resourceSample (#955): a world\'s files, live.json and threads; unreadable is null, never 0', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs'), { tmpdir } = await import('node:os'), { join } = await import('node:path');
+  const { resourceSample, dirMb } = await import('./host.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'res-')), wd = join(root, 'launcher', 'worlds', 'w1'), proc = join(root, 'proc');
+  try {
+    mkdirSync(join(wd, 'takes'), { recursive: true }); mkdirSync(join(proc, '42', 'task', '1'), { recursive: true }); mkdirSync(join(proc, '42', 'task', '2'));
+    writeFileSync(join(wd, 'sim.db'), Buffer.alloc(2 * 2 ** 20)); writeFileSync(join(wd, 'sim.db-wal'), Buffer.alloc(2 ** 19)); writeFileSync(join(wd, 'takes', 't0'), Buffer.alloc(2 ** 19));
+    writeFileSync(join(wd, 'live.json'), JSON.stringify({ heap: { usedMb: 300, limitMb: 2048, gcPct10s: 1.5 }, queue: { depth: 2 } }));
+    const tdir = join(root, 'telemetry'); mkdirSync(tdir); writeFileSync(join(tdir, 'h.jsonl'), Buffer.alloc(2 ** 20));
+    const r = resourceSample({ ldata: join(root, 'launcher'), worlds: [{ slug: 'w1', pid: 42, rssMb: 812.4 }, { slug: 'w2', pid: null, rssMb: null }], telemetryDir: tdir, procRoot: proc });
+    const sz = 3 + JSON.stringify({ heap: { usedMb: 300, limitMb: 2048, gcPct10s: 1.5 }, queue: { depth: 2 } }).length / 2 ** 20;
+    assert.deepEqual({ ...r.worlds.w1, dataDirMb: undefined }, { rssMb: 812, heapUsedMb: 300, heapLimitMb: 2048, nonHeapMb: 512, gcPct: 1.5, queueDepth: 2, threads: 2, dbMb: 2, walMb: 0.5, shmMb: null, dataDirMb: undefined });
+    assert.ok(Math.abs(r.worlds.w1.dataDirMb - sz) < 0.001, 'the whole data directory, nested files included');
+    assert.deepEqual(r.worlds.w2, { rssMb: null, heapUsedMb: null, heapLimitMb: null, nonHeapMb: null, gcPct: null, queueDepth: null, threads: null, dbMb: null, walMb: null, shmMb: null, dataDirMb: null });
+    assert.equal(r.telemetryMb, 1); assert.ok(r.diskFreeMb > 0);
+    assert.equal(resourceSample({ ldata: join(root, 'launcher'), worlds: [] }).telemetryMb, null, 'telemetry off: unknown');
+    assert.equal(dirMb(join(root, 'nope')), null);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

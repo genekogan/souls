@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { CORE_KIT, WorldModel, applyBatch, coreRef, hashOf } from '@sim/world-compiler';
+import { CORE_KIT, WorldModel, applyBatch, coreRef, hashOf } from '@souls/world-compiler';
 import { GodLayers, type LayersHost } from './layers.ts';
 import { Objects } from '../edge/comms/objects/framework.ts';
 import { calendarKind } from '../edge/comms/objects/calendar.ts';

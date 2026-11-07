@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {STATION_PINS_V1,stationEpochId,makeStationCueV1,stationCueV1Schema,stationEpochV1Schema,stationAnchorV1Schema,
   stationEndTick,stationExpiryTick,stationPhaseAtTick,stationLiveV1Schema,stationLivePhaseV1,acceptStationAnchorV1,stationHistoricalV1Schema} from './station-v1.ts';
 

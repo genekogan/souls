@@ -3,7 +3,7 @@
 // Walls follow the ground with coursed stone / brick tones, a chamfered cap, pillars and a timber or
 // iron gate leaf at each gate; fences are picket / rail / iron / wire; hedges are rounded, lumpy,
 // optionally in flower; power lines droop between poles with crossarms and insulators.
-import { gatesOf, smoothPath } from '@sim/generators';
+import { gatesOf, smoothPath } from '@souls/generators';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { Soup, h01, rgb, scale, soupMesh, type RGB, type V3 } from './soup.ts';
 

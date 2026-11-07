@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {marsFactory,type MarsWorldConfig} from '@sim/engine-mars';
-import {hashOf} from '@sim/engine-contract';
-import {kernelHash} from '@sim/kernel';
+import {marsFactory,type MarsWorldConfig} from '@souls/engine-mars';
+import {hashOf} from '@souls/engine-contract';
+import {kernelHash} from '@souls/kernel';
 import {fixture,invite} from '../test/native-owner-fixture.ts';
 import {CampCards} from './camp.ts';
 import {campResourceBindings,LEGACY_CAMP_RESOURCES} from './camp-resources.ts';

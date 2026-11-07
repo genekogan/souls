@@ -3,14 +3,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Hono} from 'hono';
-import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@sim/engine-mars';
+import {retainedCommonsShoreFactory,nativeSleepSnapshotFactoryV1} from '@souls/engine-mars';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {EdgeLedger} from './edge/ledger/ledger.ts';
 import {registerEdgeComms} from './edge/comms/index.ts';
 import {WorldHost} from './world.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edgeSoulResolver} from './edge/routes.ts';
 // LINK (Gene 2026-10-24): idle bodies now stay in the world (zombie/asleep); removal after 60 min idle only runs with SIM_BEAM on, so this enables it.
 test('fading (flag on): removed after 60 min idle, hidden from others; next act reclaims at a starting place',{timeout:300000},async t=>{

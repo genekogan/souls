@@ -1,8 +1,8 @@
 // Source-owned installer for the existing Eden control plane. Explicitly
 // selected by main; no default factory or environment/config value changes.
-import {marsFactory,marsCommonsTransitionFactory,marsCrewRemovalTransitionFactory,GREEN_FIELD_WORLD,EDEN_SAFE_COMMONS_WORLD,commonsLifeReaderFactory,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1,edenLectureFactoryV1,edenGroundFactoryV1} from '@sim/engine-mars';
+import {marsFactory,marsCommonsTransitionFactory,marsCrewRemovalTransitionFactory,GREEN_FIELD_WORLD,EDEN_SAFE_COMMONS_WORLD,commonsLifeReaderFactory,retainedCommonsShoreFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1,edenLectureFactoryV1,edenGroundFactoryV1} from '@souls/engine-mars';
 import {readFileSync} from 'node:fs';
-import type {EngineFactory} from '@sim/engine-contract';
+import type {EngineFactory} from '@souls/engine-contract';
 import type {Db} from './db.ts';
 import type {WorldHost} from './world.ts';
 import type {Config} from './config.ts';

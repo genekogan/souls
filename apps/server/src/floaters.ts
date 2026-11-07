@@ -1,5 +1,5 @@
 // Place-specific affordances, chosen by minds. No day order or automatic assignments.
-import {cardHash,type Card} from '@sim/kernel';
+import {cardHash,type Card} from '@souls/kernel';
 import type {WorldHost} from './world.ts';
 export class FloaterCards{
  private dirty=true;

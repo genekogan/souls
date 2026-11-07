@@ -5,7 +5,9 @@ export class InitialWorldReadiness{
  private jobs=new Map<string,{run:()=>Promise<void>;status:'pending'|'ready'|'failed';attempt:number}>();
  private knownDownloads:ReadonlySet<string>|null=null;private downloads=new Map<string,{loaded:number;total:number|null}>();
  private current:InitialWorldProgress|null=null;private prepareFailure:string|null=null;private sealed=false;private prepared=false;private rendered=false;private cancelled=false;
- constructor(readonly generation:number,private changed:(progress:InitialWorldProgress)=>void=()=>{}){}
+ readonly generation:number;
+ private changed:(progress:InitialWorldProgress)=>void;
+ constructor(generation:number,changed:(progress:InitialWorldProgress)=>void=()=>{}){this.generation=generation;this.changed=changed;}
  require(id:string,run:()=>Promise<void>){if(this.sealed||this.cancelled)throw Error('Initial dependencies already closed');if(this.jobs.has(id))throw Error('Duplicate initial dependency');this.jobs.set(id,{run,status:'pending',attempt:0});this.current=null;}
  seal(){if(this.sealed||this.cancelled)return;this.sealed=true;this.emit();for(const [id]of this.jobs)this.start(id);}
  private start(id:string){const job=this.jobs.get(id)!;const attempt=++job.attempt;job.status='pending';this.emit();Promise.resolve().then(job.run).then(()=>{if(!this.cancelled&&job.attempt===attempt){job.status='ready';this.emit();}},()=>{if(!this.cancelled&&job.attempt===attempt){job.status='failed';this.emit();}});}

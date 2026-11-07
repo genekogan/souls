@@ -9,7 +9,7 @@
 // The view's depth buffer (near 0.1, far 2400) cannot hold anything beyond ~2.1 km in front of the sky dome, so the
 // panorama sits exactly there and stands in for everything farther. Coordinates: x east, z south; bearings compass.
 import * as THREE from 'three';
-import { TILE_M } from '@sim/ground';
+import { TILE_M } from '@souls/ground';
 import { registerMesh, type MeshCtx } from './registry.ts';
 import { terrainColorFor } from './ground-palette.ts';
 import { waterMaterial, waterMesh } from './water.ts';

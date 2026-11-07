@@ -13,8 +13,8 @@
 // Candidates are dealt per 8 m cell from a fixed hash, so the same blade is always in the same place, and each cell's
 // instances are sorted by a random rank: the renderer keeps a prefix per cell and thins the rest with distance.
 import * as THREE from 'three';
-import { levelAmong, watersNear } from '@sim/ground';
-import type { Entity, WorldModel } from '@sim/world-compiler';
+import { levelAmong, watersNear } from '@souls/ground';
+import type { Entity, WorldModel } from '@souls/world-compiler';
 import { blockTest, inPoly, shapeBox, shapeHits, type BlockCells, type BlockShape } from './block-test.ts';
 import { terrainColorFor, groundRealismFor } from './ground-palette.ts';
 

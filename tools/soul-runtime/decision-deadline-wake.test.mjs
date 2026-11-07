@@ -7,7 +7,7 @@ import {openJournal} from './journal.mjs';
 import {retainDecision,applyPendingDecision,deadlineLeadMs,ownerCommitmentTimes,deadlineWake} from './decision.mjs';
 
 function fixture(t,initialInstruction){
- const dir=mkdtempSync(join(tmpdir(),'sim-deadline-wake-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});
+ const dir=mkdtempSync(join(tmpdir(),'souls-deadline-wake-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});
  t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});
  const fence=j.control.claim('test');if(initialInstruction!==undefined)j.control.save(fence,0,{initialInstruction});
  return {j,dir,fence};
@@ -136,7 +136,7 @@ class Host extends EventEmitter{
 for(const dated of [true,false])test('an idle controller waiting on '+(dated?'a retained deadline wakes at the lead':'its own undated wake adds no early prompt'),async t=>{
  const origin=Date.parse('2026-10-31T08:33:38.000Z'),deadline=origin+531000;
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const dir=mkdtempSync(join(tmpdir(),'sim-deadline-supervisor-')),journal=openJournal(dir,{worldId:'world',soulId:'s_subject'});
+ const dir=mkdtempSync(join(tmpdir(),'souls-deadline-supervisor-')),journal=openJournal(dir,{worldId:'world',soulId:'s_subject'});
  const f=journal.control.claim('setup');journal.control.save(f,0,{listenTo:'nearby',initialInstruction:dated?`Finish your errand by ${iso(deadline)}.`:'Finish your errand, then report.'});journal.control.release(f);
  const host=new Host(),stop=new AbortController();
  const world={read:async()=>({here:'native'}),write:async()=>({accepted:true})};

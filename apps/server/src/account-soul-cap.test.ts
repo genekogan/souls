@@ -5,7 +5,7 @@ import { fixture } from '../test/native-owner-fixture.ts';
 import { buildApp } from './http.ts';
 import type { Hub } from './hub.ts';
 import type { AccountIdentity } from './accounts/store.ts';
-import { marsFactory, GREEN_FIELD_WORLD } from '@sim/engine-mars';
+import { marsFactory, GREEN_FIELD_WORLD } from '@souls/engine-mars';
 
 test('account approval admits twenty Souls, counts pending bodies, and refuses only that owner at twenty-one', async t => {
   let clock = Date.now();

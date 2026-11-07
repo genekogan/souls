@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Api } from './useSim.ts';
+import type { Api } from './useSouls.ts';
 
 type Agg = { total: number; calls: number; byTier: Record<string, { calls: number; cost: number }> };
 type Report = {
