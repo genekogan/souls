@@ -66,7 +66,7 @@
 .human-world:not(.has-advanced) .viewer-status{max-width:100%;box-sizing:border-box;overflow:hidden}
 .human-world:not(.has-advanced) .viewer-status .world-time{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .human-world:not(.has-advanced) .viewer-status [data-viewer-status].loading{color:var(--dim)}
-.viewer-arrival{position:fixed;inset:0;z-index:2147480001;display:grid;place-items:center;padding:16px;overflow:hidden;pointer-events:none;background:#000;color:#000}
+.viewer-arrival{position:fixed;inset:0;z-index:2147480001;display:grid;place-items:center;padding:16px;overflow:hidden;pointer-events:none;background:#000;color:#000;font:15px/1.5 system-ui,sans-serif}
 /* #1166: above early-render.ts's poster (z-index 2147480000), so a phone's world dissolves in like any other */
 .viewer-arrival[data-white="true"]{background:#fff}
 .viewer-arrival[data-white="true"] canvas,.viewer-arrival[data-white="true"] .arrival-disc{display:none}
@@ -74,16 +74,17 @@
 /* QA2 F13: Soul name plates wait until the arrival card is gone (they drew over it on phones) */
 .human-world:has(.viewer-arrival:not([data-done="true"])) .world-labels{opacity:0}
 .viewer-arrival canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.arrival-disc{--r:146px;position:absolute;left:50%;top:50%;width:calc(var(--r)*2/.7);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle closest-side,#fff 70%,transparent)}
+.arrival-disc{--r:146px;position:absolute;left:50%;top:50%;width:calc(var(--r)*2/.52);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle closest-side,#fff 52%,rgba(255,246,236,.5) 68%,rgba(255,238,222,.12) 84%,transparent)}
 .arrival-disc[hidden]{display:none}
+.viewer-arrival[data-finish="true"] .arrival-disc{width:300vmax;transition:width .7s ease-in}
 .arrival-text{position:relative;display:grid;gap:10px;width:min(240px,70vw);text-align:center}
 .viewer-arrival-title{margin:0;font-weight:650;font-size:17px;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.viewer-arrival-progress{display:flex;align-items:center;gap:8px}
-.viewer-arrival-progress progress{-webkit-appearance:none;appearance:none;flex:1 1 auto;width:auto;min-width:0;height:4px;border:0;border-radius:2px;overflow:hidden;background:rgba(0,0,0,.16)}
+.viewer-arrival-progress{display:grid;gap:6px;justify-items:center}
+.viewer-arrival-progress progress{-webkit-appearance:none;appearance:none;width:100%;height:4px;border:0;border-radius:2px;overflow:hidden;background:rgba(0,0,0,.16)}
 .viewer-arrival-progress progress::-webkit-progress-bar{background:transparent}
 .viewer-arrival-progress progress::-webkit-progress-value{background:#000;border-radius:2px}
 .viewer-arrival-progress progress::-moz-progress-bar{background:#000;border-radius:2px}
-.viewer-arrival-progress span{flex:0 0 auto;min-width:4ch;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.viewer-arrival-progress span{min-height:1.2em;font-size:12px;font-variant-numeric:tabular-nums}
 
 /* VF2: the camera button in the header, and Broadcast / Following beside "● Live · time". */
 .human-world:not(.has-advanced) .world-hud.slim .hud-camera{width:38px;min-height:38px;height:38px;padding:0;display:grid;place-items:center;border-radius:50%;border:1px solid var(--glass-line);background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--glass-shadow);color:var(--fg)}

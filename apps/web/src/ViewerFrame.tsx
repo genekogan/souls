@@ -96,10 +96,10 @@ export function ViewerFrame({ handle, state, dt, navigationOpen, onNavigationCha
   const early = useSyncExternalStore(earlyArrival.subscribe, earlyArrival.shown, earlyArrival.shown);
   if (early) drawnOnce.current = true;
   const card = ((!early && (arriving || preparing)) || assetsNear) && initial?.stage !== 'failed';
-  // #1166: the light always plays, even over a phone's world already drawn (early-render.ts), and only once: it never
-  // returns over a world it has dissolved into.
-  const [arrivalShown, setArrivalShown] = useState(true);
-  const lightGone = useRef(false);
+  // P7d: a world already drawn before this page part came shows no light (index.html's boot light finishes that arrival).
+  // #1166: the light plays once; it never returns over a world it has dissolved into.
+  const [arrivalShown, setArrivalShown] = useState(() => !earlyArrival.shown());
+  const lightGone = useRef(earlyArrival.shown());
   const [shot] = useState(() => /[?&]shot=/.test(location.search));
   useEffect(() => { if (card) { if (!lightGone.current) setArrivalShown(true); return; } arrivalMark('card-done'); }, [card]);
   const arrivalGone = useCallback(() => { lightGone.current = true; setArrivalShown(false); }, []);

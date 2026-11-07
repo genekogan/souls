@@ -36,7 +36,7 @@ test('first paint is the same picture: black, the disc and the words, and no car
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8'), css = readFileSync(new URL('./world-chrome.css', import.meta.url), 'utf8');
   assert.match(html, /class="arrival-disc"/); assert.match(html, /Loading the world/);
   assert.doesNotMatch(html, /viewer-arrival-card|viewer-arrival-spinner|Arriving/);
-  assert.doesNotMatch(html, /early-world-poster/, 'the boot light stays over the poster until the app\'s light takes over');
+  assert.match(html, /early-world-poster[\s\S]*dataset\.finish/, 'a phone\'s poster does not wait for the app\'s code: the boot light finishes the arrival');
   assert.match(css, /\.viewer-arrival\{[^}]*background:#000/);
 });
 
