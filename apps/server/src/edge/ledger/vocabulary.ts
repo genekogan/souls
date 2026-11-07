@@ -588,10 +588,15 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
   if (notebookOffered && NOTEBOOK_WORDS[verb] && !ctx.caps.some(c => c.verb === verb)) verb = NOTEBOOK_WORDS[verb];
   else if (ACT_ALIASES[verb] && !ctx.caps.some(c => c.verb === verb)) {
     // the second meaning when it can happen and the first can't, or when the words name its target
-    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest);
-    // what an offer names: its target and its label's own nouns, never the label's "from" or "your" (#990)
-    const named = (c: EdgeCapability) => {const all = tokens([c.label, ...ctx.target(c).names].join(' ')).filter(w => !LABEL_FILLER.has(w)); return ws.some(w => tokenHit(w, all));};
-    const altFits = !!alt && (can(alt).length ? !ctx.caps.some(c => c.action === primary && named(c)) && (!can(primary).length || can(alt).some(named)) : !verbs.has(primary) && verbs.has(alt));
+    const primary = ACT_ALIASES[verb]!, alt = ACT_ALT[verb], can = (a: string) => ctx.caps.filter(c => c.action === a && c.available), ws = tokens(rest).filter(w => !LABEL_FILLER.has(w));
+    // what the words name decides (#990): a target's own name first, then a label's noun ("your line"), never its "from" or
+    // "your". Words that name neither stay with the first meaning, so another thing's note is not taken down for them.
+    const hits = (text: string) => {const all = tokens(text).filter(w => !LABEL_FILLER.has(w)); return ws.some(w => tokenHit(w, all));};
+    const name = (c: EdgeCapability) => hits(ctx.target(c).names.join(' ')), noun = (c: EdgeCapability) => hits(c.label);
+    const first = ctx.caps.filter(c => c.action === primary), second = alt ? can(alt) : [];
+    const altFits = !!alt && (second.length
+      ? first.some(name) ? false : second.some(name) ? true : first.some(noun) ? false : second.some(noun) ? true : !ws.length && !can(primary).length
+      : !verbs.has(primary) && verbs.has(alt));
     verb = altFits ? alt : primary;
   }
   // A real fire is a qualifier of the existing fire request, not a new seat name.

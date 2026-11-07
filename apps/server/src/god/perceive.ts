@@ -157,11 +157,16 @@ export class GodPerceive {
     return k;
   }
   private registerBuiltKind(k: string, def?: StoredDef, short = k) {
-    if (!this.objs!.kindOf(k)) this.objs!.register(builtKindFor(key => this.desired.get(key), k,
-      def && actionsOf(def).length && this.h.commit ? kindActions(def, this.actHost(), st => {
-        const id = (st as BuiltState).key, e = id ? this.h.model.entities.get(id) : undefined;
-        return e?.name ? this.h.model.pathOf(e.id) : short;
-      }) : {}));
+    if (!this.objs!.kindOf(k)) {
+      const kind = builtKindFor(key => this.desired.get(key), k,
+        def && actionsOf(def).length && this.h.commit ? kindActions(def, this.actHost(), st => {
+          const id = (st as BuiltState).key, e = id ? this.h.model.entities.get(id) : undefined;
+          return e?.name ? this.h.model.pathOf(e.id) : short;
+        }) : {});
+      // #428: a notebook's lines come with a read, never with the sight of it or a look at its object
+      const shut = { visibility: [] as string[] }, schema = kind.schema as Record<string, object>;
+      this.objs!.register(def?.tags?.includes('notebook') ? { ...kind, schema: { ...schema, text: { ...schema.text, ...shut }, state: { ...schema.state, ...shut } } } as never : kind);
+    }
     this.kinds.add(k);
   }
   /** Entry 42: a thing inside a container that is shut (a lantern in a closed locker). */
@@ -455,9 +460,7 @@ export class GodPerceive {
         // LAYERS: whose it is, to this viewer ("yours" / "Ana's, private" / "public"), its price and hours now
         const ent = lay ? this.h.model.entities.get(v.id) : undefined, word = ent ? this.h.layers!.ownerWord(v.id, soul) : null;
         const extra = ent ? { ...(word ? { owner: word } : {}), ...(ent.price && economyOn() ? { price: ent.price } : {}), ...(ent.schedule ? { hours: this.h.layers!.hoursOf(ent.schedule) } : {}) } : {};
-        // #428: a notebook's lines come with a read, never with the sight of it
-        const seen = this.signs.get(v.id)?.notebook ? { ...v, public: Object.fromEntries(Object.entries(v.public ?? {}).filter(([k]) => k !== 'text' && k !== 'state')) } : v;
-        built.push({ ...seen, placeId, here: placeId !== root && inside.has(placeId), dist: Math.round(d * 10) / 10, ...extra });
+        built.push({ ...v, placeId, here: placeId !== root && inside.has(placeId), dist: Math.round(d * 10) / 10, ...extra });
       }
       built.sort((a, b) => a.dist - b.dist || (a.id < b.id ? -1 : 1));
       return [...rest, ...built.slice(0, LISTED)];

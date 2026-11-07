@@ -99,8 +99,9 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  assert.equal(god.act({ops:[{op:'set',id:id('private-journal'),state:{text:'my secret plans — Zed',textBy:'soul:someone-else'}}]}).accepted,true);await tick(45);
  {const r=edge.capabilities(ben).find(c=>c.id===`read:${id('private-journal')}`);assert.equal(r?.available,false,'a closed read offer');assert.equal(r.blocked.code,'object.private');assert.ok(!/line|secret/.test(r.label),r.label);
   const denied=await act(ben,`read:${id('private-journal')}`,undefined,false);assert.equal(denied.code,'object.private');assert.ok(!/secret/.test(JSON.stringify(denied)),'the refusal carries no line');}
- // nor through observe, the plain list of what is around: a notebook's lines come with a read, the owner's or anyone's
- {soul=ben;const seen=await (await accept(f.host,app.request('/v1/edge/observe'))).json();const row=JSON.stringify(seen);assert.ok(/private-journal|notebook/.test(row)||seen.here,'observe answers');assert.ok(!/my secret plans/.test(row),'observe carries no line of a private notebook');}
+ // nor through observe, or a look at the object itself: a notebook's lines come with a read, near or far, private or not
+ {soul=ben;const seen=await (await accept(f.host,app.request('/v1/edge/observe'))).json(),row=JSON.stringify(seen);assert.ok(seen.here?.objects?.some(o=>o.id===id('private-journal')),'observe lists the notebook');assert.ok(!/my secret plans/.test(row),'observe carries no line of a private notebook');assert.ok(!/Came by|noon/.test(row),'nor of a public one');
+  const one=await (await accept(f.host,app.request(`/v1/edge/objects/${id('private-journal')}`))).json();assert.ok(one.object,'the object answers');assert.ok(!/my secret plans/.test(JSON.stringify(one)),'a look at the object carries no line');}
  // reading: another Soul gets the lines attributed and untrusted, never in its ambient frame or the offer
  const finHere=await here(fin);assert.ok(!JSON.stringify(finHere).includes('kite'),'no words in here');
  const readCap=edge.capabilities(fin).find(c=>c.id===`read:${id('notebook')}`);assert.ok(readCap,'read offered');assert.match(readCap.label,/a notebook, 8 lines written/);assert.ok(!readCap.label.includes('kite'));
@@ -117,6 +118,8 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  const lec=atLectern(ben,'oak-lectern');
  assert.ok(lec,`a reading offer at the book lectern: ${JSON.stringify(readers.map(c=>[c.id,c.label]))}`);assert.match(lec.label,/^Read A Cup with Room for Silence/);
  const lecIds=[];const book=EDEN_LIBRARY_CATALOGUE.find(b=>b.id==='book:tea-cup');
+ // a read that reaches a notebook made private on the way: nothing read, and no line in what it learned
+ {const r=await act(ben,`read:${id('notebook')}`);assert.equal(god.act({ops:[{op:'set',id:'notebook',owner:'soul:someone-else',access:'private'}]}).accepted,true);const fr=await finish(ben,r,900);assert.equal(fr.phase,'completed',JSON.stringify(fr).slice(0,300));const o=edge.receipt(ben.soulId,r.receipt.id).outcome;assert.match(o.summary,/closed to you/);assert.ok(!/Came by|noon/.test(JSON.stringify(o)),'the outcome carries no line '+JSON.stringify(o).slice(0,300));assert.equal(god.act({ops:[{op:'set',id:'notebook',owner:null,access:null}]}).accepted,true);await tick(30);}
  // a client that isn't strict is refused too: the lectern reads what is open on it, and a named book is never swapped for it
  {soul=ben;const other=await (await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability:`read:read.${id('oak-lectern')}`.toLowerCase(),params:{book:'book:pond-mirror'}})}))).json();assert.equal(other.accepted,false,JSON.stringify(other).slice(0,300));assert.equal(other.code,'capability.params');}
  // strict offers: this lectern's schema names its own book, so another is refused and never swapped

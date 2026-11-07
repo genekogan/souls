@@ -36,4 +36,10 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my name on the sign-up sheet', [sign, notSigned, nbPin, nbUnpin]), notSigned.id, 'not signed: the sheet says so, nothing else is crossed out');
   assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin, sign, notSigned]), notSigned.id, 'not signed: the board keeps her note');
   assert.equal(resolve('cross out my line', [sign, unsign, nbPin, nbUnpin]), nbUnpin.id, 'a line is the notebook\'s');
+  // what the words name decides, in order: a target's name, then a label's noun; "from" and "your" name nothing
+  assert.equal(resolve('cross out my name in the notebook', all), nbUnpin.id, 'the notebook is named, whatever "name" says');
+  assert.equal(resolve('cross out my name on the notice board', all), unpin.id);
+  assert.equal(resolve('cross off my name from the sign-up sheet', [pin, unpin]), 'unknown', 'no sheet here: the board keeps her note');
+  assert.equal(resolve('cross out my name from the notebook', [pin, unpin]), 'unknown');
+  assert.equal(resolve('cross out', [nbPin, nbUnpin]), nbUnpin.id, 'nothing else to cross out');
 });

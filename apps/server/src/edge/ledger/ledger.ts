@@ -613,7 +613,7 @@ export class EdgeLedger implements EdgeLedgerHooks {
   private signReadEffects(r:EdgeReceipt):ConfirmedEffects{
     if(r.phase!=='completed'||!r.capability.startsWith('read:'))return{};const sign=this.contactActuator?.sign(r.capability.slice(5));if(!sign)return{};
     // #428: a notebook made private during the walk to it is closed by the time it would be read
-    if((sign as {notebook?:boolean}).notebook&&this.signClosed?.(sign.id,r.soulId))return{summary:`${sign.name} was closed to you when you reached it; nothing was read.`};
+    if((sign as {notebook?:boolean}).notebook&&this.signClosed?.(sign.id,r.soulId))return{summary:`${sign.name} was closed to you when you reached it; nothing was read.`,detail:{sign:{id:sign.id,name:sign.name,closed:true}}};
     const nameOf=(id:string)=>this.host.minds.get(id)?.name??(this.db.soul(id) as {name?:string}|undefined)?.name??'another Soul';
     const list=(xs:string[])=>xs.length>1?xs.slice(0,-1).join(', ')+' and '+xs.at(-1):xs[0]??'';
     // Entry 38: a poster wall reads as its posters (title, detail, author, age), a wanted/offered board as its notes with replies
