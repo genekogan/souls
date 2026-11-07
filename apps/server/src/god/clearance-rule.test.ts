@@ -1,10 +1,10 @@
-// Lane BS1 (BUILDSAFE, 2026-10-21): the one clearance rule (@sim/generators clearance.ts) that plans, stairs, doors and
+// Lane BS1 (BUILDSAFE, 2026-10-21): the one clearance rule (@souls/generators clearance.ts) that plans, stairs, doors and
 // furnishing use must say what the walk planner does. Three checks against the real raster (mars spatial/grid.ts):
 // its constants are the planner's, its raster reading at a building's pose is the planner's cell for cell, and its exact
 // widths (clearWay) always pass at any yaw and sub-cell offset while 0.1 m less does not always.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BODY_R, PLAN_MARGIN, PLAN_R, NAV_CELL, clearWay, freeCellsAt, rasterOf, type WayBlocker, type Raster } from '@sim/generators';
+import { BODY_R, PLAN_MARGIN, PLAN_R, NAV_CELL, clearWay, freeCellsAt, rasterOf, type WayBlocker, type Raster } from '@souls/generators';
 import { buildGrids, clearanceAt } from '../../../../mars/viewer/engine/spatial/grid.ts';
 import { PLAN_MARGIN as ENGINE_MARGIN } from '../../../../mars/viewer/engine/spatial/path.ts';
 import { HUMAN_RADIUS } from '../../../../mars/viewer/engine/world/catalog.ts';

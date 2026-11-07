@@ -2,7 +2,7 @@
 // Heights are frozen from the ground by prepareBridge / prepareDeck into params.at (absolute
 // metres, `abs: true` on the surfaces and rails); without it the surfaces are ground-relative and
 // the viewer derives the same heights from the terrain (ground is the only height source).
-import { pointInPoly } from '@sim/ground';
+import { pointInPoly } from '@souls/ground';
 import { bounds2, boxOfBounds, n } from './geom.ts';
 import { deckAt, type Span } from './road.ts';
 import { arcLengths, band, hyp, pathSig, round2, smoothPath, subPath, type AbsOBB, type AbsSurface, type TerrainQuery } from './terrain-query.ts';

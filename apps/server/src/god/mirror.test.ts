@@ -1,7 +1,7 @@
 // G2: mirror/1 deltas. The CLI's patched mirror must equal a fresh whole mirror, and the guard must say so.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coreRef } from '@sim/world-compiler';
+import { coreRef } from '@souls/world-compiler';
 import { Db } from '../db.ts';
 import { GodMode } from './god.ts';
 import { mirrorCurrent, mirrorPayload } from './mirror.ts';

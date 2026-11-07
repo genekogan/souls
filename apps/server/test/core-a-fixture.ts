@@ -2,7 +2,7 @@
 // Comms mounted on a Hono app; bearer = the Soul id (test only). Fake minds, no network, no model keys.
 import assert from 'node:assert/strict';
 import {Hono} from 'hono';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {edenNavWorld, factory} from './eden-nav-fixture.ts';
 import {accept} from './native-owner-fixture.ts';
 import {WorldHost} from '../src/world.ts';

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openJournal} from './journal.mjs';
 import {receivePage,runReceiver,runWakeDispatcher} from './receiver.mjs';
-function fixture(t){const dir=mkdtempSync(join(tmpdir(),'sim-receiver-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});return j;}
+function fixture(t){const dir=mkdtempSync(join(tmpdir(),'souls-receiver-'));const j=openJournal(dir,{worldId:'w',soulId:'s'});t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true})});return j;}
 const page={cursor:'c_1',events:[{id:'c_1',kind:'conversation.turn',text:'Hello'}]};
 test('host notification failure leaves pending facts durable while new events can arrive',async t=>{
  const j=fixture(t),abort=new AbortController();let wakes=0;const delays=[];
@@ -58,7 +58,7 @@ test('durable intake telemetry follows commit and never reports refused intake',
 });
 
 test('journal pressure exposes structured retry cause without advancing refused intake',async t=>{
- const dir=mkdtempSync(join(tmpdir(),'sim-receiver-pressure-'));
+ const dir=mkdtempSync(join(tmpdir(),'souls-receiver-pressure-'));
  const j=openJournal(dir,{worldId:'w',soulId:'s',retention:{worldPendingEvents:1}});
  t.after(()=>{j.close();rmSync(dir,{recursive:true,force:true});});
  j.ingest({source:'world',after:null,cursor:'quiet',events:[{id:'quiet',salience:1}]});

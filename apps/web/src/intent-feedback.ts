@@ -1,4 +1,4 @@
-import type {IntentReceiptV2} from '@sim/protocol';
+import type {IntentReceiptV2} from '@souls/protocol';
 /** Owner-private presentation. Technical diagnostics stay out of the human message. */
 export function intentFeedback(receipt:IntentReceiptV2):{title:string;detail:string;adaptation?:string} {
   if(receipt.phase==='received')return {title:'Direction received',detail:'Saved for interpretation. Understanding and action have not been confirmed.'};

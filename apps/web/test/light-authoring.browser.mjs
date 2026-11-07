@@ -21,7 +21,7 @@ try{
  await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname==='127.0.0.1'&&u.port==='5363')return route.continue();report.blockedOrigins.push(u.origin);return route.abort();});
  await context.routeWebSocket('**/*',route=>{const u=new URL(route.url());if(u.hostname==='127.0.0.1'&&u.port==='5363')route.connectToServer();else route.close();});
  const page=await context.newPage();page.on('pageerror',e=>report.errors.push(e.message));page.on('console',m=>{if(m.type()==='error')report.errors.push(m.text());});
- const goto=async(at,eye)=>{await page.goto(`${base}?dev=1&shot=1&hour=21:00&weather=clear&at=${at}&eye=${eye}`,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__shotReady&&window.__simEntity?.layer?.active,{},{timeout:60000});await page.waitForTimeout(2500);};
+ const goto=async(at,eye)=>{await page.goto(`${base}?dev=1&shot=1&hour=21:00&weather=clear&at=${at}&eye=${eye}`,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__shotReady&&window.__soulsEntity?.layer?.active,{},{timeout:60000});await page.waitForTimeout(2500);};
  await goto('106,1,21','135,26,60');
  await page.screenshot({path:out+'/nightmarket-21.png'});
  report.measures.nightmarket=await page.evaluate(()=>new Promise(resolve=>{const frames=[],t0=performance.now();const tick=t=>{frames.push(t);if(t-t0<6000)return requestAnimationFrame(tick);const dt=frames.slice(1).map((x,i)=>x-frames[i]).sort((a,b)=>a-b);resolve({fps:1000*(frames.length-1)/(frames.at(-1)-frames[0]),p50:dt[Math.floor(dt.length*.5)],p95:dt[Math.floor(dt.length*.95)],frames:frames.length});};requestAnimationFrame(tick);}));
@@ -29,7 +29,7 @@ try{
  const def={schema:'def/1',name:'l1-offset-lantern',tags:['lamp','decor'],layer:'decor',size:{box:[9,3.2,.6]},make:{kind:'gen',gen:'kit/2',args:{shapes:[{kind:'box',at:[0,.15,0],size:[.6,.3,.6],color:'#4888bb',collide:false},{kind:'box',at:[4,3,0],size:[8,.08,.08],color:'#555555',collide:false},{kind:'sphere',at:[8,3,0],r:.2,segments:6,color:'#ffe9c4',glow:1,collide:false}]}},components:{light:{at:[8,3,0],range:4,pattern:'pulse'}}};
  const result=await post('/v1/god/act',{group:'l1-light-smoke',ops:[{op:'define',def},{op:'place',def:'l1-offset-lantern@1',name:'l1-offset-lantern',p:[230,250]},{op:'place',def:'core/twinkle-lights@1',name:'l1-eight-bulbs',p:[235,262]}]});assert.equal(result.accepted,true,JSON.stringify(result));edited=true;
  await goto('235,1,255','249,17,278');
- const marks=await page.evaluate(()=>window.__simEntity.scene.getObjectByName('god-world lights (presentation)').userData.edenLightSources);
+ const marks=await page.evaluate(()=>window.__soulsEntity.scene.getObjectByName('god-world lights (presentation)').userData.edenLightSources);
  assert.ok(marks.some(m=>Math.abs(m[0]-238)<.01&&Math.abs(m[2]-250)<.01),'offset pool must be under the bulb, beyond the old z=190 map edge');
  await page.screenshot({path:out+'/offset-and-twinkle-21.png'});await page.waitForTimeout(750);await page.screenshot({path:out+'/offset-and-twinkle-next.png'});
  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(800);await page.screenshot({path:out+'/reduced-motion-21.png'});

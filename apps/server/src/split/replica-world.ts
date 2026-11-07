@@ -2,7 +2,7 @@
 // Replica (plus this lane's `menu` section, split/verdict-pump.ts), it holds (a) the replicated plain state, (b) B-spatial's
 // SpatialReplica built from the engine's static scene export and the replicated bodies, (c) the verdict table, and
 // answers the Soul read code as a `ReplicaMenuWorld` (split/menu-world.ts). Never touches an engine.
-import type {ProgramAction, RuntimeView} from '@sim/engine-contract';
+import type {ProgramAction, RuntimeView} from '@souls/engine-contract';
 import type {WorldState as NativeWorld} from '../../../../mars/viewer/engine/world/types.ts';
 import type {StaticExportV1} from '../../../../mars/viewer/engine/spatial/service.ts';
 import type {TileRect} from '../../../../mars/viewer/engine/spatial/tiled.ts';

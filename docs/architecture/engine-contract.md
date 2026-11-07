@@ -27,7 +27,9 @@ interface Engine {
   stateHash(): string; physicalHash(): string;
   step(): { paths; changes; events; programs };        // what changed this tick, for broadcast and the host
   perform(program): { id; ok; diagnostic? };           // start a program, replacing what the actor was doing
-  stop(programId): void;                               // request a stop; committed physical work may finish safely
+  stop(programId, opts?): void;                        // request a stop; committed physical work may finish safely;
+                                                       // {untilSafe} keeps the programme until its native cleanup lands,
+                                                       // retrying a refused cancel while the action moves
   canPerform(program): { code; message } | null;       // is the first step feasible now? no side effects
   programOf(actor): string | null;
   submit(verb, params, opts?); cancel(id, reason?);
@@ -62,14 +64,28 @@ Both engines describe the same shared verbs for one actor's body; the actor is i
 `converse {with, seconds?}` · `gather {at, seconds?}` · `perform {what?, seconds?}` · `ambient_wander {seconds?, radius?}`.
 Edge capabilities offered to Souls are built on top of these and the engine's own verbs.
 
+A Mars `walk_to` step may carry `stand: 'clear/1'` (#374). Its standoff point must have standing room for the walker's
+body, the same radius the route's own goal check uses. Each turn around the target is read for that room before it is
+planned. When no turn has both room and a route, the step takes a point with room on a wider ring around the target, at most
+0.9 m beyond the standoff, so a ride still boards within its 3.2 m reach. It makes at most 8 more route plans for this. When there is none, it is refused `route.goal-blocked`, naming the blocker. A balloon, ferris wheel or carousel join marks its walk to the carrier this way; a punt walks to its bank's door as before.
+This matters on paged ground, where a long walk's plan checks only its first fine hop, so a standoff point inside a
+ride's own collider used to pass the plan. A step without the marker keeps the goal it always chose, so recorded
+programmes replay unchanged.
+
 `dance:here` uses the body's current standing footprint and never inserts a walk to a larger clearing or another
 venue. A seated Soul still stands first; active movement and occupied support keep their native admission rules.
 Direct `pose_v1` admission reads clearance at the actor's position, independently of the last paged ground window
 queried. Lying poses retain their larger clearance requirement.
 
+A reach's lean into a container and a stroke's step to a board go through `runtime/static-step.ts`, the walker's rule:
+a step that would put the body below the `collision.human-static` limit, and worse than where it stands, is not taken,
+and the hand works from where the body is. A stroke stays held for the rest of the stroke; a lean follows its path back
+out. Invariants run at the end of every tick, so a held step would have been a violation on that same tick (unless something
+later in that tick moved the obstacle), and every earlier step moves as it did. Other body steps owned by actions, such as a door handle's reach, do not go through it yet.
+
 ## Conformance
 
-`@sim/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
+`@souls/engine-contract/conformance` exports `conformance(name, factory, drive)`: same seed and inputs give the same hash,
 different seeds diverge, snapshot/restore mid-action continues identically, `physicalHash` ignores labels, verbs
 describe with JSON Schema, an unknown verb fails cleanly. Both engines run it (`packages/engine-mars/src/mars.test.ts`,
 `packages/engine-toy/src/toy.test.ts`). (`packages/conformance` is a different gate: every core-library object bakes,

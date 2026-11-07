@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {setImmediate} from 'node:timers/promises';
-import {hashOf} from '@sim/engine-contract';import {kernelHash} from '@sim/kernel';
-import {marsFactory,MARS_2026_MAP,LITTLE_MARTIANS_WORLD,type MarsWorldConfig} from '@sim/engine-mars';
+import {hashOf} from '@souls/engine-contract';import {kernelHash} from '@souls/kernel';
+import {marsFactory,MARS_2026_MAP,LITTLE_MARTIANS_WORLD,type MarsWorldConfig} from '@souls/engine-mars';
 import {selectedNativeCrewRemovalFactoryV1} from '../../../packages/engine-native/src/selected-crew-removal.ts';
 import {fixture,accept,invite} from '../test/native-owner-fixture.ts';import {WorldHost} from './world.ts';
 const mars:MarsWorldConfig={scene:'eden-camp',arrival:[-3,18],arrivalPlace:'arrival',reference:[-1,17],grounds:{id:'grounds',name:'Mars camp'},map:MARS_2026_MAP,disassemblyV1:true};

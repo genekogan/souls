@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Brain } from './brain.ts';
 import { config } from './config.ts';
 import { Db } from './db.ts';
 import { Souls } from './souls.ts';
-import { kernelHash } from '@sim/kernel';
+import { kernelHash } from '@souls/kernel';
 import { initKernel, pinnedVocabulary, replayKernel } from './fold.ts';
 import { optionsFor } from './deck.ts';
 import { WorldHost, replayFromGenesis } from './world.ts';
@@ -28,7 +28,7 @@ function drive(host: WorldHost, ticks: number, pick: (i: number) => number) {
 const births = (host: WorldHost, names: string[]) => names.forEach((n) => void host.enqueue('birth', 'test', { soulId: `s_${n}`, entityId: `h_${n}`, name: n, description: 'test soul', owner: 'system' }));
 
 test('replay from genesis reproduces the live state hash', () => {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-')), 't.db'));
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-')), 't.db'));
   const host = new WorldHost(db, toyFactory, 'replay-seed', 1e9); host.boot();
   births(host, ['a', 'b', 'c', 'd', 'e']);
   drive(host, 3000, (i) => i * 7);
@@ -47,7 +47,7 @@ test('replay from genesis reproduces the live state hash', () => {
 });
 
 test('restart: snapshot + fast-forward through later events equals the uninterrupted world', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'sim-'));
+  const dir = mkdtempSync(join(tmpdir(), 'souls-'));
   const db = new Db(join(dir, 't.db'));
   const host = new WorldHost(db, toyFactory, 'restart-seed', 1e9); host.boot();
   births(host, ['a', 'b', 'c']);
@@ -74,7 +74,7 @@ test('restart: snapshot + fast-forward through later events equals the uninterru
 });
 
 test('a world from before the kernel existed is given one at boot, and replay from genesis still matches', async () => {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-')), 't.db'));
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-')), 't.db'));
   const host = new WorldHost(db, toyFactory, 'old-world', 1e9); host.boot();
   births(host, ['a', 'b', 'c']);
   // decisions as they were before cards: a program of steps, no card, so no plays
@@ -115,7 +115,7 @@ test('a world from before the kernel existed is given one at boot, and replay fr
 });
 
 test('a world’s vocabulary is in its log: history replays with its own words, and adopting new ones is a logged change', async () => {
-  const db = new Db(join(mkdtempSync(join(tmpdir(), 'sim-')), 't.db'));
+  const db = new Db(join(mkdtempSync(join(tmpdir(), 'souls-')), 't.db'));
   const host = new WorldHost(db, toyFactory, 'vocab', 1e9); host.boot();
   births(host, ['a', 'b', 'c']);
   drive(host, 800, (i) => i * 3);

@@ -1,10 +1,10 @@
 // HTTP for the entity world: public reads for viewers, god writes behind a god
 // token, pairing, prayers. Mounted like the edge routes (plain app.get/post).
-import { packColumnsV1, worldEntityOrderV1 } from '@sim/protocol';
+import { packColumnsV1, worldEntityOrderV1 } from '@souls/protocol';
 import type { Context, Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import { TILE_N } from '@sim/ground';
+import { TILE_N } from '@souls/ground';
 import { drawableEntities } from './look.ts'; // r2.1 (own line: keeps clear of the cloud y5 import hunk)
 import { ApiError } from '../souls.ts';
 import type { UserRow } from '../db.ts';
@@ -24,14 +24,14 @@ import { mountLandRoutes } from './land.ts';
 import { mountLightningRoutes } from './lightning.ts';
 import { mountLayerRoutes, type GodLayers } from './layers.ts';
 import { mountGovernanceRoutes } from './governance.ts';
-import { vocab } from '@sim/world-compiler';
+import { vocab } from '@souls/world-compiler';
 import { schemaMarkdown } from '../../../../tools/god-skill/lib/schema-md.mjs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type {VerifyUse} from './verify-use.ts';
 import { godTokenLimiter } from './rate-limit.ts';
 import { RefusalLog } from '../flood.ts';
-import { CREATION_LIMITS } from '@sim/generators';
+import { CREATION_LIMITS } from '@souls/generators';
 import { siteReport } from './build-integrity.ts';
 import { parseHolder } from '../../../../tools/god-skill/lib/locks.mjs';
 import { serverDoctor } from './lock-doctor.ts';

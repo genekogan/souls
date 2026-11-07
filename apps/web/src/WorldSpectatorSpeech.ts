@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type {TalkLine} from '@sim/protocol';
+import type {TalkLine} from '@souls/protocol';
 import {EDEN_VIEWER_PLACES,type ViewerPlace} from './WorldEdenPlaceData.ts';
 /** W4 spectator speech: show WHO CAN HEAR each line. Spectators see everything;
  * Souls only hear their channel. Draws only what the speech record says.
