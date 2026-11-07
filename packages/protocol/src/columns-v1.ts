@@ -76,21 +76,30 @@ export function packColumnsV1(table: unknown, order?: (row: Rec) => string, by =
 export const isPackedColumnsV1 = (v: unknown): v is { [COLUMNS_KEY]: PackedV1 } => isRec(v) && isRec(v[COLUMNS_KEY]);
 function fail(why: string): never { throw new Error('columns-v1.invalid: ' + why); }
 
-function unpackRows(p: PackedV1): Rec[] {
-  if (!isRec(p) || !Array.isArray(p.shapes) || !Array.isArray(p.shape) || !isRec(p.cols) || p.shape.length !== p.n) fail('envelope');
+// #619: the wire is untrusted. Every index is an own, in-range integer and every key a string, checked before use, so a
+// malformed envelope fails here instead of returning inherited properties or a row with a borrowed prototype.
+const isIndex = (x: unknown, size: number): x is number => Number.isInteger(x) && (x as number) >= 0 && (x as number) < size;
+const isStrings = (a: unknown): a is string[] => Array.isArray(a) && a.every((x) => typeof x === 'string');
+function unpackRows(p: PackedV1, depth = 0): Rec[] {
+  if (!isRec(p) || !Number.isInteger(p.n) || p.n < 0 || !Array.isArray(p.shapes) || !Array.isArray(p.shape) || !isRec(p.cols) || p.shape.length !== p.n) fail('envelope');
+  if (p.sorted !== undefined && typeof p.sorted !== 'string') fail('sorted');
+  if (p.keys !== undefined && (!isStrings(p.keys) || p.keys.length !== p.n || p.keys.includes(BAD_KEY) || new Set(p.keys).size !== p.keys.length)) fail('keys');
+  if (!p.shapes.every((s) => isStrings(s) && new Set(s).size === s.length)) fail('shapes');
+  if (!p.shape.every((s) => isIndex(s, p.shapes.length))) fail('shape');
   const readers = new Map<string, (j: number) => Json>();
   for (const [k, c] of Object.entries(p.cols)) {
     let at = 0;
+    if (!isRec(c)) fail('column ' + k);
     if ('k' in c) { const keys = p.keys ?? fail('k without keys'); readers.set(k, (j) => keys[j]); continue; }
-    if ('r' in c) { const v = c.r; readers.set(k, () => (at < v.length ? v[at++] : fail('r short'))); continue; }
-    if ('d' in c) { const d = c.d, i = c.i; readers.set(k, () => { if (at >= i.length) fail('i short'); const x = d[i[at++]]; if (x === undefined) fail('d index'); return x !== null && typeof x === 'object' ? structuredClone(x) : x; }); continue; }
-    if ('f' in c) { const f = c.f, v = c.v; readers.set(k, () => { if ((at + 1) * f > v.length) fail('f short'); const x = v.slice(at * f, (at + 1) * f); at++; return x; }); continue; }
-    if ('o' in c) { const rows = unpackRows(c.o); readers.set(k, () => (at < rows.length ? rows[at++] : fail('o short'))); continue; }
+    if ('r' in c) { const v = c.r; if (!Array.isArray(v)) fail('r'); readers.set(k, () => (at < v.length ? v[at++] : fail('r short'))); continue; }
+    if ('d' in c) { const d = c.d, i = c.i; if (!Array.isArray(d) || !Array.isArray(i) || !i.every((x) => isIndex(x, d.length))) fail('d index'); readers.set(k, () => { if (at >= i.length) fail('i short'); const x = d[i[at++]]; if (x === undefined) fail('d index'); return x !== null && typeof x === 'object' ? structuredClone(x) : x; }); continue; }
+    if ('f' in c) { const f = c.f, v = c.v; if (!Number.isInteger(f) || f < 1 || !Array.isArray(v) || !v.every((x) => Number.isFinite(x))) fail('f'); readers.set(k, () => { if ((at + 1) * f > v.length) fail('f short'); const x = v.slice(at * f, (at + 1) * f); at++; return x; }); continue; }
+    if ('o' in c) { if (depth >= 3) fail('depth'); const rows = unpackRows(c.o, depth + 1); readers.set(k, () => (at < rows.length ? rows[at++] : fail('o short'))); continue; }
     fail('column ' + k);
   }
   const out: Rec[] = new Array(p.n);
   for (let j = 0; j < p.n; j++) {
-    const ks = p.shapes[p.shape[j]] ?? fail('shape'), row: Rec = {};
+    const ks = p.shapes[p.shape[j]], row: Rec = {};
     for (const k of ks) { if (k === BAD_KEY) fail('key'); const r = readers.get(k) ?? fail('no column ' + k); row[k] = r(j); }
     out[j] = row;
   }

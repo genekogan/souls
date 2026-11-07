@@ -34,3 +34,50 @@ test('refuses what it cannot restore exactly; garbage throws',()=>{
  assert.throws(()=>unpackColumnsV1({$columnsV1:{n:1,shapes:[['a']],shape:[0],cols:{}}} as any),/columns-v1.invalid/);
  assert.throws(()=>unpackColumnsV1({$columnsV1:{n:1,shapes:[['__proto__']],shape:[0],cols:{__proto__:{r:[1]}}}} as any),/columns-v1.invalid/);
 });
+// #619: malformed wire metadata is refused before it is used: no borrowed prototype, no inherited property as data
+test('malformed keys, shapes, indices and columns from the wire are refused (#619)',()=>{
+ const bad=(json:string)=>assert.throws(()=>unpackColumnsV1(JSON.parse(json)),/columns-v1.invalid/,json.slice(0,200));
+ // the two payloads reported in #619, as literal JSON
+ bad('{"$columnsV1":{"n":1,"keys":[["__proto__"]],"shapes":[["__columns_triage_marker_20261103__"]],"shape":[0],"cols":{"__columns_triage_marker_20261103__":{"r":[true]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["value"]],"shape":[0],"cols":{"value":{"d":[],"i":["constructor"]}}}}');
+ // keys: strings only, as many as rows, distinct, never __proto__
+ bad('{"$columnsV1":{"n":1,"keys":[1],"shapes":[["a"]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"keys":"a","shapes":[["a"]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"keys":["__proto__"],"shapes":[["a"]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":2,"keys":["x","x"],"shapes":[["a"]],"shape":[0,0],"cols":{"a":{"r":[1,2]}}}}');
+ bad('{"$columnsV1":{"n":1,"keys":["x","y"],"shapes":[["a"]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ // dictionary indices: own, in-range integers of an array
+ for (const i of ['"0"','-1','1','0.5','"length"','null']) bad(`{"$columnsV1":{"n":1,"shapes":[["v"]],"shape":[0],"cols":{"v":{"d":[7],"i":[${i}]}}}}`);
+ bad('{"$columnsV1":{"n":1,"shapes":[["v"]],"shape":[0],"cols":{"v":{"d":{"0":7},"i":[0]}}}}');
+ // envelope: n, shapes, shape, sorted, cols
+ bad('{"$columnsV1":{"n":"1","shapes":[["a"]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[[["a"]]],"shape":[0],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":["constructor"],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[1],"cols":{"a":{"r":[1]}}}}');
+ bad('{"$columnsV1":{"n":1,"sorted":["id"],"shapes":[["id"]],"shape":[0],"cols":{"id":{"r":["x"]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":null}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":[1]}}}');
+ // column variants
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"r":"x"}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"f":0,"v":[]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"f":1,"v":["x"]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"k":1}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":{"n":1,"keys":[["__proto__"]],"shapes":[["b"]],"shape":[0],"cols":{"b":{"r":[1]}}}}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"x":1}}}}');
+ bad('{"$columnsV1":{"n":-1,"shapes":[],"shape":[],"cols":{}}}');
+ bad('{"$columnsV1":{"n":0.5,"shapes":[],"shape":[],"cols":{}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["v"]],"shape":[0],"cols":{"v":{"d":[7],"i":0}}}}');
+ bad('{"$columnsV1":{"n":2,"sorted":"constructor","shapes":[["id"]],"shape":[0,0],"cols":{"id":{"r":["x","y"]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a","a"]],"shape":[0],"cols":{"a":{"r":[1,2]}}}}');
+ bad('{"$columnsV1":{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"f":1,"v":[1e400]}}}}');
+ // nesting deeper than the encoder's three levels is refused with the same error, never a stack overflow
+ let deep = '{"n":1,"shapes":[["x"]],"shape":[0],"cols":{"x":{"r":[1]}}}';
+ for (let d = 0; d < 4; d++) deep = `{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":${deep}}}}`;
+ bad(`{"$columnsV1":${deep}}`);
+ let wide = '{"n":1,"shapes":[["x"]],"shape":[0],"cols":{"x":{"r":[1]}}}';
+ for (let d = 0; d < 20000; d++) wide = `{"n":1,"shapes":[["a"]],"shape":[0],"cols":{"a":{"o":${wide}}}}`;
+ bad(`{"$columnsV1":${wide}}`);
+ // a well-formed envelope of the same shapes still decodes
+
+ assert.deepEqual(unpackColumnsV1(JSON.parse('{"$columnsV1":{"n":2,"keys":["x","y"],"shapes":[["id","v","t"]],"shape":[0,0],"cols":{"id":{"k":1},"v":{"d":[7],"i":[0,0]},"t":{"f":2,"v":[1,2,3,4]}}}}')),{x:{id:'x',v:7,t:[1,2]},y:{id:'y',v:7,t:[3,4]}});
+});
