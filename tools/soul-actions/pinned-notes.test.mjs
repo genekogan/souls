@@ -42,8 +42,8 @@ test('pinned notes: several authors, author-only take-down, full board, attribut
  // "observe and retry": an admission can't commit while another body is mid make-way detour (a non-resumable snapshot; pre-existing engine limit)
  let retries=0;const act=async(s,capability,params,accepted=true)=>{let b;for(let k=0;k<20;k++){soul=s;const r=await accept(f.host,app.request('/v1/edge/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({capability,...(params?{params}:{})})}));b=await r.json();if(b.code!=='object.admission-failed')break;retries++;await tick(10);}assert.equal(b.accepted,accepted,JSON.stringify(b));return b;};
  const finish=async(s,receipt,limit=600)=>{let stroke=null,early=false,before=JSON.stringify(state('notes'));for(let n=0;n<limit;n++){const m=body(s).human?.handActuator;if(m?.stroke){stroke=m.stroke;if((f.host.engine.world.tick-m.startTick)*f.host.engine.dt<0.65+m.stroke.seconds-0.05&&JSON.stringify(state('notes'))!==before)early=true;}const ph=edge.receipt(s.soulId,receipt.receipt.id)?.phase;if(['completed','failed','cancelled','replaced'].includes(ph))break;await tick(1);}return {stroke:stroke&&{kind:stroke.kind,seconds:stroke.seconds},early,phase:edge.receipt(s.soulId,receipt.receipt.id).phase};};
- // A body program fails at once when its body is mid courtesy step-aside for someone else (walk.ts make-way; only pose_v1
- // waits that out in engine-mars). A Soul observes and retries; counted, and recorded as a maintenance finding.
+ // A body program used to fail at once when its body was mid courtesy step-aside for someone else (walk.ts make-way).
+ // The runtime now waits that out for any verb; the retry stays only as a counter, asserted zero below (#424 F7).
  let makeWayRetries=0;const done=async(s,capability,params)=>{for(let k=0;;k++){const r=await act(s,capability,params);const fr=await finish(s,r),rc=edge.receipt(s.soulId,r.receipt.id);if(fr.phase==='failed'&&rc.code==='reservation.conflict'&&/:make-way:\d+/.test(rc.reason??'')&&k<3){makeWayRetries++;await tick(30);continue;}assert.equal(fr.phase,'completed',capability+' '+JSON.stringify(rc).slice(0,500));return fr;}};
  // validation
  for(const [text,why] of [['','required'],['x'.repeat(61),'too long'],['two\nlines','one line'],['bell\u0007','control']]){const b=await act(ana,'object:notes:pin',{text},false);assert.equal(b.code,'capability.params',why);}
@@ -80,6 +80,8 @@ test('pinned notes: several authors, author-only take-down, full board, attribut
  const restored=WorldModel.fromSnapshot(JSON.parse(JSON.stringify(god.model.snapshot())),undefined,god.model.library);
  assert.equal(restored.get('notes').state.text,state('notes').text);assert.equal(restored.get('notes').state.textBy,state('notes').textBy);
  assert.deepEqual(f.host.engine.runtime.violations,[]);
+ // the runtime waits out a live courtesy step-aside for any verb (runtime admit, make-way-wait.test.ts; #424 F7): never retried
+ assert.equal(makeWayRetries,0,'no body program failed on another body\'s step-aside');
  const report={status:'pass',admissionRetries:retries,makeWayRetries,hereBytes:{absent:bytes(absent),distant100Pinned:bytes(far),nearEmptyBoard:bytes(nearBlank),nearFullBoard:bytes(nearFull)},
   readSummary:outcome.summary,learned:outcome.learned.map(l=>l.fact),strokes:runs,board:notes().lines,
   checks:['validation (empty, >60, two lines, control)','four pins by three Souls, signed, in order','no note before the stroke ends','two notes per Soul','others cannot take a note down','author takes down own latest','full board refuses a seventh','read offer names the count, no words','read: attributed, untrusted, one learned fact per author, every note in detail','no words in a reader\'s here','notice-board@2 unchanged','snapshot persistence','distant pinned boards add nothing','zero native violations'],
