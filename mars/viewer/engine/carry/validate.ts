@@ -207,7 +207,9 @@ export function planCarryAction(rt: Runtime, p: CarryParams, fixture = false): P
     });
   };
   if (!goals.length) return routeFail(`the ${f.name} formation does not fit at the target ${fmt(tq.x, tq.z)}: ${goalWhy[0]}`);
-  const r = planCarry({ g, f, starts, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew, ...(p.holdCutV1 ? { budgetDetail: true } : {}) });
+  const plan = (from: SE2[]) => planCarry({ g, f, starts: from, goals, labelOf: (id) => labelOf(sp, id), carrierNames: p.crew, ...(p.holdCutV1 ? { budgetDetail: true } : {}) });
+  // PC17 (#696): a lift the other way round swings the whole load half a turn through whoever stands beside it: only if nothing else gets it there
+  const asLying = p.clearLiftV1 ? plan(starts.slice(0, 1)) : null, r = asLying?.ok ? asLying : plan(starts);
   if (!r.ok) return routeFail(r.diagnostic.message, r.diagnostic);
   const pickup = starts[r.start], target = goals[r.goal];
   const gr = gatherRoutes(sp, item, people, f, pickup, lie.halfW, level, levelY);

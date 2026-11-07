@@ -80,9 +80,9 @@ export function planFlightV1(rt: Runtime, p: FP) {
         return fail('stair.site-occupied', `${h.id} is standing where ${label(part)} goes`, [part.id, h.id]);
     return { pose, ends: [ofKind(part, STAIR_HOOK)[0]!.id] };
   };
-  // one either side of the flight, at its middle
+  // one either side of the flight, at its middle, clear of it once it stands: the walk grid reads a turned flight up to 0.28 m wider (PC17)
   const stand: Stand = (part, t) => {
-    const s = sizeOf(part), n = rot2([0, s[2] / 2 + 0.45], t.yaw), c: Vec2 = [t.p[0], t.p[2]];
+    const s = sizeOf(part), n = rot2([0, s[2] / 2 + 0.62], t.yaw), c: Vec2 = [t.p[0], t.p[2]];
     return { points: [[c[0] - n[0], c[1] - n[1]], [c[0] + n[0], c[1] + n[1]]], obb: flightObb(part, t), y: t.p[1] + s[1], y0: t.p[1] };
   };
   return planSeat(rt, 'flight', p.crew, p.flight, [{ host: p.beam, seat: p.seat }], STAIR_HOOK, JOIST_SEAT, beamProblems, { place, stand });

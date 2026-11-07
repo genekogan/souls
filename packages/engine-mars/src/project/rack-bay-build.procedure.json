@@ -93,7 +93,10 @@
      "template": "carry",
      "part": "joist-0",
      "crew": 2,
-     "after": [],
+     "after": [
+      "carry-upright-a",
+      "carry-upright-b"
+     ],
      "spot": [
       -1.2192,
       0,
@@ -105,7 +108,10 @@
      "template": "carry",
      "part": "joist-4",
      "crew": 2,
-     "after": [],
+     "after": [
+      "carry-upright-a",
+      "carry-upright-b"
+     ],
      "spot": [
       1.2192,
       0,
@@ -117,7 +123,10 @@
      "template": "carry",
      "part": "joist-2",
      "crew": 2,
-     "after": [],
+     "after": [
+      "carry-joist-0",
+      "carry-joist-4"
+     ],
      "spot": [
       0.0,
       0,
@@ -129,7 +138,10 @@
      "template": "carry",
      "part": "joist-1",
      "crew": 2,
-     "after": [],
+     "after": [
+      "carry-joist-0",
+      "carry-joist-4"
+     ],
      "spot": [
       -0.6096,
       0,
@@ -141,7 +153,9 @@
      "template": "carry",
      "part": "joist-3",
      "crew": 2,
-     "after": [],
+     "after": [
+      "carry-joist-1"
+     ],
      "spot": [
       0.6096,
       0,
@@ -172,11 +186,7 @@
      "part": "beam-high-r",
      "crew": 2,
      "after": [
-      "carry-joist-0",
-      "carry-joist-4",
-      "carry-joist-2",
-      "carry-joist-1",
-      "carry-joist-3"
+      "carry-beam-high-l"
      ],
      "spot": [
       0,
@@ -190,7 +200,7 @@
      "part": "beam-low-l",
      "crew": 2,
      "after": [
-      "carry-beam-high-l"
+      "carry-beam-high-r"
      ],
      "spot": [
       0,
@@ -204,7 +214,7 @@
      "part": "beam-low-r",
      "crew": 2,
      "after": [
-      "carry-beam-high-r"
+      "carry-beam-low-l"
      ],
      "spot": [
       0,
@@ -218,7 +228,7 @@
      "part": "sheet",
      "crew": 2,
      "after": [
-      "carry-beam-low-l"
+      "carry-beam-low-r"
      ],
      "spot": [
       0,

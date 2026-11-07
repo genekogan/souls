@@ -119,13 +119,14 @@ function onSpot(e: Entity, s: { x: number; z: number; yaw: number }): boolean {
   return Math.min(d, Math.abs(Math.PI - d)) <= ON_SPOT_YAW;
 }
 /** The world says this maneuver has been done, by whoever and however: its effect is there, or something later built on it. */
-export function maneuverDone(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Maneuver): boolean {
+export function maneuverDone(b: Blueprint, w: WorldState, site: Site, bound: Bound, m: Maneuver, carrying: ReadonlySet<string> = new Set()): boolean {
   const e = entityOf(w, bound, m.part);
   if (!e) return false;
   switch (m.template) {
-    case 'carry': return e.phase === 'installed' || e.support?.kind === 'held' || standing(e) || (!!m.spot && onSpot(e, spotAt(site, m.spot)));
+    // a load under way is not there yet; held by anything later (a raise, a seating) it has been
+    case 'carry': return !carrying.has(e.id) && (e.phase === 'installed' || e.support?.kind === 'held' || standing(e) || (!!m.spot && onSpot(e, spotAt(site, m.spot))));
     case 'raise-hold': return stands(b, w, site, bound, m.part);
-    case 'release': return stands(b, w, site, bound, m.part) && e.phase === 'installed' && e.support?.kind === 'connected';
+    case 'release': return stands(b, w, site, bound, m.part) && e.phase === 'installed' && e.support?.kind === 'connected' && !e.reservedBy;
     default: return inPlace(b, w, site, bound, m.part);
   }
 }
@@ -146,9 +147,10 @@ export type Progress = {
   problems: string[];
 };
 const physicsOf = (w: WorldState, id: string) => (w as unknown as { entityPhysicsV1?: { byEntity?: Record<string, { surfaces?: unknown[]; links?: { kind: string; usable: boolean }[] }> } }).entityPhysicsV1?.byEntity?.[id];
-/** `running`: the entities an open invitation or a running operation has claimed (the ledger's), besides what the world shows. */
-export function progressOf(b: Blueprint, p: Procedure, w: WorldState, site: Site, bound: Bound, running: ReadonlySet<string> = new Set()): Progress {
-  const all = maneuversOf(p), done = new Map(all.map((m) => [m.key, maneuverDone(b, w, site, bound, m)]));
+/** `running`: the entities an open invitation or a running operation has claimed (the ledger's), besides what the world
+ *  shows; `carrying`: those a crew is carrying somewhere now. */
+export function progressOf(b: Blueprint, p: Procedure, w: WorldState, site: Site, bound: Bound, running: ReadonlySet<string> = new Set(), carrying: ReadonlySet<string> = new Set()): Progress {
+  const all = maneuversOf(p), done = new Map(all.map((m) => [m.key, maneuverDone(b, w, site, bound, m, carrying)]));
   const problems: string[] = [];
   for (const k of Object.keys(b.parts)) {
     const e = entityOf(w, bound, k), part = b.parts[k]!;

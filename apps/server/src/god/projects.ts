@@ -54,7 +54,7 @@ export class Projects {
   private knows(row: ProjectRow, soul: EdgeSoul): boolean {const at = this.here(soul); return !!row.consents[soul.soulId] || row.invited.includes(soul.soulId) || row.organizer.soulId === soul.soulId || (!!at && near(at, row.site.origin, PROJECT_SIGHT));}
   private progress(row: ProjectRow, without?: string): Progress {
     const {blueprint, procedure} = this.of(row), running = this.p.edge.together.sharedLoads(); if (without) running.delete(without);
-    return progressOf(blueprint, procedure, this.p.world() as never, siteOf(row), row.bound, running);
+    return progressOf(blueprint, procedure, this.p.world() as never, siteOf(row), row.bound, running, this.p.edge.together.sharedCarrying());
   }
   /** Loose things a project could still use. */
   private stock(): Stock[] {

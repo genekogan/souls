@@ -1443,6 +1443,8 @@ export class Together {
   committedShared(): Invite[] {return this.committed().filter(i => i.shared);}
   /** The loads an open proposal or a running operation has claimed. */
   sharedLoads(): Set<string> {return new Set([...this.pending(), ...this.committed()].filter(i => i.shared && i.shared.op?.phase !== 'ended').map(i => i.shared!.load.entity));}
+  /** The loads a crew is carrying somewhere now. */
+  sharedCarrying(): Set<string> {return new Set(this.committed().filter(i => i.shared?.template.id === 'carry' && i.shared.op?.phase !== 'ended').map(i => i.shared!.load.entity));}
   /** The running hold on this load, if any. */
   holdOn(load: string): string | null {for (const i of this.committed()) {const s = i.shared; if (s && raises(s) && s.load.entity === load && s.op && s.op.phase !== 'ended') return s.op.id;} return null;}
   /** Why this guest could not take up this proposal now, as `accept` would say. */
