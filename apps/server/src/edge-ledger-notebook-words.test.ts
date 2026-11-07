@@ -56,9 +56,9 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my name from the notice board', [sign, unsign]), 'capability.unknown', 'the sheet keeps her name');
   assert.equal(resolve('cross out my name in the notebook', [sign, unsign]), 'capability.unknown');
   // "from" names nothing here either, and a thing's other words are that thing
-  assert.equal(resolve('cross off my signature from the list', [pin, unpin]), 'unknown', 'the board keeps her note');
-  assert.equal(resolve('cross off my entry from the list', [pin, unpin]), 'unknown');
-  assert.equal(resolve('cross off the milk from the list', [pin, unpin]), 'unknown');
+  assert.equal(resolve('cross off my signature from the list', [pin, unpin]), 'capability.unknown', 'the board keeps her note');
+  assert.equal(resolve('cross off my entry from the list', [pin, unpin]), 'capability.unknown');
+  assert.equal(resolve('cross off the milk from the list', [pin, unpin]), 'capability.unknown');
   assert.equal(resolve('cross out my note on the noticeboard', [pin, unpin]), unpin.id);
   assert.equal(resolve('cross out my line in the journal', [nbPin, nbUnpin]), nbUnpin.id);
   assert.equal(resolve('cross out my line in the guestbook', [nbPin, nbUnpin]), 'capability.unknown', 'a guestbook is not this notebook');
@@ -69,13 +69,20 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross out my note on the noticeboard', [market, hall]), hall.id, 'her note on the market board stays');
   // a board and a notebook together: the word that names one never takes the other's
   const both = [pin, unpin, nbPin, nbUnpin];
-  assert.notEqual(resolve('cross out my note in the journal', both), unpin.id, 'the note stays on the board');
-  assert.notEqual(resolve('cross out my line on the noticeboard', both), nbUnpin.id, 'the line stays in the notebook');
-  assert.notEqual(resolve('remove my note from the journal', both), unpin.id);
-  assert.notEqual(resolve('take down my line from the noticeboard', both), nbUnpin.id);
+  assert.equal(resolve('cross out my note in the journal', both), 'unknown', 'the note stays on the board');
+  assert.equal(resolve('cross out my line on the noticeboard', both), 'unknown', 'the line stays in the notebook');
+  assert.equal(resolve('remove my note from the journal', both), 'unknown');
+  assert.equal(resolve('take down my line from the noticeboard', both), 'unknown');
   // nor for a thing that isn't here, in any spelling
   assert.equal(resolve('remove my line from the guestbook', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('take down my line from the guest book', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('cross out my line in the visitors book', [nbPin, nbUnpin]), 'capability.unknown');
   assert.equal(resolve('take down my note from the notebook', [pin, unpin]), 'capability.unknown');
+  // any other word for a thing that isn't offered, not only the ones listed
+  for (const w of ["visitors' book", "visitor's book", 'guest-book', 'logbook', 'diary', 'log']) assert.equal(resolve(`cross out my note in the ${w}`, [pin, unpin]), 'capability.unknown', w);
+  assert.equal(resolve("cross out my line in the visitors' book", both), 'capability.unknown');
+  assert.equal(resolve('cross out my note in the diary', both), 'capability.unknown');
+  assert.equal(resolve('remove my line from the whiteboard', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('take down my note from the note book', [pin, unpin]), 'capability.unknown');
+  assert.equal(resolve('cross out my line in the logbook', [nbPin, nbUnpin]), nbUnpin.id);
 });
