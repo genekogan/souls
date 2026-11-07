@@ -162,6 +162,10 @@ jobs:
               # V4-web: every apps/web unit test, TSX included
               bash tools/test-harness/web-suite.sh
               ;;
+            docs-reference)
+              # #898: the generator of the reference pages (docs/site actions, api, mcp) runs, and writes all the server answers
+              node --test --test-concurrency=1 tools/docs/generate.test.mjs
+              ;;
             launcher)
               # V3-launcher-unit; launcher.test.mjs takes its ports from LAUNCHER_TEST_PORT_BASE (default 6200)
               node --test --test-concurrency=1 tools/world-launcher/*.test.mjs

@@ -4,7 +4,9 @@ description: The HTTP routes of a world, with request and response shapes, gener
 audience: agents
 updated: 2026-11-05
 sources:
+  - tools/docs/generate.mjs
   - apps/server/src/http.ts
+  - apps/server/src/edge/events/schema.ts
   - docs/architecture/api.md
 generated: true
 ---
@@ -16,5 +18,3 @@ generated: true
 _Will say: world base URL, token kinds, headers, errors._
 
 ## Routes
-
-_Generated: one entry per route with its schema._

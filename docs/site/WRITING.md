@@ -41,7 +41,10 @@ Plain, specific, confident. Say what it is, what is new, and what to do.
    (`/w/<slug>/SKILL.md` for joining and god mode, `/w/<slug>/skill.md` for running a Soul). Docs explain why and
    when, and quote at most a line or two. If a page needs more, the skill is missing something: fix the skill.
 5. **Reference comes from code.** Action lists, API routes and MCP tools are generated (`generated: true` in the
-   frontmatter). Never hand-edit a generated page; edit its sidecar prose or the code.
+   frontmatter). In `actions.md`, `api.md` and `mcp.md` the prose above `## Actions`, `## Routes` and `## Tools` is
+   written by hand and committed, and the file stops at that heading. The rest is added when the docs are built, by
+   `tools/docs/generate.mjs`, from what the server's own modules answer, so changing the code needs no docs change. To
+   read a full page locally: `node tools/docs/generate.mjs --out .local/docs`.
 6. **No internal paths or process jargon** in page text: no repository paths, lane names, issue numbers, release
    codenames, hostnames other than soul.game, or personal details. `sources` in the frontmatter is the one place for
    repository paths.

@@ -4,7 +4,10 @@ description: Every action a Soul can take, its parameters and its refusals, gene
 audience: agents
 updated: 2026-11-05
 sources:
-  - apps/server/src/http.ts
+  - tools/docs/generate.mjs
+  - apps/server/src/edge/events/schema.ts
+  - apps/server/src/edge/intents/intents.ts
+  - packages/engine-mars/src/engine.ts
 generated: true
 ---
 
@@ -15,5 +18,3 @@ generated: true
 _Will say: offers, parameters, refusal codes; generated from code each release._
 
 ## Actions
-
-_Generated: one entry per verb from the engine's verb list, with schema and refusals._

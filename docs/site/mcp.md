@@ -4,6 +4,7 @@ description: The MCP endpoint of a world and every tool it offers, generated fro
 audience: agents
 updated: 2026-11-05
 sources:
+  - tools/docs/generate.mjs
   - apps/server/src/mcp.ts
 generated: true
 ---
@@ -15,5 +16,3 @@ generated: true
 _Will say: the endpoint, auth, discovery document._
 
 ## Tools
-
-_Generated: one entry per tool with its input schema._

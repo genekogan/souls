@@ -40,6 +40,10 @@ export const JOBS = [
   { name: 'native', kind: 'native', assets: true, steps: ['V3-mars-engine'] },
   { name: 'latency', kind: 'latency', assets: false, steps: ['V5-server-full'] },
   // the server inventory in SERVER_SHARDS duration-balanced shards (server-test-files.mjs)
+  // #898: the generator of the reference pages (docs/site actions, api, mcp) still runs against the server's code. Server
+  // and package changes can break it; so can the generator and the pages' own prose, which the gate's scope map leaves free
+  // (docs and tools never gate on Modal), so `paths` adds the job for those in CI only.
+  { name: 'docs-reference', kind: 'docs-reference', assets: false, steps: ['V5-server-full', 'V3-walk'], paths: /^(?:tools\/docs\/|docs\/site\/(?:actions|api|mcp)\.md$)/ },
   ...Array.from({ length: SERVER_SHARDS }, (_, shard) => ({ name: `server-${shard}`, kind: 'server', shard, assets: true, steps: ['V5-server-full', 'V6-'] })),
   // No gate step on purpose: picked by its own paths, so the gate's suite tree and cached baseline stay as they are (#1061).
   { name: 'soul-actions', kind: 'soul-actions', assets: false, steps: [], paths: /^(tools\/soul-actions|apps\/server|packages\/world-compiler|packages\/engine-[^/]+)\// },
