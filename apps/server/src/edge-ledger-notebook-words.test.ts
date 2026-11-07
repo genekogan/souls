@@ -61,5 +61,10 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('cross off the milk from the list', [pin, unpin]), 'unknown');
   assert.equal(resolve('cross out my note on the noticeboard', [pin, unpin]), unpin.id);
   assert.equal(resolve('cross out my line in the journal', [nbPin, nbUnpin]), nbUnpin.id);
-  assert.equal(resolve('cross out my line in the guestbook', [nbPin, nbUnpin]), nbUnpin.id);
+  assert.equal(resolve('cross out my line in the guestbook', [nbPin, nbUnpin]), 'capability.unknown', 'a guestbook is not this notebook');
+  // two of a kind: the one named answers, blocked or not, and the other keeps her line or note
+  const log = mk('e_eeee0005', 'unpin', 'Cross out your line in the notebook (visitors-log)', ''), journal = {...mk('e_ffff0006', 'unpin', 'Cross out your line in the notebook (journal)', ''), available: false, blocked: {code: 'object.not-yours', reason: 'You have no line in this notebook.'}};
+  assert.equal(resolve('cross out my line in the journal', [log, journal]), journal.id, 'her line in the visitors log stays');
+  const market = mk('e_gggg0007', 'unpin', 'Take down your note from the notice board (market-board)', ''), hall = {...mk('e_hhhh0008', 'unpin', 'Take down your note from the notice board (noticeboard)', ''), available: false, blocked: {code: 'object.not-yours', reason: 'You have no note here.'}};
+  assert.equal(resolve('cross out my note on the noticeboard', [market, hall]), hall.id, 'her note on the market board stays');
 });
