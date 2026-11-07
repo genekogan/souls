@@ -4,7 +4,7 @@
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file, so this module
 // lives inside it as a generated block.
 
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 export const HOME_NAME = ".souls", LEGACY_STATE = ".eden-agent.json", STATE_FILE = "state.json", CREDENTIALS = "credentials.json";
@@ -17,6 +17,7 @@ export const HOME_COMMANDS = new Set(["list", "doctor", "default", "export", "im
 /** What a legacy folder hands over on import. Anything else (1.9's `delegations` holds tokens) stays in its own file. */
 export const IMPORTED_FIELDS = ["world", "worldId", "accountAuth", "identity", "soul", "token", "home", "cursor", "ownerMark", "lastReceipt", "lastActAt", "lastAcked", "lastAckedAt", "lastAckedActed", "pendingCreate"];
 const IMPORTED_RUNTIME = [".eden-serve.json"];
+const GOD_LEGACY = ".eden-god.json", GOD_KEPT = /^\.eden-god\.(cache|bakes|claim-c_[0-9a-f]{8})\.json$/;
 
 const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
 const isHome = (root) => existsSync(join(root, "config.json"));
@@ -48,9 +49,9 @@ function readJson(file, fallback) {
 /** Make a home at `root`. `cli` is the bundle to keep in bin/. Safe to call on an existing home. */
 export function createHome(root, { cli } = {}) {
   mkdirSync(join(root, "souls"), { recursive: true, mode: 0o700 });
-  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, default: null, currentWorld: null, worlds: {}, souls: {} });
-  if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {} });
-  if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\n`);
+  if (!existsSync(join(root, "config.json"))) writeJson(join(root, "config.json"), { version: 1, default: null, currentWorld: null, worlds: {}, souls: {}, gods: {} });
+  if (!existsSync(join(root, CREDENTIALS))) writeJson(join(root, CREDENTIALS), { version: 1, souls: {}, worlds: {}, approvals: {}, gods: {} });
+  if (!existsSync(join(root, ".gitignore"))) writeFileSync(join(root, ".gitignore"), `${CREDENTIALS}\nruntime/\npending/\ngods/\n`);
   if (cli && !existsSync(join(root, "bin", "eden.mjs"))) {
     mkdirSync(join(root, "bin"), { recursive: true, mode: 0o700 });
     try { copyFileSync(cli, join(root, "bin", "eden.mjs")); } catch { /* the folder's own copy still runs */ }
@@ -136,8 +137,8 @@ function readJsonQuietly(file) { try { return JSON.parse(readFileSync(file, "utf
 
 export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
   const at = (...p) => join(root, ...p);
-  const config = () => ({ worlds: {}, souls: {}, ...readJson(at("config.json"), {}) });
-  const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, ...readJson(at(CREDENTIALS), {}) });
+  const config = () => ({ worlds: {}, souls: {}, gods: {}, ...readJson(at("config.json"), {}) });
+  const credentials = () => ({ souls: {}, worlds: {}, approvals: {}, gods: {}, ...readJson(at(CREDENTIALS), {}) });
 
   // Two chats in one home can finish a pairing at the same moment; a config or credentials change is one short exclusive step.
   function locked(fn) {
@@ -238,6 +239,38 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return s;
   }
 
+  // God seats: a second principal. A god's token and identity sit under `gods` in credentials.json; acting as a god reads
+  // only gods/<world>/ and that entry, and acting as a Soul never reads gods/.
+  function ensureGod(url) {
+    const key = ensureWorld(url);
+    updateConfig((c) => { c.gods[key] ??= {}; });
+    return key;
+  }
+  /** A seat whose world never confirmed: gone, with its world if nothing else knew it. */
+  function dropGod(key, { world = false } = {}) {
+    updateConfig((c) => { delete c.gods[key]; if (world) delete c.worlds[key]; });
+    updateCredentials((c) => { delete c.gods[key]; });
+    rmSync(at("gods", key), { recursive: true, force: true });
+    if (!readdirSync(at("gods")).length) rmSync(at("gods"), { recursive: true, force: true });
+  }
+  const godSeat = (key) => { const dir = at("gods", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return dir; };
+  const godSecrets = (key) => { const { token, identity } = credentials().gods[key] ?? {}; return { ...(token ? { token } : {}), ...(identity ? { identity } : {}) }; };
+  const saveGodSecrets = (key, patch) => updateCredentials((c) => {
+    for (const k of ["token", "identity"]) if (patch[k]) (c.gods[key] ??= {})[k] = patch[k];
+  });
+  function importGod(folder) {
+    const legacy = JSON.parse(readFileSync(join(folder, GOD_LEGACY), "utf8"));
+    if (!legacy.world) throw new Error(`${GOD_LEGACY} names no world; nothing to import.`);
+    const key = ensureGod(legacy.world);
+    if (godSecrets(key).token) return { imported: false, world: key, reason: "This world already has a god seat in this home." };
+    const dir = godSeat(key), { token, identity, ...open } = legacy;
+    writeJson(join(dir, GOD_LEGACY), open);
+    saveGodSecrets(key, { token, identity });
+    updateConfig((c) => { c.gods[key].importedFrom = real(folder); });
+    for (const f of readdirSync(folder)) if (GOD_KEPT.test(f)) copyFileSync(join(folder, f), join(dir, f));
+    return { imported: true, world: key, reusedToken: !!token, note: `${GOD_LEGACY} stays where it was and still holds the token: delete it once the seat works.` };
+  }
+
   /** Display name, from the world. */
   function named(id, name) {
     if (config().souls[id]?.name === name) return;
@@ -257,7 +290,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
   function list() {
     const c = config();
     return {
-      home: root, souls: principals(), worlds: Object.entries(c.worlds).map(([key, w]) => ({ key, url: w.url, name: w.name ?? null, current: c.currentWorld === key })),
+      home: root, souls: principals(), gods: Object.keys(c.gods).map((world) => ({ world, paired: !!credentials().gods[world]?.token })), worlds: Object.entries(c.worlds).map(([key, w]) => ({ key, url: w.url, name: w.name ?? null, current: c.currentWorld === key })),
       waiting: Object.keys(c.worlds).filter((k) => seatState(k).pendingApproval).map((world) => ({ world, approvalId: seatState(world).pendingApproval.approvalId })),
     };
   }
@@ -356,6 +389,7 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     const after = config();
     for (const [id, worlds] of Object.entries(creds.souls)) if (!after.souls[id]) for (const world of Object.keys(worlds)) out.orphanCredentials.push({ principal: id, world });
     for (const world of Object.keys(creds.worlds)) if (!after.worlds[world]) out.orphanCredentials.push({ principal: "account", world });
+    for (const world of Object.keys(creds.gods)) if (!after.gods[world]) out.orphanCredentials.push({ principal: "god", world });
     for (const id of existsSync(at("souls")) ? readdirSync(at("souls")) : []) {
       const dir = at("souls", id, "runtime");
       for (const lock of runtimeLocks(dir, alive)) {
@@ -369,5 +403,5 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return out;
   }
 
-  return { root, config, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
