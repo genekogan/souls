@@ -269,7 +269,7 @@ test('L2 a step that throws before its tick moves still moves the clock, so the 
 });
 
 for (const [kind, key] of [['before its tick moves', 'preThrow'], ['part way through', 'midThrow']])
-  test(`L2 a step that throws ${kind} on every tick for minutes: one named state, acts refused, no more rewinds, and a clean tick ends it`, async (t) => {
+  test(`L2 a step that throws ${kind} on every tick for minutes: one named state, acts refused, no more rewinds, and it ends when the faults do`, async (t) => {
     quiet(t);
     const w = await world(t), host = w.f.host, {Ada, Bo} = w.souls;
     w.control[key] = () => true; await w.tick(20);
@@ -280,18 +280,40 @@ for (const [kind, key] of [['before its tick moves', 'preThrow'], ['part way thr
     const before = rows(w), recipes = rows(w, "author='world:recovery'"); await w.tick(2600);
     assert.equal(rows(w), before, 'nothing new to say'); assert.ok(recipes <= 1, `${recipes} recipes`);
     assert.equal(host.glitches.byRule['engine.step-failing'].halt, 1); assert.equal(host.paused, false); assert.equal(host.clockAvailable, true);
-    w.control[key] = null; await w.tick(3);
+    w.control[key] = null; await w.tick(200);
     assert.equal(host.stepFailing, null); ok(await act(w, Bo, {capability: 'walk:shed'})); const x = host.engine.world.entities[Bo.entityId].pose.p[0]; await w.tick(10);
     assert.notEqual(host.engine.world.entities[Bo.entityId].pose.p[0], x, 'bodies move again');
   });
 
-test('L7 a world whose every step fails keeps snapshotting, so what a restart must replay stays bounded', async (t) => {
+test('L2 a fault on every other tick is the same named state: it can\'t rewind once a minute for ever', async (t) => {
   quiet(t);
-  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host;
-  w.control.midThrow = () => true; await w.tick(400); assert.ok(host.stepFailing);
-  const snap = () => w.f.db.latestSnapshot(host.worldId).tick, first = snap(); host.snapshotEvery = 100; await w.tick(150); for (let i = 0; i < 20; i++) await setImmediate();
-  assert.ok(snap() > first, `snapshot stayed at ${first}`);
-  reboot(t, w, path);
+  const w = await world(t), host = w.f.host, {Bo} = w.souls;
+  w.control.midThrow = (e) => e.world.tick % 2 === 0; await w.tick(400);
+  assert.match(host.stepFailing, /fixture\./);
+  assert.equal((await w.edge.act(Bo, {capability: 'walk:shed'})).code, 'world.step-failing');
+  const recipes = rows(w, "author='world:recovery'"); await w.tick(2600);
+  assert.equal(rows(w, "author='world:recovery'"), recipes); assert.ok(recipes <= 1, `${recipes} recipes`); assert.ok(host.stepFailing);
+});
+
+test('L7 a world whose steps keep failing still snapshots under continuous ticks, and boots from it with a link that expired meanwhile', async (t) => {
+  quiet(t);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host, {Ada, Bo} = w.souls, head = host.engine.world.tick;
+  host.kernel.links['test|a|b'] = {kind: 'said', from: Ada.soulId, to: Bo.soulId, since: head, until: head + 320, data: {act: 'tell'}};
+  await w.tick(1); host.saveSnapshot(true);
+  w.control.midThrow = () => true; await w.tick(260); assert.ok(host.stepFailing);
+  const snap = () => w.f.db.latestSnapshot(host.worldId).tick, first = snap(); host.snapshotEvery = 100;
+  for (let i = 0; i < 150; i++) host.tickOnce();   // one turn of the event loop for all of them: a sliced job could never land
+  assert.ok(snap() > first, `snapshot stayed at ${first}`); assert.equal(host.kernel.tick, host.engine.world.tick);
+  const landed = snap(), h2 = reboot(t, w, path);   // a faulted tick writes nothing, so a crash lands on the last durable one
+  assert.equal(h2.engine.world.tick, landed); assert.equal(h2.paused, false);
+});
+
+test('a programme already on its way down keeps its reason and counts as nothing stopped, so a repeat fault has nothing to write', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, {Bo} = w.souls;
+  ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(5);
+  const p = host.engine.programs.get(host.engine.programOf(Bo.entityId)), own = {code: 'world.refused:carry.load-static', message: 'its own'}; p.stopping = own;
+  assert.equal(host.engine.stopAllV1({code: 'world.rewound', message: 'x'}), 0); assert.equal(p.stopping, own);
 });
 
 test('the rewind cooldown survives a restart', async (t) => {
@@ -317,6 +339,18 @@ for (const [rung, why] of [['a rewind', 'support.floating'], ['a stop in place',
     t.mock.method(w.f.db, 'appendEvent', (_, e) => { if (e.kind === 'rules') throw new Error('fixture.disk-full'); });
     w.control.fault = violate(why, [Ada.entityId]); w.control.at = host.engine.world.tick + 2; await w.tick(4);
     assert.equal(host.paused, true); assert.equal(host.clockAvailable, false); assert.equal(host.glitches.byRule['durability.repair'].halt, 1);
+  });
+
+for (const inPlace of [true, false])
+  test(`L2 a fault inside a drain whose ${inPlace ? 'stop in place' : 'rewind'} can't be written: a named halt, nothing more written, no throw`, async (t) => {
+    quiet(t);
+    const w = await world(t), host = w.f.host; if (inPlace) host.lastRewindTick = host.engine.world.tick;
+    const apply = host.apply.bind(host); host.apply = (e, r, d) => { if (e.payload?.bad && !r) throw new Error('fixture.fold-bug'); return apply(e, r, d); };
+    const append = w.f.db.appendEvent.bind(w.f.db); w.f.db.appendEvent = (id, e) => { if (e.payload?.lastRungInPlace || e.payload?.recovery) throw new Error('fixture.disk-full'); return append(id, e); };
+    void host.enqueue('rules', 'test', {bad: 1}); void host.enqueue('rules', 'test', {after: 1}).catch(() => {});
+    const tick = host.engine.world.tick; host.tickOnce();
+    assert.equal(rows(w, "json_extract(payload, '$.after') = 1"), 0); assert.equal(host.engine.world.tick, tick, 'no step from that head');
+    assert.equal(host.paused, true); assert.equal(host.glitches.byRule['durability.repair'].halt, 1);
   });
 
 test('a durability failure still halts, and says so', async (t) => {

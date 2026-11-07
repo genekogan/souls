@@ -128,9 +128,9 @@ invariant that throws is a named `engine.thrown` violation, so it is contained l
 live tick survived: a step or event that threw is reported and passed.
 
 **A step that throws still moves the clock,** live and in a replay, so no cooldown or replay waits on a tick that isn't
-coming. Ten seconds of world time with every tick faulted is `engine.step-failing`: the clock runs, no body can move, so
-acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and snapshots continue. A
-clean tick ends it.
+coming. Half the ticks of ten seconds of world time faulted is `engine.step-failing`: the clock runs, bodies can't get
+anywhere, so acts are refused with `world.step-failing`, nothing rewinds, the launcher alerts as for a halt, and a due
+snapshot is taken at once. It ends when faults fall below a quarter of that.
 
 **What still halts:** durability only (`failCheckpoint`, a database that won't write, a clock frontier that can't be
 persisted, a stored baseline that won't restore). Each is named `durability.*`. Without `souls-repair/1`, `haltOnFault` is unchanged.

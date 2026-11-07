@@ -80,8 +80,8 @@ export type RecoveryRecipe = { baseline: SnapshotBody; events: LogEvent[]; until
   lastRung?: { contained?: {code:string;subjects:string[]}[]; relocated?: string[]; skipped?: number[] } };
 /** #1150: a minute of world time. A fault within it of a rung 3 doesn't rewind again. */
 const REWIND_COOLDOWN_TICKS = 1200;
-/** #1150: ten seconds of world time, every tick of it faulted. The step itself is broken, and the world says so. */
-const STEP_FAILING_TICKS = 200;
+/** #1150: half the ticks of ten seconds of world time faulted. The step itself is broken, and the world says so. */
+const STEP_FAILING_WINDOW_TICKS = 200, STEP_FAILING_FAULTS = 100;
 /** What rung 3 leaves out: decisions, and the facts that only mean something for a programme a decision started. */
 const DROPPED_ON_REWIND = new Set(['decision', 'play', 'edge-stop', 'intent-admission-v2', 'intent-arrival-v1', 'intent-sleep-stop-v1']);
 export type RecoveryPose = { p: [number, number, number]; yaw: number; level: number };
@@ -267,7 +267,7 @@ export class WorldHost {
     const stepReplay=()=>{
       const before=this.engine.runtime.violations.length;
       let out:ReturnType<Engine['step']>;
-      try{out=this.stepEngine();}catch(error){if(!this.repairRules)throw error;if(!replayThrew)console.warn('[world] a replayed step threw; the repair in the log follows it:',String(error).slice(0,200));replayThrew=true;return;}   // #1150: as the live tick did
+      try{out=this.stepEngine();}catch(error){if(!this.repairRules)throw error;if(!replayThrew)console.warn('[world] a replayed step threw; the repair in the log follows it:',String(error).slice(0,200));replayThrew=true;if(this.durableClockV1){this.kernel.tick=this.engine.world.tick;sweep(this.kernel);}return;}   // #1150: as the live tick did
       this.advanceLives();replayTicks++;bootTick(this.engine.world.tick);
       replayedRefusals+=out.refusals?.length??0;
       if(this.durableClockV1){
@@ -304,7 +304,7 @@ export class WorldHost {
       this.seq = e.seq;
     }
     verifyClock();
-    if(this.repairRules)this.lastRewindTick=this.db.lastRewindTick(this.worldId)??-Infinity;
+    if(this.repairRules)this.lastRewindTick=this.db.lastRewindTick(this.worldId,this.engine.world.tick-REWIND_COOLDOWN_TICKS)??-Infinity;
     this.factory.validateHistoryHead?.(this.engine,this.db.world(this.worldId)!.rules_version);
     if(this.extra.stationV1)this.stationPhysicalHeadV1();
     const replayedAt = performance.now();
@@ -537,13 +537,14 @@ export class WorldHost {
     if (this.recoveryForEdge) this.validPoses = { tick, poses: this.soulPoses() };
     // 1. apply queued inputs at this tick, logging them
     this.drainInputs();
+    if (this.repairRules && !this.clockAvailable) return;   // a repair in that drain couldn't be written: a named halt, not a throw
     // 2. step the engine
     let out: ReturnType<Engine['step']>;
     const previousViolations = this.engine.runtime.violations.length;
     const tStep = performance.now();
     try { out = this.stepEngine(); if (this.engine.runtime.violations.length > previousViolations) throw new Error(JSON.stringify(this.engine.runtime.violations.slice(previousViolations))); }
-    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); this.noteFaultedTick(error); this.recoverFault(error); if (this.stepFailing && !this.paused && this.snapshotDue()) this.schedulePeriodicSnapshot(); return; }
-    this.faultedTicks = 0; this.stepFailing = null;
+    catch (error) { for (const r of out!?.refusals ?? []) this.countRefusal(r); if (this.repairRules) { this.kernel.tick = this.engine.world.tick; sweep(this.kernel); } this.noteFaultedTick(error); this.recoverFault(error); if (this.stepFailing && this.clockAvailable && this.snapshotDue()) this.snapshotRepair(); return; }
+    this.noteCleanTick();
     this.advanceLives();
     this.kernel.tick = this.engine.world.tick;
     sweep(this.kernel);
@@ -558,7 +559,10 @@ export class WorldHost {
     if(this.durableClockV1){
       // Derived effects become durable before this elapsed body tick is sent.
       // Listener-generated next inputs retain their ordinary queue semantics.
-      this.drainInputs();this.persistClockFrontier();
+      if(this.repairRules&&!this.clockAvailable)return;
+      this.drainInputs();
+      if(this.repairRules&&!this.clockAvailable)return;
+      this.persistClockFrontier();
     }
     for (const ev of out.events) for (const l of this.listeners) l.onRuntimeEvent?.(ev);
     const now = this.engine.world.tick;
@@ -664,6 +668,7 @@ export class WorldHost {
           }catch(restartError){this.stop();p.reject?.(restartError);throw restartError;}
         }else {this.recoverFault(error, e.kind === 'decision' ? e.payload.card : undefined, e.kind === 'decision' && !e.payload?.card ? {seq: e.seq, entityId: e.payload?.entityId} : undefined); recovered = true;}
       }
+      if (this.repairRules && !this.clockAvailable) { for (const q of pending.slice(pending.indexOf(p))) q.reject?.(this.clockFailure); return; }   // nothing more may be written from this head
       const accepted=[e,...(admission?[admission]:[]),...(stationEra?[stationEra]:[]),...(arrival?[arrival]:[])];
       if (!recovered||arrival||stationEra||e.payload?.soulProfileV1||e.payload?.crewRemovalTransition||e.payload?.nativeSleepSnapshotPolicy||e.payload?.commonsNewcomerResources||e.payload?.commonsProvisions||e.payload?.commonsKitchen||e.payload?.retainedCommonsShore||e.payload?.commonsFoodDelivery||e.payload?.socialEden||e.payload?.edenLecture||e.payload?.edenGround||e.payload?.existingGreenLandmark) this.acc.log.push(...accepted);
       // No listener can observe a physical event before its committed era fold.
@@ -1501,16 +1506,24 @@ export class WorldHost {
   private lastRewindTick = -Infinity;
   /** When each in-place fault was last reported: one that keeps firing is written once per cooldown. */
   private inPlaceAt = new Map<string, number>();
-  /** Ticks in a row that ended in a fault. */
-  private faultedTicks = 0;
-  /** #1150: why every step is failing, while it is. The clock runs but no body can move, so acts are refused and the world
-   *  counts as halted for the launcher's alert. Live only: a clean tick clears it, and a restart finds it again. */
+  /** The ticks that ended in a fault, within the last window. */
+  private faultTicks: number[] = [];
+  /** #1150: why steps are failing, while they are. The clock runs but bodies can't get anywhere, so acts are refused and the
+   *  world counts as halted for the launcher's alert. Live only: it ends when faults fall away, and a restart finds it again. */
   stepFailing: string | null = null;
+  private pruneFaultTicks() { const since = this.engine.world.tick - STEP_FAILING_WINDOW_TICKS; while (this.faultTicks.length && this.faultTicks[0] <= since) this.faultTicks.shift(); }
   private noteFaultedTick(error: unknown) {
-    if (!this.repairRules || ++this.faultedTicks < STEP_FAILING_TICKS || this.stepFailing) return;
+    if (!this.repairRules) return;
+    this.faultTicks.push(this.engine.world.tick); this.pruneFaultTicks();
+    if (this.stepFailing || this.faultTicks.length < STEP_FAILING_FAULTS) return;
     this.stepFailing = String(error).slice(0, 800);
-    console.error(`[world] every step for ${STEP_FAILING_TICKS} ticks has faulted; acts are refused until one is clean:`, this.stepFailing);
-    this.recordGlitch('halt', error, {rule: 'engine.step-failing', tick: this.engine.world.tick, evidence: {ticks: this.faultedTicks}});
+    console.error(`[world] ${this.faultTicks.length} of the last ${STEP_FAILING_WINDOW_TICKS} ticks faulted; acts are refused until that falls away:`, this.stepFailing);
+    this.recordGlitch('halt', error, {rule: 'engine.step-failing', tick: this.engine.world.tick, evidence: {ticks: this.faultTicks.length}});
+  }
+  private noteCleanTick() {
+    if (!this.faultTicks.length) return;
+    this.pruneFaultTicks();
+    if (this.faultTicks.length < STEP_FAILING_FAULTS / 4) this.stepFailing = null;
   }
   /** #1150: a step that throws before its tick moves still moves the clock, live and in a replay alike, so a cooldown never
    *  waits on a tick that isn't coming and a replay can't spin on one. */

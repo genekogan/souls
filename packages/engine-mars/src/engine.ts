@@ -477,8 +477,9 @@ export class MarsEngine implements Engine {
     let stopped = 0;   // what this call changed, so a host knows if a replay has to make the same stops
     const cancel = (id: string) => { try { this.rt.cancel(id, why); } catch { const l = this.rt.live.get(id); try { if (l) (this.rt as any).finish(l, 'cancelled', why); } catch { this.rt.live.delete(id); } } };
     for (const p of [...this.programs.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      if (p.stopping && p.action && this.rt.isActive(p.action)) continue;   // already on its way down: its own reason and cleanup stand
       if (p.action && this.rt.isActive(p.action)) cancel(p.action);
-      if (p.action && this.rt.isActive(p.action)) { if (!p.stopping) stopped++; p.stopping = why; p.refusalsV1 ??= []; continue; }
+      if (p.action && this.rt.isActive(p.action)) { stopped++; p.stopping = why; p.refusalsV1 ??= []; continue; }
       stopped++;
       try { this.end(p, p.build ? 'cancelled' : 'failed', why); } catch { this.programs.delete(p.id); if (this.byActor.get(p.actor) === p.id) this.byActor.delete(p.actor); }
     }
