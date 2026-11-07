@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {edenNavWorld} from '../test/eden-nav-fixture.ts';
 import type {EdgeCapability} from './edge/contract.ts';
 
-test('#437 pick-up words: a named world thing before a prop source, a bare kind word still the source', async (t) => {
+test('#437 pick-up words: a named world thing before a prop source, near or by more than one word', async (t) => {
   const w = await edenNavWorld(1); t.after(() => { w.f.host.stop(); w.f.db.close(); }); const soul = w.souls[0] as never;
   const together = (w.ledger as unknown as {together: {resolve(s: unknown, t: string, c: EdgeCapability[]): {capability?: string; code?: string} | null}}).together;
   const item = (id: string, path: string, d: number, available = true): EdgeCapability => ({id: `pick-up:${id}`, verb: 'pick-up', label: `Pick up ${path} (${d} m)`, available, target: {id, kind: 'item'}});
@@ -43,5 +43,6 @@ test('#437 pick-up words: a named world thing before a prop source, a bare kind 
     const kept = {id: 'pick-up:e_k', verb: 'pick-up', label: 'Take pantry/mug out of pantry (2 m)', available: true, target: {id: 'e_k', kind: 'item'}} as EdgeCapability;
     assert.equal(to('take the mug', [source, kept]), 'pick-up:e_k', 'kept in the pantry');
     assert.equal(to('take the mug', [source, {...kept, label: 'Take pantry/mug (left by Bea) out of pantry (2 m)'}]), 'pick-up:e_k');
+    assert.equal(to('take the mug', [source, {...kept, label: 'Take kitchen/mug out of kitchen/drawer-chest (drawer) (2 m)'}]), 'pick-up:e_k', 'a real container\'s path');
     assert.equal(to('pick up the mug 2', [source, item('e_1', 'counter/mug-1', 55)]), 'pick-up:cup', 'a number in the words names that copy, not another');
 });
