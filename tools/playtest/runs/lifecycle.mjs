@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { createLedger } from './ledger.mjs';
 import { validateSpec, portFree } from './spec.mjs';
 import { applySetup, applyWorldTime } from './setup.mjs';
-import { attachTrace, checkTap, summarizeTraces } from './diagnostics.mjs';
+import { attachReports, attachTrace, checkTap, collectReports, summarizeTraces } from './diagnostics.mjs';
 import { writeJson, readJson } from '../lib/jsonl.mjs';
 import { scratchDir } from '../../lib/paths.mjs';
 import { startProcessSampler } from './proc-cost.mjs';
@@ -126,7 +126,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
   const scenarioFile = join(runDir, 'scenario.effective.json');
   // Diagnostics capture (opt-in, SR3): traced seats get their preload and trace file before the scenario is written.
   const diagnostics = attachTrace(validation.scenario, { effective: eff.diagnostics, runId: receipt.runId, runDir, ...(toolsRoot ? { root: toolsRoot } : {}) });
-  if (diagnostics) { receipt.diagnostics = diagnostics; save(); }
+  const reports = attachReports(validation.scenario, { effective: eff.diagnostics });
+  if (diagnostics || reports) { receipt.diagnostics = { ...diagnostics, ...(reports ? { reports } : {}) }; save(); }
   // Recording sidecars carry the run's provenance (#754); the runner adds world, camera and clock fields.
   if (eff.observer.record != null) validation.scenario.observer = { ...(validation.scenario.observer ?? {}), recordMeta: { runId: receipt.runId, attempt: 1, worldTimeRequested: eff.world.time ?? null, specSha256: specSha256 ?? null, effectiveSpecSha256: sha256Of(JSON.stringify(eff)), source: { commit: receipt.source?.commit ?? null, dirtyTrackedFiles: receipt.source?.dirtyTrackedFiles ?? null } } };
   writeJson(scenarioFile, validation.scenario);
@@ -185,6 +186,8 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
 
   log(`run ${outcome.status}${outcome.reason ? `: ${outcome.reason}` : ''}; releasing owned resources`);
   const cleanup = await ledger.releaseAll({ waitMs: eff.limits.cleanupWaitMs });
+  // before retention, which may delete the seat folders
+  if (receipt.diagnostics?.reports) receipt.diagnostics.reports.result = collectReports(runDir, playtestDir, receipt.diagnostics.reports);
   receipt.retention = applyRetention({ runDir, ledger, retention: eff.retention, completed: outcome.status === 'completed' && cleanup.ok });
   const processes = await procs.stop().catch((e) => ({ status: 'unavailable', reason: short(e) }));
   const usage1 = process.resourceUsage(), endedAt = Date.now();
@@ -193,7 +196,7 @@ export async function startRun({ spec, specPath = null, specSha256 = null, serve
     cost: { wallMs: endedAt - t0, executeMs: execMs, lifecycleOverheadMs: execMs == null ? null : endedAt - t0 - execMs, runnerCpuUserMs: Math.round((usage1.userCPUTime - usage0.userCPUTime) / 1000), runnerCpuSystemMs: Math.round((usage1.systemCPUTime - usage0.systemCPUTime) / 1000), runnerMaxRssMb: Math.round(usage1.maxRSS / 1024), runDirBytes: bytesUnder(runDir), processes },
     evidence: summarizeEvidence(playtestDir), ...(eff.observer.record != null || existsSync(join(playtestDir, 'recordings')) ? { recordings: summarizeRecordings(playtestDir) } : {}),
   });
-  if (receipt.diagnostics) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
+  if (receipt.diagnostics?.capture) receipt.diagnostics.capture.result = summarizeTraces(runDir, receipt.diagnostics);
   if (!cleanup.ok && receipt.status === 'completed') { receipt.status = 'failed'; receipt.reason = `cleanup incomplete: ${cleanup.failed.join(', ')}`; }
   save();
   return receipt;
