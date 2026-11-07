@@ -93,4 +93,10 @@ test('notebook words resolve only where a notebook is offered', () => {
   assert.equal(resolve('take down my note', [pin, unpin]), unpin.id);
   assert.equal(resolve('take down my note from the wanted board now', [pin, unpin]), unpin.id, 'take down and remove are as they were');
   assert.equal(resolve('cross out my line', [nbPin, nbUnpin]), nbUnpin.id);
+  // bare words beside a sheet she hasn't signed: the sheet answers, and her note and line stay
+  assert.equal(resolve('cross out', [pin, unpin, sign, notSigned]), notSigned.id);
+  assert.equal(resolve('cross out', [nbPin, nbUnpin, sign, notSigned]), notSigned.id);
+  // a word the tokens drop still counts: "first" is not the newest line
+  assert.equal(resolve('cross out my first line in the notebook', [nbPin, nbUnpin]), 'capability.unknown');
+  assert.equal(resolve('cross out my note in the дневник', [pin, unpin]), 'capability.unknown');
 });

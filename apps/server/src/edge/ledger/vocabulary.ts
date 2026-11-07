@@ -94,7 +94,7 @@ const ACT_ALIASES: Record<string, string> = {'turn-on': 'switch-on', 'turn-off':
 /** #428: a second meaning of an everyday word, used only when its ACT_ALIASES meaning is not on offer and this one is:
  *  "cross out" a sign-up name (unsign) or a notebook line (the pinboard faculty's unpin). */
 const ACT_ALT: Record<string, string> = {'cross-out': 'unpin', 'cross-off': 'unpin', 'strike-off': 'unpin'};
-const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), THING_ALIASES: Record<string, string> = {journal: 'notebook', logbook: 'notebook', noticeboard: 'board'};
+const LABEL_FILLER = new Set(['from', 'your', 'my', 'out', 'off', 'down', 'take', 'cross', 'in', 'on', 'of']), PLAIN_WORDS = new Set(['the', 'a', 'an', 'this', 'that', 'please']), THING_ALIASES: Record<string, string> = {journal: 'notebook', logbook: 'notebook', noticeboard: 'board'};
 /** #428: "write in the notebook" is a notebook's line (the pinboard faculty's `pin`), only where a notebook's line is on
  *  offer (its label says so), so "write in the study" still reaches a desk beside a pinboard. */
 const NOTEBOOK_WORDS: Record<string, string> = {'write-in': 'pin', 'write-a-line-in': 'pin'};
@@ -599,10 +599,10 @@ function resolveWords(input: string, ctx: VocabContext): VocabResult {
     const crossing = !!alt, here = crossing ? tokens([...first, ...second].map(thing).join(' ')) : [];
     // words about something that isn't offered do nothing: "my journal note" with only a board is not that board's note. Any
     // word that is neither an offered name nor a label's noun stops it. Only these verbs: "take down" and "remove" are as they were.
-    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], fits = (w: string) => tokenHit(w, known) || tokenHit(THING_ALIASES[w] ?? w, known), stray = said.find(w => !fits(w));
+    const known = crossing ? tokens([...first, ...second].flatMap(c => [c.label, thing(c)]).join(' ')) : [], fits = (w: string) => tokenHit(w, known) || tokenHit(THING_ALIASES[w] ?? w, known), stray = rest.toLowerCase().split(/[^\p{L}\p{N}]+/u).find(w => w && !PLAIN_WORDS.has(w) && !LABEL_FILLER.has(w) && !fits(w));
     if (crossing && first.length + second.length && stray) return {kind: 'unknown', code: 'capability.unknown', reason: `Nothing here to cross out or take down goes by "${stray}", so nothing was done.`, didYouMean: []};
     const altFits = !!alt && (second.length
-      ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !can(primary).length && (!!can(alt).length || !first.length)
+      ? first.some(name) ? false : second.some(name) ? true : !first.length && ws.includes('name') ? false : first.some(noun) ? false : second.some(noun) ? true : !first.length
       : !verbs.has(primary) && verbs.has(alt));
     verb = altFits ? alt : primary;
     if (crossing) rest = said.map(w => tokenHit(w, here) ? w : THING_ALIASES[w] ?? w).join(' ');   // no filler in the match below; a thing's own word kept
