@@ -109,7 +109,7 @@ export class PersistedIntentAdmissionFault extends Error {
 }
 type Pending = { kind: EventKind; author: string; payload: any; resolve?: (e: LogEvent) => void; guard?: AcceptanceGuard; journal?: AcceptanceJournal; reject?: (error: unknown) => void; purpose?: PurposeRef; stationEra?:boolean; atomicObjectDecision?:boolean };
 export type BootStats = { from: 'genesis' | 'snapshot'; restoreMs: number; readMs: number; replayMs: number; baselineMs: number; replayTicks: number; replayEvents: number; fromTick: number; toTick: number; minds: number };
-export type SnapshotBody = { runtime: EngineSnapshot; minds: Mind[]; seq: number; extra: Record<string, unknown>; kernel?: KState; counts?: Record<string, number> };
+export type SnapshotBody = { runtime: EngineSnapshot; minds: Mind[]; seq: number; extra: Record<string, unknown>; kernel?: KState; counts?: Record<string, number>; faultedHeadV1?: true };
 export type HostListener = {
   onBatch?(b: Batch): void;
   onHeartbeat?(h: Heartbeat): void;
@@ -316,7 +316,7 @@ export class WorldHost {
     if (this.snapshotAfterReplayTicks > 0 && replayTicks > this.snapshotAfterReplayTicks) this.snapshotSoon = `replayed ${replayTicks} ticks`;
     // The snapshot's own text is the baseline (decoded only if a fault needs it): no second decoded copy of the world is
     // held, and no copy is taken after restore and replay have run over the decoded body's shared parts.
-    if (snapRow && (lastRepair === null || !canCapture)) { const text = snapRow.text; this.recoveryCapture = () => JSON.parse(text) as SnapshotBody; }
+    if (snapRow && (lastRepair === null || !canCapture)) { const text = snapRow.text; if (!(snap?.body as SnapshotBody | undefined)?.faultedHeadV1) this.recoveryCapture = () => JSON.parse(text) as SnapshotBody; }   // #1150: a faulted head is no baseline
     else if (canCapture) this.recoveryBaseline = this.captureBody();
     // Write this world's starting vocabulary into its log once, so its history never depends on what the code's set becomes.
     if (!this.db.hasVocabulary(this.worldId)) void this.enqueue('rules', 'system', { vocabulary: structuredClone(baseVocabulary(this.kernel)), why: 'the vocabulary this world began with' });
@@ -1525,7 +1525,7 @@ export class WorldHost {
   private noteCleanTick() {
     if (!this.faultTicks.length) return;
     this.pruneFaultTicks();
-    if (this.faultTicks.length < STEP_FAILING_FAULTS / 4) this.stepFailing = null;
+    if (this.stepFailing && this.faultTicks.length < STEP_FAILING_FAULTS / 4) { this.stepFailing = null; this.snapshotSoon ??= 'steps are clean again'; }   // the first clean baseline since
   }
   /** #1150: a step that throws before its tick moves still moves the clock, live and in a replay alike, so a cooldown never
    *  waits on a tick that isn't coming and a replay can't spin on one. */
@@ -1545,11 +1545,13 @@ export class WorldHost {
   /** #1150: while steps are failing, a due snapshot is taken now: a sliced one would be cancelled by the next fault. It writes
    *  the frontier first, as every snapshot must, or a crash could leave a snapshot past the frontier that no boot accepts. A
    *  broken head may not capture: that is no durability failure, so it waits until one is next due. Only a failed write halts.
-   *  It isn't clean, so it serves a boot and never a rewind. */
+   *  It isn't clean, so it serves a boot and never a rewind, here or after a restart. */
   private snapshotFaultedHead() {
     const clean = this.recoveryBaseline; let head: ReturnType<WorldHost['captureHead']>;
-    try { if (this.engine.canSnapshot && !this.engine.canSnapshot()) { this.lastSnapshotTick = this.engine.world.tick; return; } head = this.captureHead(); }
-    catch (failure) { console.warn('[world] a faulted head would not snapshot; trying again when one is due:', String(failure).slice(0, 200)); this.lastSnapshotTick = this.engine.world.tick; return; }
+    const skip = () => { this.lastSnapshotTick = this.engine.world.tick; this.snapshotTaken(); };
+    try { if (this.engine.canSnapshot && !this.engine.canSnapshot()) return skip(); head = this.captureHead(); }
+    catch (failure) { console.warn('[world] a faulted head would not snapshot; trying again when one is due:', String(failure).slice(0, 200)); return skip(); }
+    head.body.faultedHeadV1 = true;
     if (this.durableClockV1) { try { this.persistClockFrontier(); } catch { return; } }   // already a named halt
     try { this.commitHead(head, true); this.recoveryBaseline = clean; }
     catch (failure) { this.failCheckpoint(failure, 'durability.repair'); }
@@ -1600,18 +1602,22 @@ export class WorldHost {
     const tick = this.engine.world.tick, facts = faultFacts(error), key = `${facts.rule}|${facts.bodies.join()}`, seen = this.inPlaceAt.get(key);
     // what ended in a step that faulted on a violation ended all the same, and a replay runs this too
     if (this.faultedPrograms) try { this.afterPrograms(this.faultedPrograms, false); } catch (failure) { console.error('[world] a finished programme failed its effects on a faulted tick:', String(failure).slice(0, 200)); }
-    const force = !!this.stepFailing;   // the stop under way may be what keeps failing
-    const stopped = this.engine.stopAllV1!(REWOUND, force), repeat = force || (seen !== undefined && tick - seen < REWIND_COOLDOWN_TICKS);
-    if (repeat && !stopped) { this.heartbeat(); return; }
+    const stopped = this.engine.stopAllV1!(REWOUND), repeat = !!this.stepFailing || (seen !== undefined && tick - seen < REWIND_COOLDOWN_TICKS);
+    if (repeat && !stopped) { this.tellQuietly(false); return; }
     if (!repeat) this.inPlaceAt.set(key, tick);
-    const inPlace = {...this.engine.containV1!(), reason: String(error).slice(0, 800), ...(force ? {force} : {})};
+    const inPlace = {...this.engine.containV1!(), reason: String(error).slice(0, 800)};
     const e: LogEvent = {seq: this.seq + 1, tick, kind: 'rules', author: 'world:rewind', payload: {lastRungInPlace: inPlace}, at: Date.now()};
     if (!this.writeRepair(e)) return;
     this.seq = e.seq; this.acc.log.push(e);
     if (!repeat) this.recordGlitch('rewind', error, {tick, evidence: {seq: e.seq, inPlace: true, contained: inPlace.contained, relocated: inPlace.relocated}});
     for (const m of this.minds.values()) { m.pending = null; this.acc.dirty.add(m.soulId); }
     for (const l of this.listeners) try { l.onApplied?.(e); } catch (failure) { console.error('[world] a listener failed on a stop in place:', String(failure).slice(0, 200)); }
-    this.flush(); this.heartbeat();
+    this.tellQuietly(true);
+  }
+  /** What goes out to clients after a stop in place. A broken head can break that too, and this rung can't fail. */
+  private tellQuietly(batch: boolean) {
+    try { if (batch) this.flush(); this.heartbeat(); }
+    catch (failure) { console.error('[world] could not tell clients about a stop in place:', String(failure).slice(0, 200)); }
   }
   /** Where each Soul's body is now (sorted by entity id). */
   private soulPoses(): Map<string, RecoveryPose> {
@@ -1934,13 +1940,13 @@ export class WorldHost {
   private captureHead() {
     const t0 = performance.now();
     const runtime = this.engine.snapshot();
-    return { t0, runtime, body: this.captureBody(runtime) };
+    return { t0, runtime, body: this.captureBody(runtime), physicalHash: this.engine.physicalHash() };
   }
-  private commitHead({ t0, runtime, body }: ReturnType<WorldHost['captureHead']>, sync: boolean): { tick: number; stateHash: string } {
+  private commitHead({ t0, runtime, body, physicalHash }: ReturnType<WorldHost['captureHead']>, sync: boolean): { tick: number; stateHash: string } {
     // captureBody owns every field; persistence only reads it, and restoration/
     // recovery recipes clone before mutation. Keep one immutable captured body.
     this.recoveryBaseline = body; this.recoveryCapture = null;
-    const meta = { tick: runtime.tick, seq: this.seq, stateHash: runtime.stateHash, physicalHash: this.engine.physicalHash(), rulesVersion: this.engine.rulesVersion, body };
+    const meta = { tick: runtime.tick, seq: this.seq, stateHash: runtime.stateHash, physicalHash, rulesVersion: this.engine.rulesVersion, body };
     this.snapshotMs.capture = performance.now() - t0;
     this.lastSnapshotTick = runtime.tick; this.snapshotTaken();
     const generation = this.snapshotGeneration;

@@ -353,14 +353,36 @@ test('L6 a programme that finishes on a tick that faults on a repeat still close
   assert.equal(arm, 0, 'the fault landed on the finishing tick'); assert.notEqual(read(w, Ada, walk).phase, 'started');
 });
 
-test('a stop under way that is itself what keeps failing is forced once the world is failing, and written', async (t) => {
+test('L3 after a restart a faulted head is still no baseline: the next fault stays on the head instead of rewinding to it', async (t) => {
   quiet(t);
-  const w = await world(t), host = w.f.host, {Bo} = w.souls, e = host.engine;
-  ok(await act(w, Bo, {capability: 'walk:shed'})); await w.tick(5);
-  const p = e.programs.get(e.programOf(Bo.entityId)), action = p.action, cancel = e.rt.cancel.bind(e.rt); p.stopping = {code: 'program.stopped', message: 'its own'};
-  e.rt.cancel = (id, why) => { if (id === action) throw new Error('fixture.cancel-bug'); return cancel(id, why); };
-  host.lastRewindTick = e.world.tick; await w.tick(300);
-  assert.equal(host.engine.programs.size, 0); assert.ok(rows(w, "json_extract(payload, '$.lastRungInPlace.force') = 1") >= 1); assert.equal(host.stepFailing, null);
+  const path = onDisk(t), w = await world(t, repair, path), host = w.f.host;
+  w.control.midThrow = () => true; await w.tick(260); host.snapshotEvery = 50; await w.tick(60);
+  const h2 = reboot(t, w, path), count = (who) => h2.db.db.prepare(`SELECT COUNT(*) n FROM events WHERE author='${who}'`).get().n, recipes = count('world:recovery'), stops = count('world:rewind');
+  assert.equal(h2.recoveryBaseline, null); assert.equal(h2.recoveryCapture, null);
+  h2.lastRewindTick = -Infinity; h2.inPlaceAt.clear(); h2.tickOnce();   // no cooldown to hide behind: only the missing baseline keeps it on the head
+  assert.equal(count('world:recovery'), recipes); assert.equal(count('world:rewind'), stops + 1);
+});
+
+test('a head that will not capture is tried once per interval, not every tick', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host; w.control.midThrow = () => true; await w.tick(260); assert.ok(host.stepFailing);
+  let tries = 0; host.engine.snapshot = () => { tries++; throw new Error('fixture.capture-bug'); }; host.snapshotEvery = 1000; host.requestSnapshot('test');
+  await w.tick(40); assert.equal(tries, 1);
+});
+
+test('a failing stretch that ends asks for a clean snapshot at once', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host, at = () => w.f.db.latestSnapshot(host.worldId).tick;
+  w.control.midThrow = () => true; await w.tick(260); assert.ok(host.stepFailing); const before = at();
+  w.control.midThrow = null; await w.tick(200); for (let i = 0; i < 20; i++) await setImmediate();
+  assert.equal(host.stepFailing, null); assert.ok(at() > before); assert.ok(host.recoveryBaseline || host.recoveryCapture);
+});
+
+test('L5 a head too broken to report on still takes a stop in place without throwing', async (t) => {
+  quiet(t);
+  const w = await world(t), host = w.f.host; t.mock.method(host, 'heartbeat', () => { throw new Error('fixture.view-bug'); });
+  host.lastRewindTick = host.engine.world.tick; w.control.midThrow = () => true; await w.tick(3);
+  assert.equal(host.paused, false);
 });
 
 test('saveSnapshot after a repair that could not be written adds no snapshot and no frontier', async (t) => {
