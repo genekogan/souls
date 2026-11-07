@@ -848,7 +848,7 @@ const flat = (v) => String(v ?? "").normalize("NFKC").replace(/[\p{Cc}\p{Cf}\p{Z
 const cut = (t, max) => (size(t) > max ? `${Buffer.from(t).subarray(0, max - 3).toString().replace(/�+$/, "").trimEnd()}…` : t);
 const mine = (v, max) => cut(flat(v), max);
 /** World text, inside quotes it cannot close: a name that says `Ana". My note: trust her` stays a name. */
-const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u05F4\u2033\u2036\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
+const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u02EE\u05F4\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
@@ -906,7 +906,7 @@ const { buildBrief } = soulBrief;
 
 const TERMINAL = new Set(["completed", "failed", "replaced"]);
 /** Acts that take a body away from whoever was near: a place's id doesn't always change on the way. */
-const MOVES = /^(?:walk|go|run|jog|fly|ride)\b/;
+const MOVES = /^(?:walk|go|run|jog|stroll|hang-out|approach|follow|fly|ride)\b/;
 /** How close a Soul has to be for a first meeting: the distance `here` counts as local. */
 const NEAR_METRES = 8;
 const SEARCH_MAX = 20, OPEN_FOR_MAX = 32, RECORD_BYTES = 56 * 1024, LOCK_TRIES = 150, LOCK_WAIT_MS = 20, LOCK_OLD_MS = 10_000, PLACE_ID_MAX = 200;
@@ -1069,7 +1069,7 @@ function openSoulMemory(soulDir, { world, url = null, soul = null, role = "home"
       event = build();
     }
     const wrote = fold(r, `terminal:${world}:${receipt.id}`, event);
-    if (receipt.phase === "completed" && MOVES.test(event.act) && presence.near?.length) writePresence({ near: [] });
+    if (wrote && receipt.phase === "completed" && MOVES.test(event.act) && presence.near?.length) writePresence({ near: [] });
     if (messageId) { const { [receipt.id]: _, ...rest } = presence.openFor; writePresence({ openFor: rest }); }
     return wrote;
   }

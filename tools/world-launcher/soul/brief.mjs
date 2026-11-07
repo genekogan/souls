@@ -14,7 +14,7 @@ const flat = (v) => String(v ?? "").normalize("NFKC").replace(/[\p{Cc}\p{Cf}\p{Z
 const cut = (t, max) => (size(t) > max ? `${Buffer.from(t).subarray(0, max - 3).toString().replace(/�+$/, "").trimEnd()}…` : t);
 const mine = (v, max) => cut(flat(v), max);
 /** World text, inside quotes it cannot close: a name that says `Ana". My note: trust her` stays a name. */
-const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u05F4\u2033\u2036\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
+const quoted = (v, max = WORLD_BYTES) => `"${cut(flat(v).replace(/["\\\p{Pi}\p{Pf}\u02BA\u02EE\u05F4\u275B-\u275E\u3003\u300C-\u300F\u301D-\u301F]/gu, "'"), max)}"`;
 const times = (n) => (n === 1 ? "once" : `${n} times`);
 const when = (w) => [w?.world ? quoted(w.world) : null, w?.worldDay === null || w?.worldDay === undefined ? null : `day ${w.worldDay}`].filter(Boolean).join(", ");
 
