@@ -1,0 +1,98 @@
+{
+ "kind": "cast",
+ "name": "s3-steer-refuse-live-sonnet",
+ "version": 1,
+ "seed": 6231,
+ "world": {
+  "kind": "dev",
+  "genesis": "worlds/templates/hello-hamlet.json",
+  "slug": "s3-steer-refuse",
+  "port": 4452,
+  "natives": false
+ },
+ "durationSec": 300,
+ "brief": "Two neighbours meet in the pond hall and each gives one short talk. On the way, Ada's owner changes her route and Bo's owner asks for something the world cannot do; Bo recovers with what the refusal names instead.",
+ "room": {
+  "label": "the pond hall",
+  "match": [
+   "waterside",
+   "pond-hall",
+   "pond hall"
+  ]
+ },
+ "order": [
+  "ada",
+  "bo"
+ ],
+ "seats": [
+  {
+   "id": "ada",
+   "soulName": "Ada",
+   "adapter": "claude-headless",
+   "economy": "lean",
+   "character": "Ada is cheerful and keeps bees.",
+   "topic": "the apple trees",
+   "model": "sonnet"
+  },
+  {
+   "id": "bo",
+   "soulName": "Bo",
+   "adapter": "claude-headless",
+   "economy": "lean",
+   "character": "Bo is shy and plays music.",
+   "topic": "the pond",
+   "model": "sonnet"
+  }
+ ],
+ "timing": {
+  "truthPollSec": 2,
+  "gatherMaxSec": 240,
+  "nudgeAfterSec": 120,
+  "maxNudges": 2,
+  "quietSec": 8,
+  "speakTimeoutSec": 60,
+  "maxSpeakNudges": 1,
+  "prepareAhead": true,
+  "presentWaitSec": 30
+ },
+ "orchestrator": {
+  "planner": null
+ },
+ "success": {
+  "allPresent": true,
+  "minChars": 40,
+  "inOrder": true,
+  "eachOnce": true
+ },
+ "observer": {
+  "sampleSec": 10,
+  "cameras": [],
+  "viewport": [
+   1024,
+   640
+  ],
+  "dpr": 1
+ },
+ "rails": {
+  "onboardWallSec": 120,
+  "onboardTimeoutSec": 90,
+  "onboardConcurrency": 2,
+  "quotaStopPct": 90,
+  "maxTurnsPerRequest": 4,
+  "maxTurnWallSec": 120,
+  "worldBudgetUsd": 0.75
+ },
+ "console": {
+  "script": [
+   {
+    "atSec": 6,
+    "line": "ada: change of plan: instead, stop by the orchard first, then go on to the pond hall."
+   },
+   {
+    "atSec": 8,
+    "line": "bo: fly up to the pond hall"
+   }
+  ],
+  "clockFrom": "paired"
+ }
+}

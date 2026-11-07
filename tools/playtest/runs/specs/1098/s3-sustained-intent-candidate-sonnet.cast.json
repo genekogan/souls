@@ -1,0 +1,126 @@
+{
+ "kind": "cast",
+ "name": "s3-sustained-intent-live-sonnet",
+ "version": 2,
+ "seed": 6234,
+ "world": {
+  "kind": "dev",
+  "genesis": "worlds/templates/hello-hamlet.json",
+  "slug": "s3-sustained-intent",
+  "port": 4458,
+  "natives": false
+ },
+ "durationSec": 300,
+ "brief": "Two neighbours run their owners' errands around the hamlet, then meet in the pond hall and each gives one short talk about their morning.",
+ "room": {
+  "label": "the pond hall",
+  "match": [
+   "waterside",
+   "pond-hall",
+   "pond hall"
+  ]
+ },
+ "order": [
+  "ada",
+  "bo"
+ ],
+ "seats": [
+  {
+   "id": "ada",
+   "soulName": "Ada",
+   "adapter": "claude-headless",
+   "economy": "lean",
+   "character": "Ada is cheerful and keeps bees.",
+   "topic": "her errand",
+   "model": "sonnet"
+  },
+  {
+   "id": "bo",
+   "soulName": "Bo",
+   "adapter": "claude-headless",
+   "economy": "lean",
+   "character": "Bo is shy and plays music.",
+   "topic": "a change of plan",
+   "model": "sonnet"
+  }
+ ],
+ "timing": {
+  "truthPollSec": 2,
+  "gatherMaxSec": 300,
+  "nudgeAfterSec": 240,
+  "maxNudges": 1,
+  "quietSec": 8,
+  "speakTimeoutSec": 60,
+  "maxSpeakNudges": 1,
+  "prepareAhead": true,
+  "presentWaitSec": 60
+ },
+ "orchestrator": {
+  "planner": null
+ },
+ "success": {
+  "allPresent": true,
+  "minChars": 40,
+  "inOrder": true,
+  "eachOnce": true
+ },
+ "observer": {
+  "sampleSec": 10,
+  "cameras": [],
+  "viewport": [
+   1024,
+   640
+  ],
+  "dpr": 1
+ },
+ "rails": {
+  "onboardWallSec": 120,
+  "onboardTimeoutSec": 90,
+  "onboardConcurrency": 2,
+  "quotaStopPct": 90,
+  "maxTurnsPerRequest": 4,
+  "maxTurnWallSec": 120,
+  "worldBudgetUsd": 0.75
+ },
+ "console": {
+  "script": [
+   {
+    "atSec": 6,
+    "line": "ada: please walk over to the orchard, and after that go and sit on the bench outside the cottage"
+   },
+   {
+    "atSec": 7,
+    "line": "bo: walk over to the orchard, please"
+   },
+   {
+    "atSec": 14,
+    "line": "ada: lovely morning!"
+   },
+   {
+    "atSec": 15,
+    "line": "ada: do you remember where you are going?"
+   },
+   {
+    "atSec": 16,
+    "line": "ada: tell me when you're there"
+   },
+   {
+    "atSec": 16,
+    "line": "bo: actually stop, don't go to the orchard after all"
+   },
+   {
+    "atSec": 30,
+    "line": "bo: say hello to everyone around you"
+   },
+   {
+    "atSec": 120,
+    "line": "ada: that's all, now walk to the pond hall and wait for the others"
+   },
+   {
+    "atSec": 122,
+    "line": "bo: that's all, now walk to the pond hall and wait for the others"
+   }
+  ],
+  "clockFrom": "paired"
+ }
+}
