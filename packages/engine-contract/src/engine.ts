@@ -110,7 +110,10 @@ export interface Engine {
    * Optional; the sequencer otherwise requires an exact resumable checkpoint. */
   previewAdmission?(program: Program): ProgramAdmission;
   /** Stop a running program (the actor is left idle where it is). */
-  stop(programId: string): void;
+  /** `untilSafe` (PC08, a shared carry's stop): the programme stays until its native cleanup has finished, retrying a
+   *  refused cancel each tick the action moves (not while it is held up), as a physical runtime does; without it,
+   *  legacy behaviour is unchanged. */
+  stop(programId: string, opts?: { untilSafe?: boolean }): void;
   /** Synchronous read-only feasibility batch; memoization never crosses its boundary. */
   withFeasibilityRead?<T>(read:()=>T):T;
   /** Physical feasibility of a program's first step right now, without running it (Mars: `verb.plan`). Null = feasible. */
@@ -148,7 +151,7 @@ export interface Engine {
   canSnapshot?(): boolean;
   groundReclaimEnabledV1?(): boolean;
   enableGroundReclaimV1?(): void;
-  configureRuntimePolicy?(policy: {sleepBlockTicks:number;quietSeatCourtesy?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;walkSettleWaitV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean}): void;
+  configureRuntimePolicy?(policy: {sleepBlockTicks:number;quietSeatCourtesy?:boolean;nativeArrivalWitnessV1?:boolean;quietLandingCourtesyV1?:boolean;walkSettleWaitV1?:boolean;occupiedLinkRoutingV1?:boolean;concurrentLinkEgressV1?:boolean;stairLandingClearanceV1?:boolean}): void;
   configureClock?(clock: { origin: number; dayTicks: number }): void;
   beginQuiet?(): void;
   isQuiet?(): boolean;

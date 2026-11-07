@@ -442,4 +442,5 @@ export const raiseUpright: ActionDef<P, null, Exec> = {
 // Exported only; nothing above changes behaviour.
 export type RaiseGeo = Geo;
 export type RaiseRole = Role;
+export { nextPitch as raiseNextPitch, stepPath as raiseStepPath, pathLen as raisePathLen, along as raiseAlong, raiseBystander, BYSTANDER_GAP as RAISE_BYSTANDER_GAP };
 export { RAISE_RATE, STEP_PITCH, geoOf as raiseGeo, reachR as raiseReach, lifterAt as raiseLifterAt, faceCol as raiseFaceCol, standBlocked as raiseStandBlocked, choreoBlocked as raiseChoreoBlocked, transitionPitch as raiseTransitionPitch };

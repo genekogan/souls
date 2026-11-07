@@ -4,7 +4,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {dirname,join} from 'node:path';
 import {BODY_UPLOAD_POLICY,validateUpload} from './upload-validation.ts';
 import {bindBodyDefinition,admitBodyGLB,BODY_LIMITS} from './admission.ts';
-import {rollingActionProblem,ROLLING_ACTIONS} from './action-profile.ts';
+import {profileActionProblem,isActionProfile,PROFILE_ACTIONS} from './action-profile.ts';
 import {MOTION_LIMITS} from './motion.ts';
 
 /** Same normalization and admission as the world. Throws the world's own field/measured/limit errors. */
@@ -36,13 +36,13 @@ export function bodyReport(admitted,bytes,manifest,contract=null){
  const supported=[],refused=[];
  for(const [action,verb]of PROBE){let reason=null;
   if(profile==='rigid')reason=RIGID_CORE.has(action)?null:action==='dance'?(adapters.includes('dance')?null:'No motion.dance adapter was submitted.'):rigidReason;
-  else if(profile==='rolling-gripper/1')reason=rollingActionProblem(verb,undefined,'edge');
+  else if(isActionProfile(profile))reason=profileActionProblem({actionProfile:profile},verb,undefined,'edge');
   (reason?refused:supported).push(reason?{action,reason}:{action,proof:CONTACT.has(action)?'world-authoritative: support, reach and custody are decided in the world; a preview shows no contact':'world-authoritative movement and timing; the preview is visual only'});}
  const world=contract?{types:contract.types,typeAllowed:contract.types.includes(manifest.type)}:{types:null,typeAllowed:null,note:'contract.json not found next to validate.mjs; world policy unknown'};
  return {contract:'body-report/1',assetId:admitted.assetId,profile,world,
   requirements:{clips:{required:needClips,present:clips,missing:needClips.filter(c=>!clips.includes(c))},
-   adapters:profile==='rigid'?{contract:'body-motion/1',required:['idle','move','rest'],optional:['dance'],present:adapters,fadeSeconds:MOTION_LIMITS.fadeSeconds,...(adapters.length?{}:{note:NO_MOTION})}:{note:profile==='humanoid'?'existing canonical humanoid adapters':ROLLING_ACTIONS.rest},
-   dimensions:profile==='rigid'?{fittedExtent:.7,navigationRadius:.35,hoverHeight:1.45,support:'ground navigation with a visual hover; not flight'}:{rig:'quaternius/1',shoulderHeight:1.34,armReach:.62,support:'canonical ground support and foot phase',contacts:'canonical hands (Middle2) are the contact points'}},
+   adapters:profile==='rigid'?{contract:'body-motion/1',required:['idle','move','rest'],optional:['dance'],present:adapters,fadeSeconds:MOTION_LIMITS.fadeSeconds,...(adapters.length?{}:{note:NO_MOTION})}:{note:profile==='humanoid'?'existing canonical humanoid adapters':PROFILE_ACTIONS[profile].rest},
+   dimensions:profile==='rigid'?{fittedExtent:.7,navigationRadius:.35,hoverHeight:1.45,support:'ground navigation with a visual hover; not flight'}:{rig:'quaternius/1',shoulderHeight:1.34,armReach:.62,support:'canonical ground support and foot phase',contacts:'canonical hands (Middle2) are the contact points',...(profile==='quadruped-torso/1'?{footprintRadius:contract?.profiles?.quadrupedTorso?.footprintRadius??.28,footprint:'every visible vertex below the hips stays inside this radius of the body centre (body.footprint)'}:{})}},
   actions:{supported,refused,unknown:'unsupported; requires an admitted adapter'},
   budgets:[budget('bytes',admitted.bytes,BODY_LIMITS.bytes),budget('triangles',admitted.triangles,BODY_LIMITS.triangles),budget('drawCalls',draws,drawLimit),budget('images',images.length,BODY_LIMITS.images),
    budget('imageBytes',imgBytes,BODY_LIMITS.imageBytes),budget('imageDimension',dim,BODY_LIMITS.imageDimension),budget('nodes',admitted.nodes,BODY_LIMITS.nodes),budget('accessors',(j.accessors??[]).length,BODY_LIMITS.accessors)],

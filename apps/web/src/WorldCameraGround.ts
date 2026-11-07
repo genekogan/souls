@@ -92,7 +92,7 @@ export class CameraGroundClamp{
   const floor=ground===null?null:ground+CAMERA_GROUND_MARGIN;
   const lifted=floor!==null&&p.y<floor?floor-p.y:0;
   if(lifted>0){p.y=floor!;camera.updateMatrixWorld();}
-  this.last={ground,lifted,surfaces:this.meshes.length};(globalThis as {__simCameraGround?:unknown}).__simCameraGround=this.last;
+  this.last={ground,lifted,surfaces:this.meshes.length};(globalThis as {__soulsCameraGround?:unknown}).__soulsCameraGround=this.last;
   return lifted;
  }
 }

@@ -1,7 +1,7 @@
 import type {WorldHost} from './world.ts';
 import type {Brain} from './brain.ts';
-import type {Card} from '@sim/kernel';
-import {COMMONS_KITCHENS,COMMONS_PERSONAL_RESOURCES} from '@sim/engine-mars';
+import type {Card} from '@souls/kernel';
+import {COMMONS_KITCHENS,COMMONS_PERSONAL_RESOURCES} from '@souls/engine-mars';
 
 /** Two residents share each finite station; ownership applies to cards and
  * personal utensils, while native pot reservations/quantity govern admission. */

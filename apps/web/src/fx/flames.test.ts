@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { buildKit } from '../gen-mesh/kit.mesh.ts';
 import { MaterialLib } from '../gen-mesh/materials.ts';
 import { flameHint, hasFlames, isFlameShape, mountFlames, flameStats } from './flames.ts';
-import type { StoredDef } from '@sim/world-compiler';
+import type { StoredDef } from '@souls/world-compiler';
 
 const draw = (shapes: unknown[], flameHint = false) => buildKit({ v: 2, shapes } as never, { materials: new MaterialLib(), tint: (key, fallback) => key === 'flame' ? '#ff9a2a' : fallback, params: {}, state: {}, flameHint });
 const fires = (o: THREE.Object3D) => { const out: THREE.Object3D[] = []; o.traverse((c) => { if (c.name === 'fire') out.push(c); }); return out; };

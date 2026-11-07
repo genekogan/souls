@@ -15,7 +15,7 @@ const dir = mkdtempSync(join(tmpdir(), 'health-dash-test-'));
 const root = join(dir, 'srv'), dataDir = join(root, 'production'), backups = join(dir, 'backups');
 const templatesDir = join(dir, 'templates'); mkdirSync(templatesDir);
 const fake = new URL('./fake-world.mjs', import.meta.url).pathname;
-const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port), FAKE_TICK_MS: w.slug === 'alpha' ? '61.5' : '4.2' } });
+const command = (w, port) => ({ cmd: process.execPath, args: [fake], env: { ...process.env, WORLD_KEY: w.slug, PORT: String(port), FAKE_TICK_MS: w.slug === 'alpha' ? '61.5' : '4.2', ...(w.slug === 'halts' ? { FAKE_LIVE: '1', DATA_DIR: w.dataDir } : {}) } });
 let L;
 const get = (p, h = {}) => fetch(`${O}${p}`, { headers: h });
 const dash = async () => { const r = await get('/__sim/health?json=1'); assert.equal(r.status, 200); return r.json(); };
@@ -98,4 +98,42 @@ test('a frozen or slow world never holds the page up: its last answer stays', as
     assert.ok(wall < 600, `wall ${Math.round(wall)} ms`); assert.ok(d.ms < 300, `server time ${d.ms} ms`);
     assert.deepEqual(d.worlds.find((w) => w.slug === 'beta').tickMs, { avg: 4.2, max: 8.4, n: 400 }, 'kept from the last answer');
   } finally { process.kill(pid, 'SIGCONT'); }
+});
+
+test('#1150: a halted world keeps its last tick numbers, shows its counts by rule and rung and is a bad alert; hostOk goes false with the code alone; records read from the store, loopback only', async () => {
+  const made = await fetch(`${O}/__sim/worlds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Halts', template: 'empty', slug: 'halts' }) });
+  assert.equal(made.status, 201, await made.text());
+  const row = (d) => d.worlds.find((w) => w.slug === 'halts');
+  let d = await dash();
+  for (let i = 0; i < 40 && !row(d)?.tickMs; i++) { await new Promise((r) => setTimeout(r, 100)); d = await dash(); }
+  assert.deepEqual(row(d).tickMs, { avg: 4.2, max: 8.4, n: 400 }); assert.equal(row(d).glitches, null, 'a fake world from before the counts'); assert.equal(row(d).halted, undefined);
+  const kid = L.pool.status('halts');
+  assert.equal((await fetch(`http://127.0.0.1:${kid.port}/w/halts/halt`)).status, 200);
+  for (let i = 0; i < 100 && !row(d).halted; i++) { await L.pool.guard(); d = await dash(); if (!row(d).halted) await new Promise((r) => setTimeout(r, 100)); }
+  assert.equal(row(d).halted, true);
+  assert.deepEqual(row(d).glitches, { total: 2, byRule: { 'collision.human-load': { recovery: 1, halt: 1 } } });
+  assert.deepEqual(row(d).tickMs, { avg: 4.2, max: 8.4, n: 400 }, 'kept from the last answer');
+  assert.ok(d.alerts.some((a) => a.level === 'bad' && /^halts: halted/.test(a.text)), JSON.stringify(d.alerts));
+  const html = await (await get('/__sim/health')).text();
+  assert.match(html, /<h2>Glitches/); assert.match(html, /halted/);
+  const pub = await (await get('/__sim/healthz', { 'x-forwarded-for': '203.0.113.9' })).json();
+  assert.equal(pub.hostOk, false); assert.ok(pub.hostCodes.includes('halted'));
+  assert.equal(pub.worldProblems, undefined, 'the text and the world are for loopback');
+  const local = await (await get('/__sim/healthz')).json();
+  assert.ok(local.worldProblems.some((x) => x.slug === 'halts' && x.code === 'halted'));
+});
+
+test('#1150: /__sim/glitches reads each store, for a world not running too; ?world= adds its records with their evidence; loopback only', async () => {
+  const dbFile = join(dataDir, 'worlds', 'alpha', 'sim.db'), db = new DatabaseSync(dbFile);
+  db.exec('CREATE TABLE glitches_v1 (id INTEGER PRIMARY KEY, world_id TEXT NOT NULL, at INTEGER NOT NULL, tick INTEGER NOT NULL, rung TEXT NOT NULL, rule TEXT NOT NULL, bodies TEXT NOT NULL, evidence TEXT NOT NULL)');
+  const ins = db.prepare('INSERT INTO glitches_v1 (world_id, at, tick, rung, rule, bodies, evidence) VALUES (?,?,?,?,?,?,?)');
+  ins.run('alpha-1', 1_760_000_000_000, 7, 'recovery', 'collision.human-human', '["a","b"]', '{"seq":3}');
+  ins.run('alpha-1', 1_760_000_001_000, 9, 'halt', 'collision.human-human', '["a"]', '{"why":"recovery replay still faults"}');
+  db.close();
+  const all = await (await get('/__sim/glitches')).json();
+  assert.deepEqual(all.worlds, { alpha: { total: 2, byRule: { 'collision.human-human': { recovery: 1, halt: 1 } }, last: '2025-10-09T08:53:21.000Z' } });
+  const one = await (await get('/__sim/glitches?world=alpha&limit=1')).json();
+  assert.equal(one.worlds.alpha.records.length, 1);
+  assert.deepEqual(one.worlds.alpha.records[0], { at: '2025-10-09T08:53:21.000Z', tick: 9, rung: 'halt', rule: 'collision.human-human', bodies: ['a'], evidence: { why: 'recovery replay still faults' } });
+  assert.equal((await get('/__sim/glitches', { 'x-forwarded-for': '203.0.113.9' })).status, 404);
 });

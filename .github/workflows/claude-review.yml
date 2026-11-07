@@ -95,6 +95,7 @@ jobs:
             5. Changelog: a `changes/*.md` fragment with a user-facing line (changes/README.md), or the `no-changelog`
                label for changes with nothing user-facing.
             6. Public-repo hygiene: no secrets, home paths, private host names, IPs, emails or personal details.
+               Describe a leak by category and relative source location; never quote its private value in the review.
 
             Write the review, as Markdown, to the file `.local/claude-review/review.md` with the Write tool (create
             the folder's file; write nothing else anywhere). Do NOT post it or any other comment: the workflow posts
@@ -120,6 +121,7 @@ jobs:
           if [ ! -s "$file" ]; then echo "::warning::Claude wrote no review (.local/claude-review/review.md is missing or empty); nothing posted."; exit 0; fi
           marker='<!-- sim-claude-review -->'
           { echo "$marker"; cat "$file"; echo; echo "<sub>Claude review of ${HEAD_SHA:0:12}; this comment is updated on every push (claude-review.yml).</sub>"; } > "$RUNNER_TEMP/review.md"
+          node tools/proof/publication.mjs "$RUNNER_TEMP/review.md"
           # Our own earlier review: the marker, posted by this workflow's token.
           id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n1)

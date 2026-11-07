@@ -1,4 +1,4 @@
-// A ready-to-work container for Sim: Node 22, pnpm 10.27.0, Playwright 1.63 Chromium (for proof clips and e2e),
+// A ready-to-work container for Souls: Node 22, pnpm 10.27.0, Playwright 1.63 Chromium (for proof clips and e2e),
 // ffmpeg (clip encoding with a scrub bar), the workspace installed and the media pulled from the CDN.
 // Works in VS Code Dev Containers, GitHub Codespaces and `devcontainer up`.
 {

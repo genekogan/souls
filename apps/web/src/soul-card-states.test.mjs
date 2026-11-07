@@ -8,7 +8,7 @@ import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 const require=createRequire(import.meta.url);
-const dir=await mkdtemp(join(tmpdir(),'sim-soul-card-states-'));
+const dir=await mkdtemp(join(tmpdir(),'souls-soul-card-states-'));
 globalThis.location={origin:'https://sim.eden.art',pathname:'/worlds/w/eden-2026/',search:'',hash:''};
 globalThis.sessionStorage={getItem:()=>null};
 const outfile=join(dir,'cards.cjs');

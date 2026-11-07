@@ -1,5 +1,5 @@
 import { workerData } from 'node:worker_threads';
-import { marsFactory } from '@sim/engine-mars';
+import { marsFactory } from '@souls/engine-mars';
 import { Db } from '../../src/db.ts';
 import { WorldHost } from '../../src/world.ts';
 import { IntentObservations } from '../../src/intent-observations.ts';

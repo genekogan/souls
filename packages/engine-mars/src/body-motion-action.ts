@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ActionDef,Diagnostic} from '../../../mars/viewer/engine/actions/types.ts';
-import {hasRollingProfile} from '../../../mars/viewer/engine/bodies/action-profile.ts';
+import {hasDeclaredProfile} from '../../../mars/viewer/engine/bodies/action-profile.ts';
 import {hasBodyDance,MOTION_LIMITS,type BodyMotionState} from '../../../mars/viewer/engine/bodies/motion.ts';
 import {DT,type Runtime} from '../../../mars/viewer/engine/runtime/runtime.ts';
 import type {Spatial} from '../../../mars/viewer/engine/spatial/service.ts';
@@ -11,7 +11,7 @@ type Exec={id:string;p:Params;since:number;until:number};
 const issue=(message:string,actor:string):Diagnostic=>({code:'body.motion-unavailable',message,subjects:[actor]});
 function problem(rt:Runtime,p:Params):Diagnostic|null {
  const e=rt.world.entities[p.actor],h=e?.human;
- if(!h||!(p.motion==='rest'?hasRollingProfile(e.body):hasBodyDance(e.body)))return issue('This body has no admitted adapter for the requested motion.',p.actor);
+ if(!h||!(p.motion==='rest'?hasDeclaredProfile(e.body):hasBodyDance(e.body)))return issue('This body has no admitted adapter for the requested motion.',p.actor);
  if(h.task||h.grip||h.holding||h.prop||(h.hands&&Object.keys(h.hands).length>0)||Object.values(rt.world.entities).some(e=>e.support?.kind==='in-hand'&&e.support.by===p.actor)||h.on||h.riding||h.carrier||h.boatPassenger||h.shore||h.sleepPose||h.partner||h.together||!['idle','wait','rest'].includes(h.activity))return issue('Finish safely standing with free hands before this motion.',p.actor);
  const sp=rt.services.spatial as Spatial|undefined;if(!sp)return issue('This world cannot validate standing support.',p.actor);
  sp.sync(rt.world);const at:[number,number]=[e.pose.p[0],e.pose.p[2]],read=sp.clearanceReader(h.level,at);

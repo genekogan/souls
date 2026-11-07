@@ -10,7 +10,7 @@
 // A classifier that throws or takes longer than `timeoutMs` quarantines (fail closed, never silently allow).
 import { pngRows, type UploadFormat, type UploadImage } from './validate.ts';
 
-export type UploadSurface = 'body' | 'asset';
+export type UploadSurface = 'body' | 'asset' | 'thumbnail';
 export type UploadFacts = {
   surface: UploadSurface; format: UploadFormat; sha: string; bytes: number;
   tris: number; textures: number; texPx: number;

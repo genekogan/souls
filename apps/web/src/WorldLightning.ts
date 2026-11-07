@@ -6,8 +6,8 @@
 // it is close, a long low rumble when it is far (WebAudio, synthesised; the browser lets it sound after the first click
 // or key). Presentation only; nothing here is authoritative.
 import * as THREE from 'three';
-import { strikesBetween, SOUND_MPS, type Strike } from '@sim/world-compiler';
-import { setWeatherInForce } from '@sim/world-compiler/weather-rules';
+import { strikesBetween, SOUND_MPS, type Strike } from '@souls/world-compiler';
+import { setWeatherInForce } from '@souls/world-compiler/weather-rules';
 import { warmSceneChange } from './gen-mesh/texture-budget.ts';
 import { arrivalMark, arrivalOver } from './arrival-marks.ts';
 import { audible } from './audio-focus.ts';
@@ -47,7 +47,9 @@ export class WorldLightning {
   private core = new THREE.MeshBasicMaterial({ color: 0xf4f7ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false });
   private glow = new THREE.MeshBasicMaterial({ color: 0x9db4ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false });
 
-  constructor(private layer: LayerLike) {
+  private layer: LayerLike;
+  constructor(layer: LayerLike) {
+    this.layer = layer;
     this.group.name = 'god-lightning';
     this.group.add(this.flash);
     for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, this.unlock, { passive: true });

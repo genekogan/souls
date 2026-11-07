@@ -32,7 +32,7 @@ class PendingHost extends EventEmitter{
 }
 function fixture(t,{wakeOffset=60000,includedOwner=false,startRun=true}={}){
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:origin});
- const directory=mkdtempSync(join(tmpdir(),'sim-urgent-interrupt-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new PendingHost(),stop=new AbortController(),commands=[],states=[];
+ const directory=mkdtempSync(join(tmpdir(),'souls-urgent-interrupt-')),journal=openJournal(directory,{worldId:'w',soulId:'s'}),host=new PendingHost(),stop=new AbortController(),commands=[],states=[];
  host.activeTurnId=null;
  journal.ingest({source:'owner',after:null,cursor:'original-owner',events:[{id:'original-owner',text:'Finish the original owner errand.'}]});
  if(!includedOwner)journal.handled('owner','original-owner','notification handled; task remains open');

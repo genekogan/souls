@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {commonsProvisionsFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1,retainedCommonsShoreFactory} from '@sim/engine-mars';
+import {commonsProvisionsFactory,commonsNewcomerResourcesFactory,nativeSleepSnapshotFactoryV1,retainedCommonsShoreFactory} from '@souls/engine-mars';
 import type {WorldState as NativeWorld} from '../../../mars/viewer/engine/world/types.ts';
 import {decodeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
-import {kernelHash} from '@sim/kernel';
+import {kernelHash} from '@souls/kernel';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {WorldHost} from './world.ts';
 import {edenHistoryFactory} from './eden-bootstrap.ts';

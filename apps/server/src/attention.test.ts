@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { marsFactory } from '@sim/engine-mars';
+import { marsFactory } from '@souls/engine-mars';
 import { Attention, passiveRequest, unwatchedPace } from './attention.ts';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
@@ -60,15 +60,28 @@ test('attention: passive reads (health, the homepage numbers without a token) do
   assert.equal(unwatchedPace({}), 0.25); assert.equal(unwatchedPace({ SIM_UNWATCHED_PACE: '0.1' }), 0.1); assert.equal(unwatchedPace({ SIM_UNWATCHED_PACE: '7' }), 0.25);
 });
 
+// #1077: these tests waited a fixed 20 ms for a request to arrive, and lost that race on a loaded CI runner. The server
+// below holds each response until the test lets it go, and the test waits for the condition it checks (bounded).
+function heldServer() {
+  const waiting: (() => void)[] = []; let arrived: (() => void) | null = null;
+  const server = createServer((req, res) => { if (req.url === '/healthz') { res.end('ok'); return; } waiting.push(() => res.end('ok')); arrived?.(); });
+  const nextArrival = () => new Promise<void>((resolve) => { arrived = () => { arrived = null; setImmediate(resolve); }; });   // after every 'request' listener
+  return { server, nextArrival, release: () => { for (const end of waiting.splice(0)) end(); } };
+}
+async function until(check: () => boolean, what: string, ms = 5_000) {
+  const end = Date.now() + ms;
+  while (!check()) { if (Date.now() > end) assert.fail(`not within ${ms} ms: ${what}`); await new Promise((x) => setTimeout(x, 5)); }
+}
+
 test('attention: a server counts websockets and requests', async (t) => {
-  const server = createServer((_req, res) => { setTimeout(() => res.end('ok'), 50); });
+  const { server, nextArrival, release } = heldServer();
   let changes = 0; const a = new Attention(() => { changes++; }, 0).watch(server, 60_000);
-  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => { a.stop(); server.close(); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => { release(); a.stop(); server.close(); });
   const port = (server.address() as { port: number }).port;
   assert.equal(a.check(), false);
-  const r = fetch(`http://127.0.0.1:${port}/v1/config`); await new Promise((x) => setTimeout(x, 20));
+  const arrival = nextArrival(); const r = fetch(`http://127.0.0.1:${port}/v1/config`); await arrival;
   assert.equal(a.inflight, 1); assert.equal(a.watched, true);
-  await (await r).text(); await new Promise((x) => setTimeout(x, 20));
+  release(); await (await r).text(); await until(() => a.inflight === 0, 'the answered request leaves inflight');
   assert.equal(a.inflight, 0);
   await (await fetch(`http://127.0.0.1:${port}/healthz`)).text();
   assert.equal(a.inflight, 0, 'health checks are not attention');
@@ -76,15 +89,15 @@ test('attention: a server counts websockets and requests', async (t) => {
 });
 
 test('attention: the Eyes render worker (user agent EdenEyes/1) is not a watcher', async (t) => {
-  const server = createServer((_req, res) => { setTimeout(() => res.end('ok'), 50); });
+  const { server, nextArrival, release } = heldServer();
   const a = new Attention(() => {}, 0).watch(server, 60_000);
-  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => { a.stop(); server.close(); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => { release(); a.stop(); server.close(); });
   const port = (server.address() as { port: number }).port;
   assert.equal(a.check(), false);
   const ua = 'Mozilla/5.0 HeadlessChrome/140 EdenEyes/1';
-  const r = fetch(`http://127.0.0.1:${port}/v1/config`, { headers: { 'user-agent': ua } }); await new Promise((x) => setTimeout(x, 20));
-  assert.equal(a.inflight, 0); assert.equal(a.watched, false);
-  await (await r).text();
+  const arrival = nextArrival(); const r = fetch(`http://127.0.0.1:${port}/v1/config`, { headers: { 'user-agent': ua } }); await arrival;
+  assert.equal(a.inflight, 0); assert.equal(a.watched, false);   // it has arrived, and is not counted
+  release(); await (await r).text();
   const { EventEmitter } = await import('node:events');
   server.emit('upgrade', { url: '/ws', headers: { 'user-agent': ua } }, new EventEmitter(), Buffer.alloc(0));
   assert.equal(a.open, 0); assert.equal(a.check(), false);

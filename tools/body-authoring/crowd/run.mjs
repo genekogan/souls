@@ -19,8 +19,11 @@ const threeDir=dirname(dirname(require.resolve('three')));
 const media=resolve(process.env.CROWD_MEDIA??'.lane/mars-web');
 const models=resolve(process.env.CROWD_MARTIANS??'worlds/littlemartians/characters');
 const {pipBytes}=await import('../../../apps/server/src/edge/body/pip.ts');
+const {monsterBytes,ghostBytes,centaurBytes,GHOST_PRESET,GHOST_ASSET}=await import('../../../apps/server/src/edge/body/shared-bodies.ts');
+// Shared bodies built and pinned exactly as the world serves them; the ghost loads from its admitted asset path.
+const shared={'/fixtures/pip.glb':pipBytes,'/fixtures/monster.glb':monsterBytes,'/fixtures/centaur.glb':centaurBytes,[`/v1/edge/body/assets/${GHOST_ASSET}.glb`]:ghostBytes},built=new Map();
 const timings=process.argv.includes('--timings');
-let pip,port=9290;
+let port=9290;
 while(!await portFree(port))port++;
 checkPort(port);
 const origin='http://127.0.0.1:'+port,errors=[];
@@ -35,10 +38,11 @@ const server=await createServer({root:dirname(fileURLToPath(import.meta.url)),co
  server:{host:'127.0.0.1',port,strictPort:true,fs:{allow:[root,threeDir,media,models]}},
  plugins:[{name:'body-fixtures',configureServer(s){s.middlewares.use(async(req,res,next)=>{
   const path=new URL(req.url,origin).pathname;let base,rel;
-  if(path==='/fixtures/pip.glb'){
-   try{pip??=await pipBytes();res.setHeader('Content-Type','model/gltf-binary');res.setHeader('Content-Length',pip.length);res.end(pip);}
-   catch{res.statusCode=503;res.end('Pip fixture unavailable');}return;
+  if(shared[path]){
+   try{const b=built.get(path)??await shared[path]();built.set(path,b);res.setHeader('Content-Type','model/gltf-binary');res.setHeader('Content-Length',b.length);res.end(Buffer.from(b));}
+   catch{res.statusCode=503;res.end('Shared body fixture unavailable');}return;
   }
+  if(path==='/fixtures/ghost.json'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(GHOST_PRESET.body));return;}
   if(path.startsWith('/fixtures/martians/')){base=models;rel=path.slice('/fixtures/martians/'.length);}
   else if(path.startsWith('/fixtures/draco/')){base=join(media,'draco');rel=path.slice('/fixtures/draco/'.length);}
   else if(path.startsWith('/modular/environment/')){base=join(media,'modular/environment');rel=path.slice('/modular/environment/'.length);}
@@ -72,7 +76,7 @@ async function open(context,budget='budgeted'){
  });
  report.rendererMode??=mode;assert.equal(mode,report.rendererMode,'renderer backend changed during run');return page;
 }
-const cases=[['none','budgeted'],['humanoid','budgeted'],['martians','full'],['martians','budgeted'],['pip','budgeted']];
+const cases=[['none','budgeted'],['humanoid','budgeted'],['martians','full'],['martians','budgeted'],['pip','budgeted'],['monster','budgeted'],['ghost','budgeted'],['centaur','budgeted']];
 try{
  await server.listen();const pw=resolvePlaywright({serverRoot:root});
  const launch=launchArgs({gpu:'metal'});report.launchBackend=launch.gpu;
@@ -117,7 +121,7 @@ try{
  // Record separately, so video encoding cannot contaminate timing measurements. One context, uncut, real speed.
  const context=await browser.newContext({viewport:{width:1280,height:720},recordVideo:{dir:join(out,'video'),size:{width:1280,height:720}}});
  const page=await open(context),video=page.video(),marks=[],start=performance.now();
- for(const [arm,mode] of [['none','idle'],['humanoid','active'],['martians','active'],['pip','active'],['pip','distant']]){
+ for(const [arm,mode] of [['none','idle'],['humanoid','active'],['martians','active'],['pip','active'],['monster','active'],['ghost','active'],['ghost','distant'],['centaur','active']]){
   await select(page,arm,mode);marks.push({arm,mode,seconds:(performance.now()-start)/1000});await page.waitForTimeout(2000);
  }
  await context.close();report.proof={file:await video.path(),uncut:true,realSpeed:true,marks};

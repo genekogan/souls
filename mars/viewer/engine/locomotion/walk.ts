@@ -1079,7 +1079,8 @@ function stepWalk(rt: Runtime, ex: Exec, dt: number): StepResult {
     if (ex.detour?.stage === 'going') {
       releaseAll(rt, ex);
       ex.detour.stage = 'waiting';
-      a.human!.activity = 'wait';
+      // #1120: this tick's step reached the aside spot at walking pace, so it stays a walk; the waiting stage says 'wait'
+      // from the next tick, when the body is still (a 'wait' published with this tick's speed broke W21's wait cap).
       return { status: 'running', phase: 'step-aside' };
     }
     if (ex.face !== undefined && Math.abs(angleDelta(a.pose.yaw, ex.face)) > 0.03) {
@@ -1265,6 +1266,21 @@ export function stairBlocker(rt: Runtime, me: Entity, from: number[], to: number
     if (dTo >= 2 * r - 0.02) continue;
     const dFrom = floater && dyFrom<=1.1?hypot(o.pose.p[0]-from[0],o.pose.p[2]-from[2]):hypot(o.pose.p[0] - from[0], (o.pose.p[1] - from[1]) * 0.5, o.pose.p[2] - from[2]);
     if ((floater && dyTo<=1.1) || dTo < dFrom - 1e-9) return o.id;
+  }
+  return null;
+}
+
+/**
+ * stair-landing-clearance/1 (#509): a body on a flight's destination level (within 1 m in height) that stands closer
+ * to its landing point than the two bodies' radii less 2 cm, in entity order, or null. Walk avoidance and the separation invariant compare
+ * bodies on the same level only, so a walker on the destination floor cannot see a climber who is still on the flight.
+ * `stairBlocker` refuses only a step that brings the climber closer to a body; this refuses the final step onto an
+ * occupied landing whatever its direction, so the climber waits on the flight instead of arriving overlapping.
+ */
+export function landingBlocker(rt: Runtime, me: Entity, landing: { p: Vec2; y: number; level: number }, r: number): string | null {
+  for (const o of entitiesOf(rt)) {
+    if (o.id === me.id || o.kind !== 'human' || o.human?.level !== landing.level || Math.abs(o.pose.p[1] - landing.y) > 1.0) continue;
+    if (hypot(o.pose.p[0] - landing.p[0], o.pose.p[2] - landing.p[1]) < r + bodyProfile(o).radius - 0.02) return o.id;
   }
   return null;
 }
@@ -1685,7 +1701,11 @@ function stepLink(rt: Runtime, ex: Exec, a: Entity, leg: Extract<Leg, { kind: 'l
   ex.climbT = Math.min(total, ex.climbT + CLIMB_SPEED * dt);
   const next = pointOnLink(geo, ex.climbT);
   // someone standing on / at the end of the stair: wait rather than pass through them
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const onStair = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius), exitEnd = leg.ascending ? link.to : link.from;
+  const atLanding = !onStair && rt.services.stairLandingClearanceV1 === true && ex.climbT >= total - 1e-9 ? landingBlocker(rt, a, exitEnd, ex.profile.radius) : null;
+  const blocker = onStair ?? atLanding;
+  // stair-landing-clearance/1: ask an idle body on the landing to step aside, clear of it (spec §17), once a second.
+  if (atLanding && a.body?.family !== 'floater' && rt.tick % 20 === 0) makeWay(rt, atLanding, exitEnd.p);
   if (blocker) {
     if(rt.services.concurrentLinkEgressV1===true)yieldLinkLanding(rt,ex,a,leg,blocker);
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
@@ -1810,7 +1830,11 @@ function stepLinkCancel(rt: Runtime, ex: Exec, a: Entity, leg: LinkLeg, dt: numb
   }
   const at = forward ? Math.min(geo.total, ex.climbT + CLIMB_SPEED * dt) : Math.max(0, ex.climbT - CLIMB_SPEED * dt);
   const next = pointOnLink(geo, at);
-  const blocker = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const onStair = stairBlocker(rt, a, a.pose.p, next, ex.profile.radius);
+  const atLanding = !onStair && rt.services.stairLandingClearanceV1 === true && (forward ? at >= geo.total - 1e-9 : at <= 1e-9) ? landingBlocker(rt, a, landing, ex.profile.radius) : null;
+  const blocker = onStair ?? atLanding;
+  // stair-landing-clearance/1: ask an idle body on the landing to step aside, clear of it (spec §17), once a second.
+  if (atLanding && a.body?.family !== 'floater' && rt.tick % 20 === 0) makeWay(rt, atLanding, landing.p);
   if (blocker) {
     if(a.body?.family==='floater')makeWay(rt,blocker,[next[0],next[2]],{by:a.id,subjects:[a.id],landing:{y:rt.world.entities[blocker].pose.p[1],radius:2*ex.profile.radius+.3}});
     a.human!.activity = 'climb-wait';
