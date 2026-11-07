@@ -300,7 +300,7 @@ test('R5: a crew stops short of another crew\'s load, by name', {timeout: 120000
   ok(await act(w, Dee, {capability: `accept:${b.receipt.shared.invite}`, params: {revision: 1}}));
   const named = new Set();
   for (let i = 0; i < 1500 && [a, b].some((x) => invitation(w, x).shared.op?.phase !== 'ended'); i++) {await w.tick(1); for (const r of w.host.engine.rt.records.values()) if (r.verb === 'carry' && r.status === 'blocked' && r.diagnostic?.code) named.add(r.diagnostic.code);}
-  // this says crews wait, by name, rather than fault; it doesn't pin which of the two holds fired
+  // this says crews wait, by name, rather than fault; which hold fired is pinned in mars/viewer/engine/test/crew-clearance.test.ts
   assert.ok(named.has('carry.path-occupied') || named.has('carry.pickup-occupied'), `a named wait, not a fault: ${[...named]}`);
   assert.equal(w.host.clockFailure, undefined); assert.ok(pj);
 });
