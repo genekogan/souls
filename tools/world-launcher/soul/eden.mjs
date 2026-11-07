@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as soulHome$fs from "node:fs";
 import * as soulHome$path from "node:path";
 const soulHome = (() => {
-const { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } = soulHome$fs;
+const { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } = soulHome$fs;
 const { basename, dirname, join, resolve } = soulHome$path;
 // home.mjs: the Souls home, one `.souls/` folder holding every Soul a person keeps on this machine. No HTTP and no
 // model: `doctor` is handed its one way of asking a world. Design: docs/design/soul-context.md section 1.
@@ -266,6 +266,13 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     updateConfig((c) => { c.gods[key] ??= {}; });
     return key;
   }
+  /** A seat whose world never confirmed: gone, with its world if nothing else knew it. */
+  function dropGod(key, { world = false } = {}) {
+    updateConfig((c) => { delete c.gods[key]; if (world) delete c.worlds[key]; });
+    updateCredentials((c) => { delete c.gods[key]; });
+    rmSync(at("gods", key), { recursive: true, force: true });
+    if (!readdirSync(at("gods")).length) rmSync(at("gods"), { recursive: true, force: true });
+  }
   const godSeat = (key) => { const dir = at("gods", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return dir; };
   const godSecrets = (key) => { const { token, identity } = credentials().gods[key] ?? {}; return { ...(token ? { token } : {}), ...(identity ? { identity } : {}) }; };
   const saveGodSecrets = (key, patch) => updateCredentials((c) => {
@@ -415,7 +422,7 @@ function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics.wait(n
     return out;
   }
 
-  return { root, config, ensureGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
 return { HOME_NAME, RUNTIME_LOCKS, SEAT_COMMANDS, HOME_COMMANDS, IMPORTED_FIELDS, findHome, globalRoot, createHome, slugOf, keyOf, norm, splitSecrets, selectSoul, looksLikeSelector, chooseContext, runtimeLocks, openHome, LEGACY_STATE, STATE_FILE, CREDENTIALS };
 })();
@@ -2285,10 +2292,11 @@ async function exportCommand(...argv) {
 async function importCommand(from) {
   const folder = userPath(from ?? "."), home = needHome();
   if (existsSync(joinPath(folder, "soul.json"))) return home.importExport(folder);
-  const god = existsSync(joinPath(folder, ".eden-god.json")) ? home.importGod(folder) : null;
-  if (!existsSync(joinPath(folder, soulHome.LEGACY_STATE))) { if (god) return { god }; throw new Error(`No ${soulHome.LEGACY_STATE}, .eden-god.json or soul.json in ${folder}.`); }
-  const busy = soulHome.runtimeLocks(folder, pidAlive).find((l) => l.alive);
+  const hasSoul = existsSync(joinPath(folder, soulHome.LEGACY_STATE));
+  const busy = hasSoul && soulHome.runtimeLocks(folder, pidAlive).find((l) => l.alive);
   if (busy) throw new Error(`pid ${busy.pid} still runs in that folder (${busy.name}). Stop its listen or serve first, then import.`);
+  const god = existsSync(joinPath(folder, ".eden-god.json")) ? home.importGod(folder) : null;
+  if (!hasSoul) { if (god) return { god }; throw new Error(`No ${soulHome.LEGACY_STATE}, .eden-god.json or soul.json in ${folder}.`); }
   const { ctx, ...r } = home.importLegacy(folder);
   if (!r.imported || !ctx) return { ...r, ...(god ? { god } : {}) };
   SEAT = ctx; process.chdir(ctx.dir);

@@ -5,7 +5,7 @@
 // (the world mirror). Commands print short human text; add --json for machine output.
 import { acquireLock } from './lib/locks.mjs';
 import { doctor } from './lib/doctor.mjs';
-import { enterGodSeat, godFile } from './lib/seat.mjs';
+import { enterGodSeat, godFile, seatForRegister } from './lib/seat.mjs';
 import { catalog, line as catalogLine, recommend, taxonomy } from './lib/catalog.mjs';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -43,8 +43,9 @@ export { SKILL_VERSION };
 export async function register(url, identity) {
   if (!url) throw new Error('usage: register <world-url> [dev:identity]');
   const base = url.replace(/[?#].*$/, '').replace(/\/$/, '');
+  const leaveSeat = seatForRegister(base);
   save({ world: base, ...(identity ? { identity } : {}) });
-  const cfg = ok(await call('/v1/config', { as: 'none' }), 'register');
+  const cfg = await call('/v1/config', { as: 'none' }).then((r) => ok(r, 'register')).catch((e) => { leaveSeat(); throw e; });
   return { world: base, worldId: cfg.worldId, devAuth: !!cfg.devAuth, next: cfg.devAuth && identity ? 'Run: mint' : 'Run: pair (your human approves in the browser)' };
 }
 export async function pair(agent = 'eden-god ' + SKILL_VERSION) {

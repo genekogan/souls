@@ -7,6 +7,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { enterGodSeat } from './lib/seat.mjs';
+import { createHome, openHome } from '../world-launcher/soul/home.mjs';
 
 const god = fileURLToPath(new URL('./eden-god.mjs', import.meta.url)), eden = fileURLToPath(new URL('../world-launcher/soul/eden.mjs', import.meta.url));
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -32,8 +34,8 @@ async function worlds(t) {
   return `http://127.0.0.1:${server.address().port}/w`;
 }
 const folder = (t) => { const d = realpathSync(mkdtempSync(join(tmpdir(), 'god-seat-'))); t.after(() => { for (const p of ['souls', 'gods']) if (existsSync(join(d, '.souls', p))) chmodSync(join(d, '.souls', p), 0o700); rmSync(d, { recursive: true, force: true }); }); return d; };
-const runner = (cwd, cli) => (...args) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [cli, ...args], { cwd, env: { ...process.env, HOME: cwd, SOULS_HOME: '', EDEN_GOD_SEAT: '', SOULS_PRINCIPAL: '', EDEN_GOD_WARM: '0', EDEN_GOD_WIRE: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const runner = (cwd, cli, extra = {}) => (...args) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [cli, ...args], { cwd, env: { ...process.env, HOME: cwd, SOULS_HOME: '', EDEN_GOD_SEAT: '', SOULS_PRINCIPAL: '', EDEN_GOD_HELPER: '', EDEN_GOD_WARM: '0', EDEN_GOD_WIRE: '0', ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
   child.on('exit', (code) => { let d = null; try { d = JSON.parse(out); } catch { /* words */ } resolve({ code, d, out, err }); });
 });
@@ -85,4 +87,46 @@ test('A2: a legacy god folder works unchanged, a home does not capture it, and i
   rmSync(file);
   assert.equal((await godCli('status')).code, 0, 'the seat works once the file is gone');
   assert.equal((await soul('import')).code, 1, 'nothing left to import');
+});
+
+test('register: a flag is not a world, and a world that never answers leaves no seat', async (t) => {
+  const base = await worlds(t), dir = folder(t), godCli = runner(dir, god), soul = runner(dir, eden);
+  await soul('register', `${base}/a`); await soul('create', 'Mira');
+  assert.equal((await godCli('register', '--identity', 'dev:owner', `${base}/a`)).code, 0);
+  assert.equal((await godCli('a', 'mint')).code, 0);
+  assert.equal((await godCli('register', '--help')).code, 0);
+  assert.notEqual((await godCli('register', `${base}/z`, 'dev:owner')).code, 0, 'no such world');
+  assert.deepEqual((await soul('list')).d.gods, [{ world: 'a', paired: true }]);
+  assert.deepEqual((await soul('list')).d.worlds.map((w) => w.key), ['a']);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, '.souls/credentials.json'), 'utf8')).gods), ['a']);
+  assert.deepEqual(readdirSync(join(dir, '.souls/gods')), ['a']);
+  assert.equal((await godCli('status')).code, 0, 'one seat still needs no selector');
+  assert.equal((await godCli('register', '--identity', 'dev:owner', `${base}/b`)).code, 0);
+  await godCli('b', 'mint');
+  assert.match((await godCli('b', 'status')).out, /\/w\/b/, 'each world has its own seat and token');
+  assert.match((await godCli('a', 'status')).out, /\/w\/a/);
+});
+
+test('a helper sits in its own world\'s seat, and a legacy file does not hide another seat', async (t) => {
+  const base = await worlds(t), dir = folder(t), godCli = runner(dir, god), soul = runner(dir, eden);
+  await soul('register', `${base}/a`);
+  for (const w of ['a', 'b']) { await godCli('register', `${base}/${w}`, 'dev:owner'); await godCli(w, 'mint'); }
+  writeFileSync(join(dir, 'helper.json'), JSON.stringify({ world: `${base}/b`, token: 'god_b_tok', helper: { claim: 'c_12345678' } }));
+  const helper = runner(dir, god, { EDEN_GOD_HELPER: 'helper.json' });
+  const r = await helper('status');
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /\/w\/b/);
+  assert.match((await helper('a', 'status')).err, /works in b, not a/);
+  // a legacy file for a world with no seat stays this folder's god; a named seat still answers
+  const other = join(dir, 'beside'); mkdirSync(other);
+  writeFileSync(join(other, '.eden-god.json'), JSON.stringify({ world: 'http://elsewhere.invalid/w/c', token: 'god_c_tok' }));
+  assert.match((await runner(other, god, { HOME: dir })('b', 'status')).out, /\/w\/b/);
+});
+
+test('a world named like a command is reached with @', (t) => {
+  const dir = folder(t), root = join(dir, '.souls'); createHome(root);
+  const h = openHome(root); h.ensureGod('http://x.invalid/w/map'); h.ensureGod('http://x.invalid/w/b');
+  const commands = { map: 1, status: 1, help: 1 }, opts = { cwd: dir, env: {}, home: dir };
+  assert.throws(() => enterGodSeat(['status'], commands, opts), /Say which: node eden-god\.mjs @map status/);
+  assert.deepEqual(enterGodSeat(['@map', 'status'], commands, opts), ['status']);
+  delete process.env.SOULS_HOME; delete process.env.EDEN_GOD_SEAT;
 });

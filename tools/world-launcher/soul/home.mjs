@@ -4,7 +4,7 @@
 // Edit this file, then run `node tools/world-launcher/soul/inline.mjs`: worlds serve eden.mjs as one file, so this module
 // lives inside it as a generated block.
 
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 export const HOME_NAME = ".souls", LEGACY_STATE = ".eden-agent.json", STATE_FILE = "state.json", CREDENTIALS = "credentials.json";
@@ -246,6 +246,13 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     updateConfig((c) => { c.gods[key] ??= {}; });
     return key;
   }
+  /** A seat whose world never confirmed: gone, with its world if nothing else knew it. */
+  function dropGod(key, { world = false } = {}) {
+    updateConfig((c) => { delete c.gods[key]; if (world) delete c.worlds[key]; });
+    updateCredentials((c) => { delete c.gods[key]; });
+    rmSync(at("gods", key), { recursive: true, force: true });
+    if (!readdirSync(at("gods")).length) rmSync(at("gods"), { recursive: true, force: true });
+  }
   const godSeat = (key) => { const dir = at("gods", key); mkdirSync(dir, { recursive: true, mode: 0o700 }); return dir; };
   const godSecrets = (key) => { const { token, identity } = credentials().gods[key] ?? {}; return { ...(token ? { token } : {}), ...(identity ? { identity } : {}) }; };
   const saveGodSecrets = (key, patch) => updateCredentials((c) => {
@@ -395,5 +402,5 @@ export function openHome(root, { reserved = new Set(), sleepMs = (ms) => Atomics
     return out;
   }
 
-  return { root, config, ensureGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
+  return { root, config, ensureGod, dropGod, godSeat, godSecrets, saveGodSecrets, importGod, ensureWorld, setCurrentWorld, seat, soul, seatState, load, save, named, principals, list, setDefault, importLegacy, exportSoul, importExport, doctor };
 }
