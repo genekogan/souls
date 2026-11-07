@@ -150,7 +150,7 @@ test('from a raised room, a far ground goal is walked to via the building front;
 
 /** #875 fixture: a chair (or a two-seat sofa) facing +z with its stand points 0.75 m in front; `main` says which standing
  *  spots are connected both ways to the main walkable area (navCheckV1), everything else is a sealed pocket. */
-function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: Vec2[]) {
+function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: Vec2[], standable: (at: Vec2) => Vec2 = (at) => at) {
   const entity = { id: 'chair', name: 'chair', def: 'chair@1', in: { parent: 'world' } };
   const def = { name: 'chair', form: 'point', components: {}, tags: ['seat'], make: { kind: 'mesh' } };
   const baked = { rooms: [], colliders: [], openings: [], slots: seats.map(([x, z], i) => ({ id: `seat-${i}`, kind: 'seat', p: [x, 0, z], yaw: 0 })) };
@@ -165,7 +165,7 @@ function seatRoom(seats: [number, number][], main: (p: Vec2) => boolean, room?: 
     worldPose: () => ({ x: 0, y: 0, z: 0, yaw: 0, s: 1 }),
     pathOf: (id: string) => id, get: () => undefined,
   }, engine: { world: { tick: 0, entities: {} },
-    standableNearV1: (at: Vec2) => at,
+    standableNearV1: standable,
     navWarmV1: () => true,
     navCheckV1: (pts: { id: string; p: Vec2 }[]) => pts.map((x) => { checked.push(x.p); return { id: x.id, ok: main(x.p) }; }),
   }, levelAt: () => 0, engineOwned: () => false } as unknown as NavHost);
@@ -184,7 +184,7 @@ test('#875: a chair whose front is a sealed pocket is walked to on the connected
 });
 
 test('#875: a two-seat sofa is walked to at the stand point that is connected, not the nearer pocket one', () => {
-  const { nav } = seatRoom([[-1, 0], [1, 0]], (p) => p[0] > 0);
+  const { nav } = seatRoom([[-1, 0], [1, 0]], (p) => p[0] > 0, DINING);
   const goal = nav.goal(nav.thing('chair')!, [-1, 3])!;
   assert.deepEqual(goal, { p: [1, 0.75], level: 0 });
 });
@@ -195,10 +195,22 @@ test('#875: a chair with no connected floor within 2.5 m keeps its own goal (ref
   assert.deepEqual(goal, { p: [0, 0.75], level: 0 });
 });
 
+test('#875: a stand point that snaps through the wall is no other stand point: the seat keeps to its own room', () => {
+  // standableNearV1 searches by distance alone, so the sofa's second stand point, in the wall at x = -0.4, snaps to the next
+  // room's floor, which is connected; the room's own connected floor (z >= 1.5) is the honest goal
+  const wall: Vec2[] = [[-0.4, -3], [3, -3], [3, 3], [-0.4, 3]], snap = (at: Vec2): Vec2 => (at[0] < -0.2 ? [-1.5, at[1]] : at);
+  const { nav } = seatRoom([[1, 0], [-0.4, 0]], (p) => p[0] < -0.4 || p[1] >= 1.5, wall, snap);
+  const goal = nav.goal(nav.thing('chair')!, [2, 10])!; // from here the pocketed stand point is the one tried first
+  assert.ok(goal.p[0] >= -0.4 && goal.p[1] >= 1.5, `inside the room on its connected floor: ${JSON.stringify(goal)}`);
+});
+
 test('#875: a seat in no room keeps its goal, so a bench behind a closed yard door is not walked to through the wall', () => {
   // the yard's floor reads as cut off while its door is shut; the connected ground 2 m off is the far side of the wall
   const { nav } = seatRoom([[0, 0]], (p) => p[1] >= 2);
   assert.deepEqual(nav.goal(nav.thing('chair')!, [0, 10])!, { p: [0, 0.75], level: 0 });
+  // and a second stand point doesn't take it out either
+  const two = seatRoom([[0, 0], [3, 0]], (p) => p[0] >= 2).nav;
+  assert.deepEqual(two.goal(two.thing('chair')!, [0, 10])!, { p: [0, 0.75], level: 0 });
 });
 
 test('#875: the spot beside a pocketed chair stays in its own room, not through the wall', () => {
