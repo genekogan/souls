@@ -136,7 +136,7 @@ export function planSeat(rt: Runtime, kind: Kind, crew: string[], partId: string
   // either side of it, a tread's worker beside the flight
   const size = def(part.def).size, u = rot2([size[0] * 0.45, 0], target.yaw), c: Vec2 = [target.p[0], target.p[2]];
   const where = o.stand?.(part, target) ?? { points: [[c[0] - u[0], c[1] - u[1]], [c[0] + u[0], c[1] + u[1]]] as Vec2[], obb: { c, half: [size[0] / 2, size[2] / 2] as Vec2, yaw: target.yaw }, y: target.p[1] + size[1], y0: target.p[1] };
-  const st = findStations(rt, crew, where.points.slice(0, crew.length), { label: label(part), obb: where.obb, y: where.y, y0: where.y0 });
+  const st = findStations(rt, crew, where.points.slice(0, crew.length), { label: label(part), obb: where.obb, y: where.y, y0: where.y0, yieldIdle: true });
   if (!st.ok) return st.diagnostic.code === 'reach.too-high' ? st : fail(code('station-unreachable'), st.diagnostic.message, st.diagnostic.subjects ?? crew);
   return { ok: true, program: { ends: goodEnds, pairs, target, stations: st.stations.map((s) => ({ p: s.p, yaw: s.yaw, level: s.level })), path: lift.path.poses, duration: liftDuration(lift.path, ({ joist: 2.0, plywood: 3.0, flight: 3.0, tread: 1.5 })[kind]) } };
 }

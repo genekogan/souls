@@ -956,7 +956,7 @@ export class Together {
     const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a)), yaw = wrap(x.pose.yaw ?? 0), way = Math.atan2(at[1] - x.pose.p[2], at[0] - x.pose.p[0]);
     const flip = wrap(yaw + Math.PI), near = Math.abs(wrap(flip - way)) < Math.abs(wrap(yaw - way)) ? flip : yaw;
     // PC07 (#686): a shared carry opts in to the held, named route cut (actions.ts holdCutV1)
-    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: near}, holdCutV1: true}};
+    return {verb: 'mars:carry', params: {crew, item: load, to: {x: at[0], z: at[1], yaw: near}, holdCutV1: true, clearLiftV1: true}};
   }
   /** PC02 §1 amend: a new revision clears every acceptance; whoever had accepted is told by their own receipt. */
   private amendShared(id: string, soul: EdgeSoul, capability: string, tag: Extract<Tag, {kind: 'shared'}>, to: {id: string; name: string}, guests: {soulId: string; name: string}[], changes: string[], bay?: BeamBayTag, choice?: SeatChoiceTag) {

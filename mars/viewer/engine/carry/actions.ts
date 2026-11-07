@@ -68,6 +68,10 @@ export const carrySchema = z.strictObject({
    *  diagnostic names the obstacle at the cut and whether the search was exhausted. Only the server's shared carries
    *  ask for it; every other carry is unchanged. */
   holdCutV1: z.literal(true).optional(),
+  /** PC17 (#696): a shared carry does not leave the ground while a body outside the crew stands within the load's cover
+   *  (another crew at work beside it): it waits, asking them to move, as for the grip positions; and it halts short of
+   *  another crew's load on its way, as for a person. */
+  clearLiftV1: z.literal(true).optional(),
 });
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -129,6 +133,28 @@ function applyFormation(rt: Runtime, ex: CarryExec, q: SE2) {
 }
 
 /** A non-crew person inside the formation's footprint (load discs + carrier spots) at arc length u. */
+/** PC17 (#696): a body outside the crew within the load's cover where it lies (the cover `humanLoadClearance` keeps once it is lifted). */
+function liftBystander(rt: Runtime, ex: CarryExec): string | null {
+  const p = ex.p, discs = worldDiscs(p.f, p.pickup);
+  for (const o of Object.values(rt.world.entities)) {
+    if (o.kind !== 'human' || p.crew.includes(o.id) || o.human?.level !== p.level) continue;
+    if (discs.some((d) => hypot(d.p[0] - o.pose.p[0], d.p[1] - o.pose.p[2]) < d.d.r + 0.28 + 0.08)) return o.id;
+  }
+  return null;
+}
+
+/** PC17 (#696): someone of another crew whose load this formation (its load or a carrier) would touch at `u`: a crew
+ *  walking into another's load is the same overlap as a bystander's (`humanLoadClearance`), and halts the same way. */
+function pathOtherLoad(rt: Runtime, ex: CarryExec, u: number): string | null {
+  const p = ex.p, others = activeLoadDiscs(rt).filter((d) => d.actionId !== ex.id && d.level === p.level);
+  if (!others.length) return null;
+  const i0 = ex.i, q = poseAtU(ex, u);
+  ex.i = i0; // poseAtU advances the segment cursor; restore it
+  const mine = [...worldDiscs(p.f, q).map((d) => ({ p: d.p, r: d.d.r })), ...carrierSpots(p.f, q).map((s) => ({ p: s, r: 0.28 }))];
+  const hit = others.find((o) => mine.some((m) => hypot(m.p[0] - o.p[0], m.p[1] - o.p[1]) < m.r + o.r + 0.08));
+  return hit ? hit.crew[0]! : null;
+}
+
 function pathBystander(rt: Runtime, ex: CarryExec, u: number): string | null {
   const p = ex.p;
   const i0 = ex.i;
@@ -318,6 +344,13 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
         makeWay(rt, inWay, [p.pickup.x, p.pickup.z]);
         return blockedWait(rt, ex.id, p.item, [inWay], { code: 'carry.pickup-occupied', message: `the crew cannot take up ${p.item}: ${inWay} is standing at a grip position`, subjects: [p.item, inWay], at: [p.pickup.x, p.levelY, p.pickup.z] }, p.crew);
       }
+      if (p.clearLift) {
+        const under = liftBystander(rt, ex);
+        if (under) {
+          makeWay(rt, under, [p.pickup.x, p.pickup.z]);
+          return blockedWait(rt, ex.id, p.item, [under], { code: 'carry.pickup-occupied', message: `the crew cannot lift ${p.item}: ${under} is standing too close to it`, subjects: [p.item, under], at: [p.pickup.x, p.levelY, p.pickup.z] });
+        }
+      }
       if (itemOf(rt, ex).tags?.includes('entity-world-transport')) {
         if (ex.reachStart === undefined) {
           ex.reachStart = rt.tick;
@@ -391,7 +424,7 @@ export const carry: ActionDef<CarryParams, CarryProgram, CarryExec> = {
       // people in the formation's way: halt (never push through), ask idle bystanders to step aside; a walker blocked
       // in the way (its goal lies on the route) steps off the rest of the route and waits for the load to pass
       // sample the swept footprint from here to 1.2 m ahead (the first primitive may rotate in place)
-      const ahead = [0, 0.3, 0.6, 0.9, 1.2].map((d) => pathBystander(rt, ex, Math.min(U, ex.u + d))).find((x) => x) ?? null;
+      const ahead = [0, 0.3, 0.6, 0.9, 1.2].map((d) => pathBystander(rt, ex, Math.min(U, ex.u + d)) ?? (p.clearLift ? pathOtherLoad(rt, ex, Math.min(U, ex.u + d)) : null)).find((x) => x) ?? null;
       if (ahead) {
         ex.v = Math.max(0, ex.v - 2 * ACCEL * dt);
         ex.u = Math.min(U, ex.u + ex.v * dt);
