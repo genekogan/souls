@@ -9,7 +9,9 @@
 //   Souls keep their seat when a reader leaves the library.
 //
 // One line of body, written for people who use Sim. `internal` fragments are validated but left out of the
-// public changelog. A PR with nothing to say carries the `no-changelog` label instead.
+// public changelog. A PR with nothing to say carries the `no-changelog` label instead. An optional `proof: <url>` (a
+// proof.json or scorecard, #1154) is linked in the release notes only: CHANGELOG.md, which the public page renders
+// without links, stays one line per entry.
 //
 //   node tools/changelog/compile.mjs --check                       validate every fragment (CI)
 //   node tools/changelog/compile.mjs --version <v> [--date YYYY-MM-DD] [--notes <file>] [--keep] [--dry-run]
@@ -22,11 +24,26 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { publicationFindings } from '../proof/publication.mjs';
 
 export const TYPES = ['feature', 'fix', 'perf', 'docs', 'internal'];
 const HEADINGS = { feature: 'Features', fix: 'Fixes', perf: 'Performance', docs: 'Documentation' };
 const NOT_FRAGMENTS = new Set(['README.md', '_template.md']);
 const HEADER = '# Changelog\n\nUser-facing changes to Sim, newest first. Each release is compiled from `changes/` fragments.\n';
+
+/** Why `value` can't be a fragment's proof link, or null: canonical https on github.com or the proof CDN, nothing private. */
+export function fragmentProofProblem(value, cdn = process.env.SIM_PROOF_PUBLIC_URL || null) {
+  let u;
+  try { u = new URL(value); } catch { return 'must be a URL'; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || u.href !== value) return 'must be a canonical https URL with no userinfo or port';
+  let host = u.origin === 'https://github.com';
+  if (!host && cdn) { try { const c = new URL(cdn); host = u.origin === c.origin && u.pathname.startsWith(c.pathname.replace(/\/?$/, '/')); } catch { /* no usable proof host */ } }
+  if (!host) return 'must be on github.com or the proof host';
+  // The shared rules want a path at a boundary, so each path segment is also offered as the start of one.
+  const parts = u.pathname.split('/').map((_, i, all) => all.slice(i).join('/')).filter(s => s.length > 1);
+  const findings = [...new Set([value, ...parts.map(s => s.startsWith('/') ? s : '/' + s)].flatMap(s => [...publicationFindings(s)]))];
+  return findings.length ? `names private details (${findings.join(', ')})` : null;
+}
 
 export function parseFragment(name, text) {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
@@ -43,7 +60,8 @@ export function parseFragment(name, text) {
   const slug = name.replace(/\.md$/, '');
   const pr = meta.pr || (/^\d+$/.test(slug) ? slug : null);
   if (pr && !/^\d+$/.test(String(pr))) throw Error(`${name}: pr must be a number`);
-  return { name, slug, type: meta.type, line, pr: pr ? Number(pr) : null };
+  if ('proof' in meta) { const why = fragmentProofProblem(meta.proof); if (why) throw Error(`${name}: proof ${why}`); }
+  return { name, slug, type: meta.type, line, pr: pr ? Number(pr) : null, ...('proof' in meta ? { proof: meta.proof } : {}) };
 }
 
 export function readFragments(dir) {
@@ -52,12 +70,12 @@ export function readFragments(dir) {
     .map(f => parseFragment(f, readFileSync(join(dir, f), 'utf8')));
 }
 
-export function renderSection(version, date, fragments) {
+export function renderSection(version, date, fragments, { proof = false } = {}) {
   const out = [`## ${version} (${date})`, ''];
   for (const type of TYPES.filter(t => HEADINGS[t])) {
     const items = fragments.filter(f => f.type === type).sort((a, b) => (a.pr ?? Infinity) - (b.pr ?? Infinity) || a.slug.localeCompare(b.slug));
     if (!items.length) continue;
-    out.push(`### ${HEADINGS[type]}`, '', ...items.map(f => `- ${f.line}${f.pr ? ` (#${f.pr})` : ''}`), '');
+    out.push(`### ${HEADINGS[type]}`, '', ...items.map(f => `- ${f.line}${f.pr ? ` (#${f.pr})` : ''}${proof && f.proof ? ` ([proof](${f.proof}))` : ''}`), '');
   }
   if (out.length === 2) out.push('Internal changes only.', '');
   return out.join('\n');
@@ -90,7 +108,7 @@ function main(argv) {
     return 0;
   }
   writeFileSync(file, insertSection(existing, section));
-  if (opt('--notes')) writeFileSync(resolve(opt('--notes')), section.split('\n').slice(2).join('\n'));
+  if (opt('--notes')) writeFileSync(resolve(opt('--notes')), renderSection(version, date, fragments, { proof: true }).split('\n').slice(2).join('\n'));
   if (!argv.includes('--keep')) for (const f of fragments) rmSync(join(dir, f.name));
   console.log(`changelog: ${version} with ${fragments.length} fragment(s)`);
   return 0;

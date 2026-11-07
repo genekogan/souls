@@ -65,8 +65,9 @@ from the template:
 `node tools/proof/acceptance.mjs check` validates the checklist and `proof.json` locally. The `journal` skill walks an
 agent through one milestone; the `epic` skill runs a bounded tranche with review stops only when requested. Add a
 fragment in
-[`changes/`](../../changes/README.md) for anything users notice, or the `no-changelog` label. A change in behaviour
-updates its doc in the same PR.
+[`changes/`](../../changes/README.md) for anything users notice, or the `no-changelog` label. A T3 change to how Souls
+behave should cite its Soul Runs scorecard in that fragment (`proof:`), so the release says what proved it. A change in
+behaviour updates its doc in the same PR.
 
 ## 6. Review
 
