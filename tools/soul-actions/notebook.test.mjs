@@ -5,6 +5,7 @@ import {setImmediate} from 'node:timers/promises';
 import {Hono} from '../../apps/server/node_modules/hono/dist/index.js';
 import {fixture, invite, accept, factory} from '../../apps/server/test/native-owner-fixture.ts';
 import {EdgeLedger} from '../../apps/server/src/edge/ledger/ledger.ts';
+import {compactDoHere} from '../../apps/server/src/edge/perception/here.ts';
 import {mountEdgeRoutes} from '../../apps/server/src/edge/routes.ts';
 import {GodMode} from '../../apps/server/src/god/god.ts';
 import {installEngineBridge} from '../../apps/server/src/god/engine-bridge.ts';
@@ -58,6 +59,13 @@ test('lectern catalogue books and the notebook stand: real text, hand-written si
  const lines=()=>{const s=state('notebook');return {lines:s.text?s.text.split('\n'):[],by:s.textBy?s.textBy.split(','):[]};};
  const finish=async(s,receipt,limit=900)=>{let stroke=null,early=false,hand=[],bz=Infinity,before=JSON.stringify(state('notebook'));for(let n=0;n<limit;n++){const h=body(s).human,m=h?.handActuator;if(m?.stroke){stroke=m.stroke;const p=h.hands?.right??h.hands?.left;if(p)hand.push(p);const nw=god.model.worldPose(god.model.get('notebook'));bz=Math.min(bz,(h&&body(s).pose.p[0]-nw.x)*Math.sin(nw.yaw)+(body(s).pose.p[2]-nw.z)*Math.cos(nw.yaw));if((f.host.engine.world.tick-m.startTick)*f.host.engine.dt<0.65+m.stroke.seconds-0.05&&JSON.stringify(state('notebook'))!==before)early=true;}const ph=edge.receipt(s.soulId,receipt.receipt.id)?.phase;if(['completed','failed','cancelled','replaced'].includes(ph))break;await tick(1);}return {stroke:stroke&&{kind:stroke.kind,seconds:stroke.seconds,tilt:stroke.tilt},early,hand,bodyZ:+bz.toFixed(3),phase:edge.receipt(s.soulId,receipt.receipt.id).phase};};
  let makeWayRetries=0;const done=async(s,capability,params)=>{for(let k=0;;k++){const r=await act(s,capability,params);const fr=await finish(s,r),rc=edge.receipt(s.soulId,r.receipt.id);if(fr.phase==='failed'&&rc.code==='reservation.conflict'&&/:make-way:\d+/.test(rc.reason??'')&&k<3){makeWayRetries++;await tick(30);continue;}assert.equal(fr.phase,'completed',JSON.stringify(rc).slice(0,600));return fr;}};
+ // strict offers (#1093, #1094): the line's text is a schema on the offer in caps, here.doHere and inspect, never words alone
+ {soul=ana;const pinId=`object:${id('notebook')}:pin`,want={type:'string',maxLength:60};const fit=(o,where)=>{assert.ok(o,`${where} offers the line`);assert.equal(o.params?.text?.type,want.type,where);assert.equal(o.params?.text?.maxLength,want.maxLength,where);assert.notEqual(o.params?.text?.optional,true,`${where}: the line is required`);};
+  fit(edge.capabilities(ana).find(c=>c.id===pinId),'caps');
+  // this fixture's frame leaves doHere almost no budget, so here says it by verb; doHere with room carries the schema
+  assert.ok((await here(ana)).offers.object?.count>=1,'here counts the line under its verb');
+  fit(compactDoHere(edge.capabilities(ana).filter(c=>c.id===pinId),new Set([id('notebook')])).doHere[0],'doHere');
+  soul=ana;const ins=await (await app.request(`/v1/edge/inspect/${encodeURIComponent(id('notebook'))}`)).json();fit(ins.inspect.offers.find(o=>o.id===pinId),'inspect');}
  // validation
  for(const [text,why] of [['','required'],['x'.repeat(61),'too long'],['two\nlines','one line'],['bell\u0007','control']]){const b=await act(ana,`object:${id('notebook')}:pin`,{text},false);assert.equal(b.code,'capability.params',why);}
  const none=await act(ana,`object:${id('notebook')}:unpin`,undefined,false);assert.equal(none.code,'object.state');
