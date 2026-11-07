@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { kernelHash } from '@sim/kernel';
+import { kernelHash } from '@souls/kernel';
 import { bootEden } from '../test/eden-capabilities-timing.ts';
 import { accept, factory } from '../test/native-owner-fixture.ts';
 import { WorldHost } from './world.ts';

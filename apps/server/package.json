@@ -1,5 +1,5 @@
 {
-  "name": "@sim/server",
+  "name": "@souls/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,20 +13,20 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@sim/brain": "workspace:*",
-    "@sim/engine-contract": "workspace:*",
-    "@sim/engine-toy": "workspace:*",
-    "@sim/protocol": "workspace:*",
+    "@souls/brain": "workspace:*",
+    "@souls/engine-contract": "workspace:*",
+    "@souls/engine-toy": "workspace:*",
+    "@souls/protocol": "workspace:*",
     "hono": "^4.13.14",
     "jose": "^6.2.14",
     "ws": "^8.22.0",
     "zod": "^4.6.7",
-    "@sim/kernel": "workspace:*",
-    "@sim/world-compiler": "workspace:*",
-    "@sim/ground": "workspace:*",
-    "@sim/engine-mars": "workspace:*",
+    "@souls/kernel": "workspace:*",
+    "@souls/world-compiler": "workspace:*",
+    "@souls/ground": "workspace:*",
+    "@souls/engine-mars": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",
-    "@sim/generators": "workspace:*",
+    "@souls/generators": "workspace:*",
     "@gltf-transform/core": "^4.5.1",
     "@gltf-transform/functions": "^4.5.1",
     "three": "^0.187.0",
@@ -35,6 +35,6 @@
   "devDependencies": {
     "@types/node": "^22.19.19",
     "@types/ws": "^8.18.1",
-    "@sim/client": "workspace:*"
+    "@souls/client": "workspace:*"
   }
 }

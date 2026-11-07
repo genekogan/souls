@@ -7,7 +7,7 @@ import { marsFactory, GREEN_FIELD_WORLD } from './engine.ts';
 import { groundFact, groundField } from './ground-bridge.ts';
 import { nextEntityPhysics, type WorldEditV1 } from './entity-physics.ts';
 import { emptyGround, type Ground } from '../../ground/src/index.ts';
-import type { Engine } from '@sim/engine-contract';
+import type { Engine } from '@souls/engine-contract';
 
 const factory = await marsFactory(GREEN_FIELD_WORLD);
 const pondArea: [number, number][] = [[-30, -10], [-20, -10], [-20, 0], [-30, 0]];

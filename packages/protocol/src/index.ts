@@ -24,9 +24,9 @@ import { stationCueV2Schema,stationAnchorV2Schema,type StationLiveV2 } from './s
 import type { StationLiveContract } from './station-era-v1.ts';
 import type {MeLiveDescriptorV1,MeLiveViewV1} from './me-live.ts';
 import { z } from 'zod';
-import type { ChangeEvent, Entity, Environment, PathCommit, PoseSample, Region } from '@sim/engine-contract';
-import { hashOf, samplePath } from '@sim/engine-contract';
-import type { Change, KState, LinkKind, MintedCard } from '@sim/kernel';
+import type { ChangeEvent, Entity, Environment, PathCommit, PoseSample, Region } from '@souls/engine-contract';
+import { hashOf, samplePath } from '@souls/engine-contract';
+import type { Change, KState, LinkKind, MintedCard } from '@souls/kernel';
 import { intentReceivedPayloadV2Schema, intentHistoryFactV2, intentAdmissionFactV2, intentControllerFactV2, publicIntentHistoryEventV2 } from './intent-v2.ts';
 
 export const PROTO = 1;

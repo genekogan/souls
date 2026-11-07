@@ -13,9 +13,9 @@ import {WorldSpeechOverlay} from './WorldSpeechOverlay.tsx';
 import { apiPath, worldPath } from './world-path.ts';
 import {singleLocalPreview} from './local-navigation.ts';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import type { LogEvent } from '@sim/protocol';
-import { describeIntent } from '@sim/protocol';
-import { makeApi, refreshMe, useSim, type Sim } from './useSim.ts';
+import type { LogEvent } from '@souls/protocol';
+import { describeIntent } from '@souls/protocol';
+import { makeApi, refreshMe, useSouls, type Souls } from './useSouls.ts';
 import {WorldAccountControls} from './AccountMenu.tsx';
 import {SoulAccount} from './SoulAccount.tsx';
 import {useSignOutAtOnce} from './sign-out-now.ts';
@@ -97,7 +97,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
   // the god panel and the Join flow act as this same person (auth-session.ts)
   useEffect(()=>{publishSession({mode:auth.mode??(cfg.authProvider==='clerk'?'clerk':'none'),ready:auth.ready,authed:auth.authed,scope:authIdentity(auth),label:auth.label,signInUrl:auth.signInUrl,getToken:()=>tokenReader.current(),login:auth.login,logout:auth.logout});});
   const getToken = useCallback(() => tokenReader.current(), []);
-  const sim = useSim(getToken, auth.authed,authIdentity(auth),cfg.worldId);
+  const sim = useSouls(getToken, auth.authed,authIdentity(auth),cfg.worldId);
   const apiGeneration=useRef(0);
   const apiMe=approvedMe(auth,sim.me);
   const apiScope=JSON.stringify([sim.privateAuthorityGeneration??0,cfg.worldId,auth.ready,auth.authed,authIdentity(auth),apiMe?.userId,apiMe?.role,apiMe?.invited,apiMe?.souls.slice().sort()]);
@@ -213,7 +213,7 @@ function ShellWorld({ cfg, auth: providerAuth, arrivalEnabled=false,humanPresets
       <div className="world-scene"><LiveWorld sim={sim} selected={selected} onSelect={inspect} onChipNote={text=>setChipNote({text,at:Date.now()})} embedded bootWorldId={launcherWorld?cfg.worldId:undefined} {...{edenExpansion,edenExpected,localClassroomPresentation,publishSpeechAnchors:!advanced,humanPresets:humanPresetsEnabled&&edenExpansion}} hideControls={!advanced} hideSoulInfo={!advanced} viewportInsets={viewportInsets} onViewerHandle={receiveHandle} onViewerState={receiveState} onInitialProgress={advanced ? undefined : setInitialProgress} /></div>
       <VisitorWelcome key={privatePanelKey} api={api} siteApi={siteApi} worldPath={worldPath} ownerId={currentMe?.userId??null} worldId={cfg.worldId} worldName={worldName} build={cfg.build} handle={viewerHandle} state={viewerState}/>
       <WorldSpeechOverlay root={frame} sim={sim} state={viewerState} active={!advanced} handle={viewerHandle}/>
-      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Sim&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' || viewerState?.flyingTo ? r.souls.get(viewerState.flyingTo ?? viewerState.selection.soulId ?? '')?.name ?? null : null} selectedName={r.souls.get(viewerState?.selection.soulId ?? '')?.name ?? null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
+      {!advanced && <ViewerFrame handle={viewerHandle} state={viewerState} dt={sim.conn.welcome?.dt ?? 0.05} navigationOpen={navigationOpen} onNavigationChange={setNavigationOpen} onNavigationOpen={openNavigation} worldTime={worldTimeText(worldClockAt((sim as Souls&{takes?:{chunks?:unknown[]}|null}).takes?.chunks,viewerState?.shownTick))} connected={!connectionLost(sim.conn)} connecting={!sim.conn.welcome} worldName={worldName} followName={viewerState?.cameraMode === 'follow' || viewerState?.flyingTo ? r.souls.get(viewerState.flyingTo ?? viewerState.selection.soulId ?? '')?.name ?? null : null} selectedName={r.souls.get(viewerState?.selection.soulId ?? '')?.name ?? null} slots={{ status: statusSlot, camera: cameraSlot }} initial={initialProgress} />}
       <header className={`world-hud${advanced ? '' : ' slim'}`}>
         {advanced && <>
         <a href="/" className="world-home">SIM</a>
@@ -285,7 +285,7 @@ function Intro({ authed, login, go, souls }: { authed: boolean; login(): void; g
     </section>
   );
 }
-function Happenings({ sim }: { sim: Sim }) {
+function Happenings({ sim }: { sim: Souls }) {
   const rows = sim.log.filter((e) => e.kind !== 'rules' && e.kind !== 'admin' && e.kind !== 'decision' && e.kind !== 'deck').slice(-14).reverse();
   return (
     <section>
@@ -295,7 +295,7 @@ function Happenings({ sim }: { sim: Sim }) {
     </section>
   );
 }
-function eventPlain(e: LogEvent, sim: Sim): string {
+function eventPlain(e: LogEvent, sim: Souls): string {
   const p = e.payload ?? {}; const name = (id: string) => sim.conn.replica.souls.get(id)?.name ?? 'someone';
   if (e.kind === 'birth') return `${p.name} arrived.`;
   if (e.kind === 'play') return `${name(p.soulId)} ${p.card}${p.target ? ` → ${sim.kernel?.things[p.target]?.name ?? 'something'}` : ''}.`;
@@ -310,7 +310,7 @@ function eventPlain(e: LogEvent, sim: Sim): string {
 
 // ------------------------------------------------------------------ world
 const COLS = 64, ROWS = 28;
-function WorldPanel({ sim, mine, selected, onSelect }: { sim: Sim; mine: Set<string>; selected: string | null; onSelect(id: string | null): void }) {
+function WorldPanel({ sim, mine, selected, onSelect }: { sim: Souls; mine: Set<string>; selected: string | null; onSelect(id: string | null): void }) {
   const r = sim.conn.replica, tick = sim.conn.displayTick();
   const souls = [...r.souls.values()].sort((a, b) => a.name.localeCompare(b.name));
   // fit the map to whatever this world contains (the toy plane is 100 m; a Mars scene is wherever its fixtures and people are)
@@ -354,7 +354,7 @@ function WorldPanel({ sim, mine, selected, onSelect }: { sim: Sim; mine: Set<str
 }
 
 // ------------------------------------------------------------------ sync
-function SyncPanel({ sim }: { sim: Sim }) {
+function SyncPanel({ sim }: { sim: Souls }) {
   const c = sim.conn, st = c.stats, s = sim.stats, hb = c.heartbeat, r = c.replica;
   return (
     <section>
@@ -386,7 +386,7 @@ function SyncPanel({ sim }: { sim: Sim }) {
     </section>
   );
 }
-function maxDrift(sim: Sim): number {
+function maxDrift(sim: Souls): number {
   const hb = sim.conn.heartbeat, r = sim.conn.replica; if (!hb) return 0;
   let m = 0;
   for (const [id, k] of Object.entries(hb.keyframes)) { if (!r.entities[id]) continue; const p = r.poseAt(id, k[0]); m = Math.max(m, Math.abs(p[1] - k[1]), Math.abs(p[3] - k[3])); }
@@ -395,7 +395,7 @@ function maxDrift(sim: Sim): number {
 export const fmtDur = (s: number) => (s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 // ------------------------------------------------------------------ log
-export function eventText(e: LogEvent, sim: Sim): string {
+export function eventText(e: LogEvent, sim: Souls): string {
   const p = e.payload ?? {}; const r = sim.conn.replica;
   const name = (soulId: string) => r.souls.get(soulId)?.name ?? soulId;
   const label = (id: string) => r.entities[id]?.label ?? r.regions[id]?.label ?? id;
@@ -408,7 +408,7 @@ export function eventText(e: LogEvent, sim: Sim): string {
     default: return JSON.stringify(p);
   }
 }
-function LogPanel({ log, sim }: { log: LogEvent[]; sim: Sim }) {
+function LogPanel({ log, sim }: { log: LogEvent[]; sim: Souls }) {
   const [kind, setKind] = useState('all');
   const rows = log.filter((e) => kind === 'all' || e.kind === kind).slice(-80).reverse();
   return (

@@ -3,7 +3,7 @@ name: e2e
 description: Run this repo's end-to-end browser scenarios (e2e/scenarios/*.md) or author a new one from a prose description, against an isolated local fake-mind world with an ephemeral data dir. Drives the UI with Playwright (the Playwright MCP tools when present, otherwise a small driver script) and writes a proof bundle to .e2e/runs/<ts>/ with screenshots, accessibility snapshots, console logs and a machine-readable summary. Use when claiming a UI change is done, when verifying a user journey, when reproducing a reported bug, or when asked to add or run a test for a journey.
 ---
 
-# e2e — scenario runner and author for Sim
+# e2e — scenario runner and author for Souls
 
 The repo's contract is [docs/testing/e2e.md](../../../docs/testing/e2e.md); read it first, it overrides this skill. The pieces:
 

@@ -3,13 +3,13 @@
 // `sign` component lines; a face with `line: n` shows only line n (signpost arrows). Media faces
 // show state `media` (one web link or same-site path per slot: image or looping video) or a small painting. Owner: L4.
 import * as THREE from 'three';
-import { kitArgs } from '@sim/generators';
+import { kitArgs } from '@souls/generators';
 import { buildKit } from '../kit.mesh.ts';
 import { registerMesh } from '../registry.ts';
 import { bindMotionModel } from '../motion.ts';
 import { apiPath } from '../../world-path.ts';
 import { artOf, brokenLinkLines, coverWhenReady, imageBroken, imageFailed, imageLoaded, videoTexture, whenImageFails } from '../art-media.ts';
-import { CHECKERS_CELL, checkersBoard, checkersSquare, frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@sim/world-compiler';
+import { CHECKERS_CELL, checkersBoard, checkersSquare, frameMediaKind, gameSquare, gameStatus, pinSlot, signupSlot, signupPageStart, pollSlot, pollOptions, posterSlot, posterList, posterPaper, wantedSlot, wantedList, POSTER_W, POSTER_H, type WantedRec } from '@souls/world-compiler';
 import { posterMesh, posterAgeDays } from '../../../../../mars/viewer/app/engine-view/poster-sheet.ts';
 
 type Face = { at: [number, number, number]; w: number; h: number; yaw?: number; pitch?: number; bg?: string; ink?: string; font?: string; line?: number; media?: boolean; slot?: number; fadeDays?: number };

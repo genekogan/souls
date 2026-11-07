@@ -3,8 +3,8 @@
 // squarish-section torus with tread blocks (216 tris), a creosote is a few lumpy leaf clusters on
 // thin stems (≈ 120 tris), a tuft is a fan of thin blades (≤ 30 tris). Lines, rings and scrub are one
 // InstancedMesh per kind (a 500 m tyre ring = 1 draw call, a 1.2 km scrub field = 5).
-import { installScrubVerdicts, offsetAlong, scrubPoints, tireLine, tireRingPath, trackLines, type TirePose } from '@sim/generators';
-import type { Entity } from '@sim/world-compiler';
+import { installScrubVerdicts, offsetAlong, scrubPoints, tireLine, tireRingPath, trackLines, type TirePose } from '@souls/generators';
+import type { Entity } from '@souls/world-compiler';
 import * as THREE from 'three';
 import { BLOCK_CELL, blockCellsOf, blockedBy } from './ecology.mesh.ts';
 import { terrainColorFor } from './ground-palette.ts';

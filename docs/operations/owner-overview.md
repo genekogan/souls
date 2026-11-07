@@ -68,7 +68,7 @@ second checkpoint solely for this page if the issue's source journal is sufficie
     "basis": "The stable-head measurement has not completed."
   },
   "proofs": [{
-    "url": "https://github.com/genekogan/souls/pull/123",
+    "url": "https://github.com/soulsimulation/souls/pull/123",
     "outcome": "candidate; not production qualified",
     "environment": "local fake minds"
   }]

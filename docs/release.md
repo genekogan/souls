@@ -1,13 +1,22 @@
 # Releasing Soul
 
+## Release owner
+
+The development coordinator is the release owner (maintainer decision, 2026-11-06). It runs each release end to end:
+the gate receipt for the exact head, `ship.sh` with its backups, the post-ship checks (healthz, walks, cdn-walk),
+rollback on failure, the changelog and the GitHub Release. Production deletes still need the maintainer's explicit
+yes. If a permission classifier refuses a step, the coordinator reports the exact step, the workaround it tried and
+the exact command for the maintainer to run; it never hands back silently. One owner holds an active release head;
+lanes and the repo steward don't deploy or run paid gates.
+
 ## Current production topology
 
 The canonical site is `https://soul.game`, with production built and launched at base `/`; `souls.game` redirects
 to it. Internal service/data names stay `sim-*`. There is no second public legacy stage on this host.
 A release is one command, [`ship.sh`](#shipsh), run from a clean checkout of the exact commit. It sets
 `SIM_WORLDS_BASE=/`, so the sealed build and launcher base match. The release workflow is not qualified for this
-topology yet (draft [#523](https://github.com/genekogan/souls/pull/523), tracked by
-[#519](https://github.com/genekogan/souls/issues/519)): it still runs the historical dual-stage command, so **do not
+topology yet (draft [#523](https://github.com/soulsimulation/souls/pull/523), tracked by
+[#519](https://github.com/soulsimulation/souls/issues/519)): it still runs the historical dual-stage command, so **do not
 dispatch it on the root-only host**. Do not start a new gate to compensate for a missing receipt without authorization.
 
 ## Historical dual-stage deployment
@@ -237,7 +246,7 @@ It runs from a clean checkout (`git status --porcelain --untracked-files=no` emp
    holds the same build is reused only when its manifest matches and `release-manifest.mjs verify` passes; a partial
    or different upload is refused, never overwritten. Use a new commit instead.
 6. **Installs** (`install.sh`, idempotent; not for legacy) and the server's Linux dependencies
-   (`pnpm install --frozen-lockfile --filter @sim/server...`) as the `simworlds` user.
+   (`pnpm install --frozen-lockfile --filter @souls/server...`) as the `simworlds` user.
 7. **Activates** with `activate.sh` unless `--no-activate` (legacy is never activated by release.sh; ship-dual-stage.sh does it).
    Production refuses to activate without `/etc/sim-worlds/production-auth.env` ([auth](operations/auth.md)).
 
@@ -290,7 +299,7 @@ The handover:
      `SIM_HANDOVER_CANARY=0` turns it off.
 5. **exit**: the old launcher finishes its last responses and exits.
 
-After the handover activate.sh waits up to 60 s for `http://127.0.0.1:<port><base>/__sim/healthz` to report the new
+After the handover activate.sh waits up to 60 s for `http://<loopback>:<port><base>/__sim/healthz` to report the new
 build, then requires every world in `<data>/worlds.json` to answer `<base>/w/<slug>/v1/config` within 90 s. On a
 canary roll-back it moves the link back and exits 1. On any other failure it moves the link back to
 `<stage>.previous` and reloads (or restarts) again, which runs the same handover in reverse; a failed reverse reload
@@ -309,7 +318,7 @@ switch it on (one last restart).
 **What a viewer sees.** The page and API never get a refused connection. Each world's viewer socket drops once while
 that world moves and reconnects by itself; "Reconnecting…" appears only after 3 s (`apps/web/src/viewer-arrival.ts`).
 A page running the previous bundle reloads at once only if the protocol changed; otherwise it swaps bundles after
-the tab has been hidden for a minute (`useSim.ts`).
+the tab has been hidden for a minute (`useSouls.ts`).
 
 ## Rollback
 
@@ -363,7 +372,7 @@ Dry run is the default; `--apply` deletes and should be run only after reading t
 
 ## Measuring a handover
 
-`deploy/swap-probe.mjs --origin http://127.0.0.1:<port> --base /worlds --slugs a,b --out probe.json [--posts]` GETs the
+`deploy/swap-probe.mjs --origin http://<loopback>:<port> --base /worlds --slugs a,b --out probe.json [--posts]` GETs the
 homepage and each world every 100 ms, holds one viewer socket per world, and reports refused connections, 5xx, the
 longest error run, the slowest request and each socket's downtime. `--posts` adds a POST per world, which catches a
 connection closed under a request. Run it through a reverse proxy with production-like transport settings to see

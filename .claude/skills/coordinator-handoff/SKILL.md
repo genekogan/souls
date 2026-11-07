@@ -98,8 +98,9 @@ The previous workers are gone; their branches, worktrees and issue checkpoints a
    - **Release:** sourcing the private release environment file named in the release owner's notes sets the env and
      Node 22; the release-probe folder it names resolves; the Modal CLI is installed and logged in; the gate
      dry-run plans (`tools/test-harness/release-gate.sh <sha> --baseline <tag> --scope full --cache "$SIM_GATE_CACHE"
-     --out <dir> --dry-run`). In some harnesses the gate, Modal and deploy steps are refused; then they are Gene's to
-     run, and you hand him the exact commands.
+     --out <dir> --dry-run`). If a permission classifier refuses a gate, Modal or deploy step, report the exact step and the workaround tried,
+     with the exact command for Gene; never hand back silently
+     ([release owner](../../../docs/release.md#release-owner)).
    - **Workers:** you can start a background worker in this harness and message it
      ([sustaining lanes](../../../docs/process/coordinator-portability.md#sustaining-lanes)); you can schedule a
      heartbeat or watch.

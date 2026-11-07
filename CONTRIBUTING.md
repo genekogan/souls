@@ -52,7 +52,7 @@ pnpm typecheck                                              # or tsc -p for the 
 node --test <the test files you touched>                    # focused tests
 node tools/test-harness/walk/walk.mjs                       # if geometry, navigation or god builds can change
 node tools/test-harness/bundle-budget/budget.mjs --build --check   # if the web app changed
-pnpm --filter @sim/conformance test                         # if library defs, generators or the compiler changed
+pnpm --filter @souls/conformance test                         # if library defs, generators or the compiler changed
 node tools/changelog/compile.mjs --check                    # if you added a fragment
 ```
 

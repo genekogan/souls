@@ -39,9 +39,9 @@ const openKey = () => 'sim.godPanel.open' + (PHONE() ? '.phone' : '');
 const INTRO_KEY = `sim.godIntro:${worldKey}`;
 /** Lane HF: the approval link's dialog was closed on this page (the panel can remount; it must not come back). */
 let approvalClosed = false;   // G4: God opens by itself once, for a new owner whose agent is not connected
-type Sim = { controls?: { target: { x: number; z: number } } };
+type Souls = { controls?: { target: { x: number; z: number } } };
 /** Where the camera looks (the orbit target), for a strike near the view's centre. */
-const viewCentre = (): [number, number] | null => { const t = (window as unknown as { __simEntity?: Sim }).__simEntity?.controls?.target; return t ? [Math.round(t.x * 10) / 10, Math.round(t.z * 10) / 10] : null; };
+const viewCentre = (): [number, number] | null => { const t = (window as unknown as { __soulsEntity?: Souls }).__soulsEntity?.controls?.target; return t ? [Math.round(t.x * 10) / 10, Math.round(t.z * 10) / 10] : null; };
 const UNDO = <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.8 6.5h6.7a3.5 3.5 0 0 1 0 7H7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 const REDO = <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3M13.2 6.5H6.5a3.5 3.5 0 0 0 0 7H9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 const ago = (t: number) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };

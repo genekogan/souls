@@ -2,21 +2,21 @@ import {LIE_CLEARANCE} from '../../../mars/viewer/engine/social/pose.ts';
 import {regionArrivalMask} from './region-arrival.ts';
 import { createHash } from 'node:crypto';
 import { capturePhysicalHashInput, capturedPhysicalHashSteps, physicalHashNeedsLegacyCapture } from './checkpoint-hash.ts';
-import { stableStringify } from '@sim/engine-contract';
+import { stableStringify } from '@souls/engine-contract';
 import {bodyProfile} from '../../../mars/viewer/engine/bodies/navigation.ts';
 import {immutableAuthoredBoundaryFact} from '../../../mars/viewer/engine/spatial/edits.ts';
 import {keepStaticGridsForBoot,withStaticGridReadCache,type BootGridStore} from '../../../mars/viewer/engine/spatial/grid.ts';
-import {edenGroundTransitionV1Schema,type EdenGroundTransitionV1} from '@sim/engine-contract';
+import {edenGroundTransitionV1Schema,type EdenGroundTransitionV1} from '@souls/engine-contract';
 import type {EdenGroundReaderV1} from './eden-ground.ts';
 import {readClassroom} from '../../../mars/viewer/engine/activities/classroom.ts';
 import {edenLectureV1} from './eden-lecture.ts';
-import {edenLectureTransitionV1Schema,type EdenLectureTransitionV1,type EdenLecturePlacementV1} from '@sim/engine-contract';
-import {nativeSleepSnapshotPolicyV1Schema,type NativeSleepSnapshotPolicyV1} from '@sim/engine-contract';
+import {edenLectureTransitionV1Schema,type EdenLectureTransitionV1,type EdenLecturePlacementV1} from '@souls/engine-contract';
+import {nativeSleepSnapshotPolicyV1Schema,type NativeSleepSnapshotPolicyV1} from '@souls/engine-contract';
 import {NATIVE_SLEEP_SNAPSHOT_V1} from '../../../mars/viewer/engine/activities/sleep.ts';
 import {commonsNewcomerResourcesV1} from './newcomer-resources.ts';
-import {newcomerResourcesPublicV1Schema,commonsNewcomerResourcesV1Schema,type CommonsNewcomerResourcesV1,type NewcomerResourcePlacementV1} from '@sim/engine-contract';
+import {newcomerResourcesPublicV1Schema,commonsNewcomerResourcesV1Schema,type CommonsNewcomerResourcesV1,type NewcomerResourcePlacementV1} from '@souls/engine-contract';
 import {existingGreenLandmarkV1} from './green-landmark.ts';
-import {existingGreenLandmarkTransitionV1Schema,type ExistingGreenLandmarkTransitionV1} from '@sim/engine-contract';
+import {existingGreenLandmarkTransitionV1Schema,type ExistingGreenLandmarkTransitionV1} from '@souls/engine-contract';
 import {fixtureSlots, isFree, seatApproach} from '../../../mars/viewer/engine/social/slots.ts';
 import {angleDelta} from '../../../mars/viewer/engine/core/math.ts';
 import {publishedWaitsFor} from '../../../mars/viewer/engine/runtime/waits.ts';
@@ -25,12 +25,12 @@ import {rerouteCarrier,setCarrierRoute,type CarrierInstallSpec} from '../../../m
 import {puntCandidates,previewPunt,PuntSearch} from './punt.ts';
 import {probeBody,releaseBody,setDownFrom} from './stall.ts';
 import {commonsFoodDeliveryItemsV1} from './food-delivery.ts';
-import {commonsFoodDeliveryV1Schema,type CommonsFoodDeliveryV1} from '@sim/engine-contract';
+import {commonsFoodDeliveryV1Schema,type CommonsFoodDeliveryV1} from '@souls/engine-contract';
 import {socialEdenV1} from './social-eden.ts';
 import {applyWorldEdit,worldEditChangesNavigation,type WorldEditV1} from './entity-physics.ts';
 import {applyUpperFloorsV1,placeLevelOf,previewUpperFloorsV1,type UpperFloorsFactV1,type UpperFloorsV1} from './upper-floors.ts';
 import {registerAssets} from './catalog-adapter.ts';
-import {socialEdenTransitionV1Schema,type SocialEdenTransitionV1} from '@sim/engine-contract';
+import {socialEdenTransitionV1Schema,type SocialEdenTransitionV1} from '@souls/engine-contract';
 import {searchArrival,arrivalPocket,type ArrivalGround,type ArrivalPocket,type ArrivalSpot} from './arrival-search.ts';
 import {attachGround,groundRegistry,installGroundV1 as installGround,previewGroundV1,standOn,groundArrival,groundRecipe,inDeepWater,destinationInDeepWater} from './ground-bridge.ts';
 // The Mars engine behind Sim's engine contract.
@@ -49,10 +49,10 @@ import {attachGround,groundRegistry,installGroundV1 as installGround,previewGrou
 //     them back at any time, and the borrower treats that as the scene ending.
 //  3. Feasibility is asked first (verb.plan), because in Mars even a refused
 //     instruction pulls a person out of what they were doing.
-import { hashOf, physicalView, type BirthNearV1, type ActionRecord, type ActivityOption, type Anchor, type ChangeEvent, type Engine, type EngineFactory, type EngineSnapshot, type EngineSnapshotCapture, type EngineCheckpointCapture, type EngineCheckpoint, type PathCommit, type PoseSample, type Program, type ProgramEvent, type RuntimeEvent, type RuntimeView, type Vec3, type VerbInfo, type WorldState } from '@sim/engine-contract';
+import { hashOf, physicalView, type BirthNearV1, type ActionRecord, type ActivityOption, type Anchor, type ChangeEvent, type Engine, type EngineFactory, type EngineSnapshot, type EngineSnapshotCapture, type EngineCheckpointCapture, type EngineCheckpoint, type PathCommit, type PoseSample, type Program, type ProgramEvent, type RuntimeEvent, type RuntimeView, type Vec3, type VerbInfo, type WorldState } from '@souls/engine-contract';
 import { loadMars, type Mars } from './load.ts';
 import type {CampExpansionReader} from './camp-expansion.ts';
-import {campExpansionV1Schema,type CampExpansionV1,type CampExpansionAdmissionV1} from '@sim/engine-contract';
+import {campExpansionV1Schema,type CampExpansionV1,type CampExpansionAdmissionV1} from '@souls/engine-contract';
 import { CodecError, assertCapturedHashable, captureGraph, prepareImmutableSnapshotData } from '../../../mars/viewer/engine/runtime/codec.ts';
 import { constructionPlan, unsafeConstruction, type BuildPhase } from './construction.ts';
 import { disassemblyPlan, DISASSEMBLY_POLICY } from './disassembly.ts';
@@ -60,16 +60,18 @@ import { MARS_2026_MAP, withMars2026Map } from './mars-2026-map.ts';
 import { disassemblyRegistry } from '../../../mars/viewer/engine/construction/disassembly.ts';
 import { raiseHold, looseFramesHeld } from './raise-hold.ts';
 import { connectBeamV1, framesStand } from './beam-connect.ts';
-import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@sim/engine-contract';
+import { decksBear, installJoistV1, laySheetV1 } from './deck-install.ts';
+import { installFlightV1, installTreadV1, stairsBear } from './stair-install.ts';
+import { captureRenderScene, commonsSceneMetadataV1Schema, type RenderSceneCaptureV1, type RenderScene } from '@souls/engine-contract';
 import {readLocalClassroomV1} from './classroom-observation.ts';
 import { readNativeGathering } from './gathering-observation.ts';
 import { prepareCommonsTransition } from './commons-transition.ts';
-import { commonsTransitionV1Schema,type CommonsTransitionV1,type CommonsTransitionAdmissionV1 } from '@sim/engine-contract';
-import {crewRemovalTransitionV1Schema,type CrewRemovalTransitionV1,type CrewRemovalTransitionAdmissionV1} from '@sim/engine-contract';
+import { commonsTransitionV1Schema,type CommonsTransitionV1,type CommonsTransitionAdmissionV1 } from '@souls/engine-contract';
+import {crewRemovalTransitionV1Schema,type CrewRemovalTransitionV1,type CrewRemovalTransitionAdmissionV1} from '@souls/engine-contract';
 import {commonsProvisions,COMMONS_PERSONAL_RESOURCES} from './commons-provisions.ts';
 import {commonsKitchen,COMMONS_KITCHENS,type CommonsKitchenVersion} from './commons-kitchen.ts';
 import type {RetainedCommonsShoreReader} from './retained-shore.ts';
-import {retainedCommonsShoreV1Schema,type RetainedCommonsShoreV1,type RetainedCommonsShoreAdmissionV1} from '@sim/engine-contract';
+import {retainedCommonsShoreV1Schema,type RetainedCommonsShoreV1,type RetainedCommonsShoreAdmissionV1} from '@souls/engine-contract';
 import { decodeSnapshot, type RuntimeSnapshot, type RuntimeSnapshotCapture } from '../../../mars/viewer/engine/runtime/snapshot.ts';
 import {encode} from '../../../mars/viewer/engine/runtime/codec.ts';
 import { dcos,dsin,hypot } from '../../../mars/viewer/engine/core/math.ts';
@@ -84,8 +86,8 @@ import { NavConnectivity, NAV_CONNECT_POLICY, NAV_RESCUE_MAX_POCKET, CONNECT_CLE
 const NAV_ANCHORED=new Set<unknown>(['sit','lie','nap','sleep']);
 // L1: Object.values(entities)'s list, ~2.7x cheaper on a big world's dictionary-mode object (fresh array each call)
 import { listEntities } from '../../../mars/viewer/engine/world/entity-list.ts';
-import type {NativeBoatControlsV1} from '@sim/engine-contract';
-import type {BodyLocationV1} from '@sim/engine-contract';
+import type {NativeBoatControlsV1} from '@souls/engine-contract';
+import type {BodyLocationV1} from '@souls/engine-contract';
 import {bodyDanceStep} from '../../../mars/viewer/engine/bodies/motion.ts';
 import {bodyProblem} from '../../../mars/viewer/engine/bodies/body.ts';
 import {humanRadius,seatFitProblem} from '../../../mars/viewer/engine/bodies/humanoid.ts';
@@ -93,9 +95,9 @@ import {slotTransitionIssue,obstacleIndex,type ObstacleIndex} from '../../../mar
 import {PLAN_MARGIN} from '../../../mars/viewer/engine/spatial/path.ts';
 import {creatureOf} from '../../../mars/viewer/engine/bodies/creatures.ts';
 import type {Body} from '../../../mars/viewer/engine/world/types.ts';
-import {renderPlatformsV1Schema,type RenderPlatformsV1} from '@sim/engine-contract';
-import {officeStairGuardsV1Schema,type OfficeStairGuardsV1} from '@sim/engine-contract';
-import {authoredBoundariesV1Schema,authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesV1,type AuthoredBoundariesDeclarationV1} from '@sim/engine-contract';
+import {renderPlatformsV1Schema,type RenderPlatformsV1} from '@souls/engine-contract';
+import {officeStairGuardsV1Schema,type OfficeStairGuardsV1} from '@souls/engine-contract';
+import {authoredBoundariesV1Schema,authoredBoundariesDeclarationV1Schema,type AuthoredBoundariesV1,type AuthoredBoundariesDeclarationV1} from '@souls/engine-contract';
 import {placeOnGround} from '../../../mars/viewer/engine/items/model.ts';
 /** One fixture slot's verdict from useCheckV1 (lane BS1). */
 export type UseCheckV1={id:string;of:string;kind:'seat'|'berth';level:number;ok:boolean;code?:string;message?:string;at?:[number,number]};
@@ -2620,12 +2622,16 @@ function checkedTable(t: EntityTable): EntityTable {
 }
 
 function centroid(poly: [number, number][]): [number, number] { let x = 0, z = 0; for (const p of poly) { x += p[0]; z += p[1]; } return [r3(x / poly.length), r3(z / poly.length)]; }
-function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY:''}`;}
+function nativeRulesVersion(version:string,cfg:MarsWorldConfig){return `sim-mars/1+${version}${cfg.safeCrewRemoval?'+crew-removal/1':''}${cfg.scene==='eden-commons'?'+commons/1':''}${cfg.safeArrivalV1?'+arrival-clearance/1':''}${cfg.walkBlockV1?'+walk-block/1':''}${cfg.disassemblyV1?'+'+DISASSEMBLY_POLICY:''}${cfg.map?'+'+cfg.map:''}${cfg.sharedCarryV1?'+'+SHARED_RAISE_POLICY+'+'+SHARED_BEAM_POLICY+'+'+SHARED_DECK_POLICY+'+'+SHARED_STAIRS_POLICY:''}`;}
 /** PC13 (#692): a world whose engine has the shared raise (SIM_SHARED_CARRY) says so in its rules version: a journal that
  *  names raise_hold_v1 does not replay, nor a snapshot restore, where the verb is not registered. */
 export const SHARED_RAISE_POLICY = 'shared-raise/1';
 /** PC14 (#693): the same flag adds connect_beam_v1 and the frame invariant: a journal that seats a beam needs them. */
 export const SHARED_BEAM_POLICY = 'shared-beam/1';
+/** PC15 (#694): the same flag adds install_joist_v1, lay_sheet_v1 and the deck invariant: a journal that builds a deck needs them. */
+export const SHARED_DECK_POLICY = 'shared-deck/1';
+/** PC16 (#695): the same flag adds install_flight_v1, install_tread_v1 and the stair invariant: a journal that builds stairs needs them. */
+export const SHARED_STAIRS_POLICY = 'shared-stairs/1';
 
 /** The factory is made once the Mars engine has been loaded (an async import); after that everything is synchronous. */
 export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promise<EngineFactory> {
@@ -2635,17 +2641,17 @@ export async function marsFactory(cfg: MarsWorldConfig = PROVING_GROUND): Promis
   const sharedCarry = cfg.sharedCarryV1 ?? process.env.SIM_SHARED_CARRY === '1';
   // resolved once here, so the engine's own rules version (this.cfg) says what the factory registered; off adds no key
   if (sharedCarry && cfg.sharedCarryV1 !== true) cfg = {...cfg, sharedCarryV1: true};
-  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand]} : loaded;
+  const m = sharedCarry ? {...loaded, invariants: [...loaded.invariants, looseFramesHeld, framesStand, decksBear, stairsBear]} : loaded;
   // disassembly/1 adds its reverse verbs to this engine's registry only; the default registry is unchanged.
   const registry = cfg.disassemblyV1 ? disassemblyRegistry(m.createRegistry) : m.createRegistry(), services = m.servicesFor(m.scenes);
-  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); }   // PC13 (#692), PC14 (#693)
+  if (sharedCarry) { registry.set(raiseHold.verb, raiseHold as any); registry.set(connectBeamV1.verb, connectBeamV1 as any); registry.set(installJoistV1.verb, installJoistV1 as any); registry.set(laySheetV1.verb, laySheetV1 as any); registry.set(installFlightV1.verb, installFlightV1 as any); registry.set(installTreadV1.verb, installTreadV1 as any); }   // PC13 (#692), PC14 (#693), PC15 (#694), PC16 (#695)
   return {
     rulesVersion: nativeRulesVersion(m.rulesVersion,cfg),
     // A failed cross-policy checkpoint restore must not turn into replay under
     // another removal policy. An explicit, qualified transition is separate.
     canReplayHistory: version => {
       if((cfg.walkBlockV1||cfg.safeArrivalV1||cfg.scene==='eden-commons'||cfg.disassemblyV1||cfg.map||cfg.sharedCarryV1)&&version!==nativeRulesVersion(m.rulesVersion,cfg))return false;
-      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam)\//.test(version))return false;
+      if(!cfg.sharedCarryV1&&/\+shared-(?:raise|beam|deck|stairs)\//.test(version))return false;
       if(!cfg.map&&/\+mars-2026-map\//.test(version))return false;
       if(!cfg.disassemblyV1&&/\+disassembly\//.test(version))return false;
       const walk=version.match(/\+walk-block\/[^+]+/g)??[];

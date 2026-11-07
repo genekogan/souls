@@ -8,7 +8,7 @@
 //                 bakes; an enterable thing is walls, not one solid block; a free-standing kit def is not below the floor or
 //                 floating (anchor base, no hang slot). Approach and bounds-size findings stay warnings, as before.
 // Run over the whole core library: node packages/conformance/bin/catalogue-checks.mjs [--out report.json]
-import { WorldModel, applyBatch, coreLibrary, stableStringify, vocab, type StoredDef, type DefLibrary } from '@sim/world-compiler';
+import { WorldModel, applyBatch, coreLibrary, stableStringify, vocab, type StoredDef, type DefLibrary } from '@souls/world-compiler';
 import { assetLookup, assetMeta, measure, shapeFor, type Measured } from './measure.ts';
 
 export const CLASS_LIMITS = { drawsBelowBuilding: 4, materials: 4, defBytes: 16_384, glbBytes: 2_000_000, lod1AboveTris: 5_000 } as const;

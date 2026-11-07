@@ -20,7 +20,7 @@ const release = await chromeLease('camera-probe');
 const browser = await pw.chromium.launch({ channel: 'chrome', headless: true, args: ['--ignore-gpu-blocklist'] });
 const report = [];
 const measure = (page, tag) => page.evaluate((tag) => {
-  const w = window.__simEntity; if (!w) return { tag, missing: true };
+  const w = window.__soulsEntity; if (!w) return { tag, missing: true };
   const c = w.camera, t = w.controls.target, p = t.clone().project(c);
   return { tag, active: w.layer.active, view: c.view && c.view.enabled ? [Math.round(c.view.offsetX), Math.round(c.view.offsetY)] : 'off',
     fov: +c.fov.toFixed(1), targetNDC: [+p.x.toFixed(2), +p.y.toFixed(2)], dist: +c.position.distanceTo(t).toFixed(1),

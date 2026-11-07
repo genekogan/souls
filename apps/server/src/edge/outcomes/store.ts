@@ -1,6 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
-import {EDGE_OUTCOME_CONTRACT,edgeOutcomeV1Schema,type EdgeOutcomeV1} from '@sim/protocol';
+import {EDGE_OUTCOME_CONTRACT,edgeOutcomeV1Schema,type EdgeOutcomeV1} from '@souls/protocol';
 import type {EdgeReceipt} from '../contract.ts';
 import {EDEN_LIBRARY_CATALOGUE,EDEN_CONTENT_VERSION} from '../content/eden-library-catalogue.ts';
 import {EDEN_PLACE_LORE} from '../content/eden-place-lore.ts';

@@ -1,4 +1,4 @@
-import type {MidContext} from '@sim/brain';
+import type {MidContext} from '@souls/brain';
 import type {Mind,WorldHost} from './world.ts';
 export type RetainedChoiceV1={intentId:string;version:number;card:string;target:string|null};
 export const retainedChoiceKeyV1=(card:string,target:string|null)=>JSON.stringify([card,target]);

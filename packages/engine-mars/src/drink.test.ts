@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashOf} from '@sim/engine-contract';
+import {hashOf} from '@souls/engine-contract';
 import {nativeCampDrinkFactory} from './drink-engine.ts';
 import {marsFactory} from './engine.ts';
 import {sampleTake} from '../../../mars/viewer/engine/take/replay.ts';

@@ -5,8 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { kernelHash } from '@sim/kernel';
-import { coreRef } from '@sim/world-compiler';
+import { kernelHash } from '@souls/kernel';
+import { coreRef } from '@souls/world-compiler';
 import { fixture, invite, accept, factory, seed } from '../../test/native-owner-fixture.ts';
 import { WorldHost } from '../world.ts';
 import { EdgeLedger } from '../edge/ledger/ledger.ts';

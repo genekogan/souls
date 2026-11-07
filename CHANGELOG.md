@@ -165,7 +165,7 @@ Internal changes only.
 
 - A component and data-flow map (docs/architecture/map.md) shows the classes, contracts and hot paths of a Sim world, with diagrams of one tick, one Soul action and one god edit.
 - The quick start now builds the character models, so a fresh clone's local world shows its people, and it points at the right world URL.
-- The repository is now github.com/genekogan/souls (renamed from new_sim); links and the security policy point there.
+- The repository is now github.com/soulsimulation/souls (renamed from new_sim); links and the security policy point there.
 
 ## 4.05 (2026-10-31)
 

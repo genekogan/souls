@@ -3,7 +3,7 @@
 // "wait" applied a tick later and overwrote the wake with its own 200-tick re-think, so Rob ended the gathering first.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toyFactory } from '@sim/engine-toy';
+import { toyFactory } from '@souls/engine-toy';
 import { Db } from './db.ts';
 import { WorldHost } from './world.ts';
 

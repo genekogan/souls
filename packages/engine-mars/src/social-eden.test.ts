@@ -5,7 +5,7 @@ import {retainedCommonsShoreFactory} from './retained-shore-engine.ts';
 import {socialEdenV1} from './social-eden.ts';
 import {commonsFoodDeliveryItemsV1} from './food-delivery.ts';
 import {COMMONS_PERSONAL_RESOURCES} from './commons-provisions.ts';
-import type {Engine} from '@sim/engine-contract';
+import type {Engine} from '@souls/engine-contract';
 const f=await retainedCommonsShoreFactory({socialEdenV1:true,foodDeliveryV1:true});
 function adopt(e:Engine,method:'previewCommonsProvisionsV1'|'previewCommonsKitchenV1'|'previewRetainedCommonsShoreV1'|'previewSocialEdenV1'){
  const p=e[method]!();assert.ok(p.ok,JSON.stringify(p));if(!p.ok)throw Error('refused');(e as any)[method.replace('preview','adopt')](p.transition);return p.transition;

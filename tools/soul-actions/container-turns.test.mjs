@@ -11,11 +11,9 @@ import {CORE_KIT, containerHidden, containerInside} from '../../packages/world-c
 
 // A god places a storage def at any turn. At each one a Soul puts a thing in and takes it out, and the engine stays clean: no
 // recovered fault, no violation. Every library def with an inside is covered without being listed, so a new one gets this too.
-// (A body too close at the reach trips collision.human-static at some turns only: #435, #1063.)
-// core/lockers@3 is frozen and does fault: #1063 removes this exclusion.
+// (A body too close at the reach used to trip collision.human-static at some turns only: #435, #1063.)
 // #1088: a container too narrow for a bowl (a bin, the pantry) is tested with an apple, which fits them all.
-const KNOWN_FAULT = new Set(['core/lockers@3']);
-const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open'), hidden: containerHidden(d), small: containerInside(d).fit[0] < 0.25})).filter(d => !KNOWN_FAULT.has(d.ref));
+const defs = CORE_KIT.filter(d => containerInside(d)).map(d => ({ref: `core/${d.name.replace(/^core-/, '')}@${d.version}`, door: !!d.state && Object.hasOwn(d.state, 'open'), hidden: containerHidden(d), small: containerInside(d).fit[0] < 0.25}));
 const turns = [0, 0.4, 0.785, 1.2, 1.571, 1.9, 2.356, 2.9, 3.7, 4.712, 5.5];
 for (const {ref, door, hidden, small} of defs) test(`${ref}: put in and take out at every turn`, {timeout: 900000}, async t => {
  const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
@@ -41,5 +39,29 @@ for (const {ref, door, hidden, small} of defs) test(`${ref}: put in and take out
   // a hiding place's search of an empty place is a walk and a reach of its own
   if (hidden) {await done(`search:${spot}`); assert.notEqual(support().kind, 'in-hand', `r=${r}`);} ok(god.act({ops: [{op: 'remove', id: spot}]})); await tick(20);
  }
+ assert.deepEqual(f.host.engine.runtime.violations, []);
+});
+// A reach cancelled after its lean was held comes back out to where the body stood, with nothing faulting (#1063).
+test('core/lockers@3: a reach cancelled at a turn where the lean is held comes back out', {timeout: 300000}, async t => {
+ const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+ const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
+ const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
+ t.after(() => {comms.close(); f.host.stop(); f.db.close();});
+ const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
+ installEngineBridge({host: f.host, god, edge, log() {}, worldLore: false, worldClock: false});
+ const tick = async (n = 5) => {for (let i = 0; i < n; i++) {f.host.tickOnce(); await setImmediate(); f.host.drainInputs();}};
+ await tick(); await invite(f, 'ana'); const row = await accept(f.host, f.souls.create('dev:ana', {name: 'Ana', description: 'Turns test'})); soul = {soulId: row.id, entityId: row.entity_id, name: row.name, owner: row.owner}; await tick();
+ const b = f.host.engine.world.entities[soul.entityId], [ax, az] = [b.pose.p[0], b.pose.p[2]];
+ const ok = r => {assert.equal(r.accepted, true, JSON.stringify(r).slice(0, 400)); return r;};
+ ok(god.act({ops: [{op: 'place', def: 'core/table@1', name: 'table', p: [ax + 2.4, az - 1.2]}, {op: 'place', def: 'core/bowl@2', name: 'bowl', in: {parent: 'table', slot: 'top'}, p: [0, 0]}, {op: 'place', def: 'core/lockers@3', name: 'spot', p: [ax + 1, az + 3], r: 0.785, state: {open: true}}]})); await tick(40);
+ const ent = n => [...god.model.entities.values()].find(e => e.name === n).id, act = async capability => (await accept(f.host, app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability})}))).json();
+ const up = ok(await act(`pick-up:${ent('bowl')}`)); for (let n = 0; n < 1600 && edge.receipt(soul.soulId, up.receipt.id)?.phase !== 'completed'; n++) await tick(1);
+ const put = ok(await act(`put-in:${ent('spot')}`)); let n = 0; while (b.human?.activity !== 'reach' && n++ < 1600) await tick(1); assert.equal(b.human.activity, 'reach');
+ const [sx, sz] = [b.pose.p[0], b.pose.p[2]], exec = () => [...f.host.engine.rt.live.values()].find(l => l.exec?.lean)?.exec;
+ let held = false; for (let k = 0; k < 200 && !held; k++) {const [x, z] = [b.pose.p[0], b.pose.p[2]]; await tick(1); const ex = exec(); assert.equal(ex?.phase, 'reach', 'still reaching'); held = b.pose.p[0] === x && b.pose.p[2] === z && ex.t > 1;}
+ assert.ok(held && Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz) > 0.01, 'the lean began and was held'); assert.ok(Math.hypot(b.pose.p[0] - exec().lean.in[0], b.pose.p[2] - exec().lean.in[1]) > 0.001, 'short of its end');
+ ok(await act('stand:here')); await tick(120);
+ assert.equal(edge.receipt(soul.soulId, put.receipt.id).phase, 'replaced');
+ assert.ok(Math.hypot(b.pose.p[0] - sx, b.pose.p[2] - sz) < 0.05, 'back where it stood');
  assert.deepEqual(f.host.engine.runtime.violations, []);
 });

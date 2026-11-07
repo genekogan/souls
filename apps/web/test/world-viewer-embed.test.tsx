@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LiveWorld } from '../src/LiveWorld.tsx';
-import type { Sim } from '../src/useSim.ts';
+import type { Souls } from '../src/useSouls.ts';
 
 // Real component structure, no graphics/provider/server needed. This does not
 // execute effects or qualify GPU controls; App's mounted consumer remains next.
 const sim = { conn: { welcome: null, heartbeat: null, stats: { state: 'closed' },
-  replica: { souls: new Map() } }, plays: [], takes: null } as unknown as Sim;
+  replica: { souls: new Map() } }, plays: [], takes: null } as unknown as Souls;
 
 test('actual LiveWorld embedded layout exposes stable selectors without raw camera/history controls', () => {
   const html = renderToStaticMarkup(createElement(LiveWorld, { sim, selected: null, onSelect() {}, embedded: true, hideControls: true }));
@@ -30,7 +30,7 @@ test('existing standalone component keeps its default height and debugging contr
 
 test('hideSoulInfo removes only the duplicate selected Soul panel without removing stable viewport', () => {
   const selectedSim = { ...sim, conn: { ...sim.conn, replica: { ...sim.conn.replica,
-    souls: new Map([['soul-1', {id:'soul-1',entityId:'body-1',name:'Fixture Soul',description:'Public description',doing:'idle'}]]) } } } as unknown as Sim;
+    souls: new Map([['soul-1', {id:'soul-1',entityId:'body-1',name:'Fixture Soul',description:'Public description',doing:'idle'}]]) } } } as unknown as Souls;
   const render = (hideSoulInfo: boolean) => renderToStaticMarkup(createElement(LiveWorld,{sim:selectedSim,selected:'soul-1',onSelect(){},hideSoulInfo,hideControls:true,embedded:true}));
   assert.match(render(false),/world-selection-info world-soul-info/);
   assert.match(render(false),/Public description/);
