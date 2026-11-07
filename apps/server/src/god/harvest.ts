@@ -36,6 +36,8 @@ export type HarvestHost = {
   log(m: string): void;
   /** Why this Soul may not use a thing (a private planter of someone else's), or null (layers.ts `refusal`). */
   access?(id: string, soul: { soulId: string; name: string }): Refusal | null;
+  /** The vessel fetched on the way: the answer a pick-up offer gets (for sale, or a lost-and-found claim). */
+  denied?(id: string, soul: { soulId: string; name: string }): Refusal | null;
 };
 
 export function createHarvest(h: HarvestHost) {
@@ -132,7 +134,7 @@ export function createHarvest(h: HarvestHost) {
     }
     if (!st) return { code: 'harvest.planter-blocked', reason: `There is no room to stand at ${m.pathOf(ripe)} to pick from it.` };
     const steps: Step[] = [];
-    if (!held) { const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
+    if (!held) { const no = soul.soulId ? h.denied?.(id, { soulId: soul.soulId, name: soul.name ?? '' }) ?? null : null; if (no) return no; const f = fetchSteps(id, me); if ('code' in f) return f; steps.push(LET_GO, ...f); }
     steps.push(walk(st, face), LET_GO, { verb: 'mars:hand_actuator_v1', params: { target: ripe, at: at.map(r3), hand: 'left', hold: PICK_HOLD_SECONDS } });
     planned.set(soul.entityId, { vessel: id, planter: ripe });
     // the pick happens at the hand's contact (and is checked again there): the summary says what the act does

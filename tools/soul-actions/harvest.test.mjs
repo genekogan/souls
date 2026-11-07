@@ -195,3 +195,31 @@ test('harvest: two ripe beds, the named one is picked', {timeout: 300000}, async
  assert.deepEqual(W().runtime?.violations ?? f.host.engine.runtime.violations, []);
  if (out) { mkdirSync(out, {recursive: true}); writeFileSync(`${out}/harvest-two-beds.json`, JSON.stringify({status: 'pass', refused: [no.code, unripe.code], picked: 'rose-bed', near: state('near-bed').growth}, null, 1)); }
 });
+
+// review of #1022: a plan that takes the vessel on the way gets the answer a pick-up gets, so a basket for sale stays on the table
+test('harvest: a basket for sale is refused as a pick-up is, and nothing is taken', {timeout: 120000}, async t => {
+ const was = process.env.LAYERS; process.env.LAYERS = '1'; t.after(() => { if (was === undefined) delete process.env.LAYERS; else process.env.LAYERS = was; });
+ const f = fixture(':memory:', factory, {durableClockV1: true}); f.brain.quiesce();
+ const edge = new EdgeLedger(f.host, f.db, undefined, {ambient: false}), app = new Hono(); let soul;
+ const comms = mountEdgeRoutes(app, {host: f.host, db: f.db, souls: f.souls, ledger: edge, soul: () => soul});
+ t.after(() => { comms.close(); f.host.stop(); f.db.close(); });
+ const god = new GodMode(f.db, {worldId: f.host.worldId, ownerId: 'dev:admin', tick: () => f.host.engine.world.tick, emit() {}});
+ installEngineBridge({host: f.host, god, edge, log() {}, worldLore: false, worldClock: false});
+ const tick = async (n = 5) => { for (let i = 0; i < n; i++) { f.host.tickOnce(); await setImmediate(); f.host.drainInputs(); } };
+ await tick(); await invite(f, 'ana');
+ const row = await accept(f.host, f.souls.create('dev:ana', {name: 'Ana', description: 'Harvest test'})); await tick();
+ soul = {soulId: row.id, entityId: row.entity_id ?? row.entityId, name: 'Ana', owner: 'dev:ana'};
+ const p = f.host.engine.world.entities[soul.entityId].pose.p, [ax, az] = [p[0], p[2]];
+ assert.equal(god.act({ops: [
+  {op: 'place', def: 'core/garden-planter@2', name: 'bed', p: [ax + 2, az], state: {growth: 4, moisture: 1}},
+  {op: 'place', def: 'core/table@1', name: 'stall', p: [ax, az + 2]},
+  {op: 'place', def: 'core/harvest-basket@1', name: 'basket', in: {parent: 'stall', slot: 'top'}, p: [0, 0], price: {amount: 3}}]}).accepted, true);
+ await tick(45);
+ const ent = () => [...god.model.entities.values()].find(e => e.name === 'basket'), basket = ent().id, offer = edge.capabilities(soul).find(c => c.id === `object:${basket}:harvest`);
+ const take = edge.capabilities(soul).find(c => c.id === `pick-up:${basket}`);
+ assert.equal(take?.blocked?.code, 'object.for-sale', JSON.stringify(take));
+ const r = await (await app.request('/v1/edge/act', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({capability: offer.id, strict: true})})).json();
+ const code = r.accepted ? edge.receipt(soul.soulId, r.receipt.id).code : r.code;
+ assert.equal(code, 'object.for-sale', JSON.stringify(r).slice(0, 300));
+ await tick(30); assert.equal(Number(ent().state?.fruit ?? 0), 0, 'nothing picked');
+});
