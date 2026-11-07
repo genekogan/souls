@@ -1,6 +1,6 @@
 // Isolated G003 checkpoint. No audio, renderer, model or wall-clock side effects.
 import { z } from 'zod';
-import { hashOf, nativeGatheringObservationV1Schema } from '@sim/engine-contract';
+import { hashOf, nativeGatheringObservationV1Schema } from '@souls/engine-contract';
 
 export const STATION_PINS_V1 = Object.freeze({
   score:'3b806f2084d5dcefcf9a2282828765657bd74220',

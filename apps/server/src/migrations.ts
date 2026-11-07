@@ -186,6 +186,14 @@ export const MIGRATIONS: { id: number; name: string; up(db: DatabaseSync): void 
       issued_at INTEGER, revoked_at INTEGER NOT NULL, reason TEXT
     )`);
   }},
+  {id:19,name:'world glitch records',up(db){
+    // #1150: one row per recovery and per halt. Operations data outside the log: replay never reads it.
+    db.exec(`CREATE TABLE glitches_v1 (
+      id INTEGER PRIMARY KEY, world_id TEXT NOT NULL, at INTEGER NOT NULL, tick INTEGER NOT NULL,
+      rung TEXT NOT NULL, rule TEXT NOT NULL, bodies TEXT NOT NULL, evidence TEXT NOT NULL
+    )`);
+    db.exec('CREATE INDEX glitches_by_world ON glitches_v1(world_id,rung,rule)');
+  }},
 ];
 
 export function migrate(db: DatabaseSync): number[] {

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
-import {retainedCommonsShoreFactory} from '@sim/engine-mars';
-import {fakeJev,type callTool,type CompileOut} from '@sim/brain';
+import {retainedCommonsShoreFactory} from '@souls/engine-mars';
+import {fakeJev,type callTool,type CompileOut} from '@souls/brain';
 import {fixture,invite,accept} from '../test/native-owner-fixture.ts';
 import {LivingWorld} from './living.ts';
 import {Brain} from './brain.ts';

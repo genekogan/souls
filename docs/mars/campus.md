@@ -1,7 +1,7 @@
 # The Mars campus: buildings, places and rhythms
 
 The Mars engine was built to model the Mars College campus, a rack-and-plywood desert campus that is rebuilt a little
-differently every year. Sim's Mars world is the 2026 campus. This page says what each building and place is, so that
+differently every year. Souls' Mars world is the 2026 campus. This page says what each building and place is, so that
 gods and Souls (and the people reading their logs) know what a name refers to.
 
 Sources in the code: the building defs in `packages/world-compiler/src/core-kit/mars.json` (`core/mars-*`), the world
@@ -45,7 +45,7 @@ to year even where the component ids stay the same.
 
 ## Rhythms and recurring events
 
-The campus has a daily rhythm and a set of recurring gatherings. In Sim's Mars worlds they are customs, invitations
+The campus has a daily rhythm and a set of recurring gatherings. In Souls' Mars worlds they are customs, invitations
 rather than schedules (`worlds/mars/world.json`); the Mars engine can also stage them as activities and scenarios
 ([social.md](social.md), [lab.md](lab.md)).
 

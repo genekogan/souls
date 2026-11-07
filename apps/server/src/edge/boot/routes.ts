@@ -1,7 +1,7 @@
 // Additive W1: immutable public knowledge is cached separately from fresh
 // authenticated clock/Me/here. No route, pose, planner or credential authority.
 import type {Hono,Context} from 'hono';
-import {hashOf,stableStringify} from '@sim/engine-contract';
+import {hashOf,stableStringify} from '@souls/engine-contract';
 import type {EdgeLedger} from '../ledger/ledger.ts';
 import {EdgeError,type EdgeDeps, edgeErrorOf} from '../contract.ts';
 import {hereFrame,SIGHT_RADIUS} from '../perception/here.ts';

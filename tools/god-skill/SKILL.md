@@ -1,6 +1,6 @@
-# God mode for an Eden world (skill v1.5-B2, protocol god/1)
+# God mode for a world in Souls (skill v1.5-B2, protocol god/1)
 
-You are the god of one Eden world: its owner's agent. You place, move, shape and remove **entities**; the server
+You are the god of one world in Souls: its owner's agent. You place, move, shape and remove **entities**; the server
 checks every edit (support, no solid overlap, sizes, the world's edge) and refuses with a code, a field and a fix.
 Everything is undoable; residents in the way are walked out. Souls **use only what declares a use** (a seat slot, a
 bed, a room behind a door); a thing that only looks usable is scenery.
@@ -245,6 +245,21 @@ opts in (`layers.deferred` otherwise): say so instead of retrying.
 - `history` (the journal) · `trace [--build id]`: a `LOOP` line means the same refusal 3+ times in 2 minutes — change
   the request, do not resend it.
 
+## Thumbnail
+
+The world list shows one picture per world. Until you set one, the list shows the default for the template the world
+started from. Take one once the world has a recognisable centre, and retake it when that centre changes.
+- `thumbnail --dry --out thumb.jpg`, then **open the image** and check it. Then `thumbnail` sends a fresh one, or
+  `thumbnail --file thumb.jpg` sends that file. The default framing works for most worlds: a three-quarter view from the south-west and
+  above, the centre of what is built in the middle of the frame, at midday in clear weather, 1280×720.
+- Frame the heart of the place, not its edge: `thumbnail --at plaza --span 80` (or `--from se`, `--dist 60`). A person
+  should recognise the world from a card two inches wide, so the picture needs one clear subject, the ground and some sky.
+- `thumbnail --file <image.jpg|png>` sends your own 16:9 image (640–1920 px wide; PNG is re-encoded). `thumbnail --clear`
+  goes back to the template's default. Without a local Chrome, add `--remote`, as you would for `look`.
+- A refusal names its fix (`thumbnail.dimensions`: make it 16:9; `thumbnail.rate`: at most 6 changes in 10 minutes).
+  Sending or clearing a picture never wakes a sleeping world; taking one is a look, so it does. Only the world's owner
+  can set it. `--dry` sends nothing, `--clear` included.
+
 ## New kinds of things (kits)
 
 Author a kit only for a form the library lacks (spires, a shrine, a sculpture, trim); a library building for the
@@ -309,6 +324,68 @@ shapes, 80 000 triangles (props a few hundred), size 0.05–400 m, height ≤ 12
 - **People**: residents arrive by themselves; their bodies cannot be placed (`body.protected`). People as scenery are
   `place figure` (core/figure@1: `pose` stand walk sit carry serve wave, `hat`, colours; a child `--scale 0.6`; `--count`);
   never Souls, so say real residents will come.
+
+## Importing your own models
+
+A GLB on disk (a scan, a sculpted or generated model, a rigged character) becomes a placeable def through `upload`;
+images (PNG/JPEG) become sign and picture media. Every upload is measured and refused when it does not fit, so get the
+file within budget **before** sending it. The budgets exist because an uploaded mesh has no distant version yet (it
+draws every triangle at every distance), the nearest ~24 MB of models are downloaded before the world appears (0.2 MB on
+a phone), and each file is parsed in one frame.
+
+| Per file | Limit | Per world |
+|---|---|---|
+| triangles | **80 000** (warned above 6 000: fine once, heavy repeated) | 50 M placed |
+| size | **3 MB** (images 2 MB) | 2 GB uploaded |
+| texture side | **2048 px** (the viewer fits colour to 1024, other maps to 512 on load) | 10 000 assets |
+| format | self-contained `.glb` 2.0; PNG/JPEG for images | |
+| geometry | meshopt + `KHR_mesh_quantization` (Draco decodes too); textures **WebP** inside the GLB (no KTX2: the viewer has no transcoder) | |
+| materials | PBR metallic-roughness; `unlit`, `emissive_strength`, `texture_transform`; **vertex colours (`COLOR_0`) render**, matte | |
+| animation | skins and several clips are kept; name clips **Idle** and **Walk** (Fly/Swim/Run count as Walk) | |
+
+```
+upload models/kalama.glb --name kalama --height 1.2 --tags martian,character --license "CC-BY-4.0 <Artist Name>" --define
+upload models/kalama.glb --dry                       # measure and show what would be sent, post nothing
+upload art/mural-east.jpg --name mural-east          # an image for a sign, picture or kit face
+upload models/manifest.json --dry                    # a folder of models: one manifest, one command
+```
+- **Frame**: metres, +y up, **front faces +z**; the pivot does not matter (the viewer centres the model and stands it on
+  the ground). `--height m` scales the whole model to that height (0.25–4× more per placed copy); a file whose measured
+  height is under 5 cm or over 200 m is probably in cm or mm, so pass `--height`. Fix those files to metres in the
+  source too.
+- **`--define`** makes the def at once and prints `place <name>@1 --at …`; without it the def is proposed only (edit and
+  `define` it). `--layer decor` makes a thing people walk through; the default collides as its **bounding box**, and a
+  thing under 0.35 m across and 0.6 m tall is decor by itself. A building people enter needs a footprint sidecar
+  (`--footprint fp.json`, `lm-building-footprint/1`: rooms, walls, openings) or Souls cannot go in; say which models are
+  meant to be entered and author those footprints, do not upload a scan of a house as a walkable building.
+- **Manifest** (`god-upload-manifest/1`, paths relative to the file; each entry: `file`, `name`, `height`, `tags`,
+  `license`, `source`, `description`, `layer`, `footprint`, `define`): uploads in order, continues past a refused entry
+  and ends with `uploaded N of M`. About 12 uploads a minute are accepted; the CLI waits out `429`.
+- **Licence**: only the owner's own work, CC0, or CC BY (credit in `--license`/`--source`) goes into a world: every
+  visitor's browser downloads the raw file, which is redistribution. Downloaded royalty-free models stay out until their
+  licence is confirmed.
+- **Refusals**: `asset.budget` (field `tris`, `bytes` or `texPx`, with the measured number and the limit) means reduce
+  the file; `asset.invalid` means the container (external `.bin`/texture URIs, a required extension the viewer lacks,
+  not a GLB 2.0): re-export self-contained; `asset.type`: wrong file type; `define` refusals are the def's own
+  (`def.exists`, a size out of range) and leave the asset uploaded but unplaceable.
+
+**Reducing a heavy file** (scans are 100k–500k triangles and tens of MB as exported). Reduce from the full-quality
+master into a **separate folder**; never overwrite the master, it is wanted again when the budgets loosen for
+hero objects with distance LODs. In this repo:
+```
+node tools/god-skill/scripts/optimize-glb.mjs masters/heads --out library/heads --kind head
+node tools/god-skill/scripts/optimize-glb.mjs masters/temple.glb --out library --kind hero
+```
+`--kind` sets the targets (hero 76k tris / 2048 px · scene 30k / 1024 · character 40k / 1024 · head 25k / 1024 · prop 10k /
+1024, under 2k when placed many times); `--tris`, `--tex`, `--quality` override. The script refuses an `--out` inside the
+inputs, keeps an existing output unless `--force`, and writes `REPORT.json` (source and output sha, before/after).
+Its recipe, for anyone without the repo (`npx @gltf-transform/cli`): `dedup` → `weld` → `prune` → `simplify` by edge
+collapse to a fixed triangle target with an error bound that steps up from 0.01 only until the target is met → textures
+`resize` 1024 (2048 for a hero) and `webp` quality 80–86 → `quantize` → `meshopt`. Rules that keep the look: **do not
+`flatten`/`join` an animated file** (it breaks the skeleton); **bake vertex colours to a texture before decimating** a
+vertex-coloured scan (the colour lives on the vertices, so 300k → 30k would thin it out as well); keep texture seams
+locked first and collapse across them only when the target is otherwise unreachable; recompute normals after. Detail in
+a scan lives in its colour map, and from 10 m on a 30k version reads the same as the 300k master.
 
 ## Making things usable
 

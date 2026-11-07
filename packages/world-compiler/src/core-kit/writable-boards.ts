@@ -67,6 +67,14 @@ const pinBoard: DefInput = { ...structuredClone(noticeV1), make: pinMake as unkn
 export const SIGNUP_MAX = 8, POLL_OPTIONS_MAX = 4;
 /** Where sign-up line i sits on the sheet (face-local metres, x right, y up), under the title. */
 export const signupSlot = (i: number): [number, number] => [-0.02, 0.15 - i * 0.047];
+/** #429: a sign-up list's data. Its capacity is its `text` field's declared `lines` (else SIGNUP_MAX); its noun is its first
+ *  synonym (else the sheet's words); a list tagged `keeps-newest` turns a page when full (its oldest page of SIGNUP_MAX gives
+ *  way) instead of refusing. The face shows the current page, SIGNUP_MAX lines at signupSlot. */
+export const signupCapacity = (def: { state?: Record<string, unknown> }) => { const l = (def.state?.text as { lines?: unknown } | undefined)?.lines; return typeof l === 'number' && l > 0 ? l : SIGNUP_MAX; };
+export const signupNoun = (def: { synonyms?: string[] }): string | null => def.synonyms?.[0] ?? null;
+/** The first entry on the page a list of `count` entries shows (0 until it runs past one page). */
+export const signupPageStart = (count: number) => (count > 0 ? Math.floor((count - 1) / SIGNUP_MAX) * SIGNUP_MAX : 0);
+export const GUESTBOOK_WORDS_MAX = 40;
 /** Where option i's tally sits on the poll board (face-local), to the right of its label. */
 export const pollSlot = (i: number): [number, number] => [0.22, 0.13 - i * 0.12];
 /** A poll's options from its maker's `options` state ("Soup|Salad|Bread"), at most four. */
@@ -104,6 +112,33 @@ const signupSheet: DefInput = {
     // the naive `then` names the fields the composed list reads (actuatedState passes only those); the hand actuator composes
     { name: 'sign', label: 'Sign the sign-up sheet with your name', then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }] },
     { name: 'unsign', label: 'Cross your name off the sign-up sheet', when: [{ field: 'text', not: '' }], then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }] },
+  ] as NonNullable<DefInput['actions']> } as DefInput;
+
+// #429 (W092): a guestbook at a place, on the sign-up faculty with data only: a visitors' book propped open on a tall book
+// stand. 16 entries kept (two pages), a few words with the name, a fresh page when full, nothing crossed off (no unsign).
+const page = (x: number, tint = 'page') => ({ kind: 'box', at: [x, 1.25, 0.014], size: [0.34, 0.46, 0.012], round: 0, tint, pitch: -0.35 });
+const guestbook: DefInput = {
+  schema: 'def/1', name: 'core-guestbook', version: 1,
+  description: `A visitors' book propped open on a tall wooden book stand, with a title its maker sets (state title). Visitors sign it by hand with their name and a few words (once each); it keeps up to ${2 * SIGNUP_MAX} entries, turning to a fresh page when full (its oldest page gives way).`,
+  tags: ['signage', 'sign-text', 'board', 'signup', 'keeps-newest', 'hand-writable'], form: 'point',
+  synonyms: ['guestbook', 'guest book', 'visitors book', "visitors' book", 'visitor book'],
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.006, shapes: [...stand(1.2, 'wood'),
+    { kind: 'box', at: [0, 1.25, -0.012], size: [0.76, 0.54, 0.02], round: 0, tint: 'wood', pitch: -0.35 },
+    { kind: 'box', at: [0, 1.25, 0.002], size: [0.73, 0.5, 0.012], round: 0, tint: 'cover', pitch: -0.35 },
+    page(-0.177), page(0.177),
+    { kind: 'box', at: [0, 1.0, 0.1], size: [0.78, 0.03, 0.06], round: 0, tint: 'wood', pitch: -0.35 },
+    { kind: 'box', at: [-0.2, 1.02, 0.11], size: [0.15, 0.012, 0.012], round: 0, tint: 'cover' }],
+    faces: [{ at: [0.177, 1.25, 0.03], w: 0.3, h: 0.44, pitch: -0.35,   // 1 cm proud of the page front (2 mm z-fought on the sheet)
+ bg: '#f6efdc', ink: '#2a2622' }] } } as unknown as DefInput['make'],
+  params: { wood: { type: 'color', default: '#6b4a2e', doc: 'stand colour' }, cover: { type: 'color', default: '#6e2a2a', doc: 'cover colour' } },
+  palette: { wood: '#6b4a2e', cover: '#6e2a2a', page: '#f6efdc' },
+  state: { title: { type: 'string', max: 60, default: 'Guestbook' }, text: { type: 'string', max: 2 * SIGNUP_MAX * (44 + GUESTBOOK_WORDS_MAX), lines: 2 * SIGNUP_MAX, default: '' }, textBy: { type: 'string', max: 2 * SIGNUP_MAX * 41, default: '' } } as DefInput['state'],
+  components: { readable: { pages: 1 }, sign: { lines: [] } } as DefInput['components'],
+  size: { box: [0.8, 1.5, 0.44] },
+  actions: [
+    // the naive `then` names the fields the composed list reads; the hand actuator composes (listPatch in actuators.ts)
+    { name: 'sign', label: 'Sign the guestbook', params: { text: { type: 'string', max: GUESTBOOK_WORDS_MAX, doc: `a few words after your name, up to ${GUESTBOOK_WORDS_MAX} characters; optional`, default: '' } },
+      then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }] },
   ] as NonNullable<DefInput['actions']> } as DefInput;
 
 const pollBoard: DefInput = {
@@ -159,6 +194,32 @@ const tictactoe: DefInput = {
     { name: 'mark', label: 'Mark a square on the game board', params: { square: { type: 'string', max: 20, doc: 'which square: 1-9 (top left is 1), or words like "top left", "centre", "bottom right"' } },
       then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
     { name: 'erase', label: 'Wipe the game board for a new game', when: [{ field: 'text', not: '' }],
+      then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
+  ] as NonNullable<DefInput['actions']> } as DefInput;
+
+// #439 W093: checkers on the same chalk-board game faculty (entry 27): the hand works the move on the face, the world keeps
+// turns, captures, crowning and the win (checkers.ts), the player steps back, a reader reads it and a wipe sets it up
+// again. `text` is the board (checkers.ts), `textBy` the two players' soul ids (X first), `players` their names.
+const checkers: DefInput = {
+  schema: 'def/1', name: 'core-checkers-board', version: 1,
+  description: 'A standing chalk board with a checkers board drawn on it, twelve pieces a side. Two Souls play by hand, taking turns (the first to move plays X, from the bottom); jumps capture and a man reaching the far row is crowned. Wiping it sets it up for a new game.',
+  tags: ['signage', 'sign-text', 'board', 'game', 'checkers', 'hand-writable'], form: 'point',
+  make: { kind: 'gen', gen: 'kit/2', args: { round: 0.01, shapes: [post(-0.42), post(0.42), foot(-0.42), foot(0.42),
+    { kind: 'box', at: [0, 1.25, 0], size: [0.8, 0.7, 0.04], round: 0.01, tint: 'frame' },
+    { kind: 'box', at: [0, 1.25, 0.021], size: [0.74, 0.64, 0.006], round: 0, tint: 'board' },
+    { kind: 'box', at: [0, 0.88, 0.05], size: [0.6, 0.025, 0.07], round: 0.005, tint: 'frame' }],
+    faces: [{ at: [0, 1.25, 0.026], w: 0.7, h: 0.6, bg: '#2b322e', ink: '#f4f2e8' }] } } as unknown as DefInput['make'],
+  params: { frame: { type: 'color', default: '#7d5a3a', doc: 'frame colour' }, board: { type: 'color', default: '#2b322e', doc: 'slate colour' } },
+  palette: { frame: '#7d5a3a', board: '#2b322e' },
+  state: { text: { type: 'string', max: 35, default: '' }, textBy: { type: 'string', max: 82, default: '' }, players: { type: 'string', max: 82, default: '' } } as DefInput['state'],
+  components: { readable: { pages: 1 }, sign: { lines: [] } } as DefInput['components'],
+  size: { box: [0.9, 1.68, 0.3] },
+  actions: [
+    { name: 'move', label: 'Move a piece on the checkers board', params: {
+      from: { type: 'string', max: 4, doc: 'the square the piece is on, a1-h8 (a1 is the bottom left, seen from the front), like "c3"' },
+      to: { type: 'string', max: 4, doc: 'the square it moves to, like "d4"; two squares on along a diagonal to jump a piece' } },
+      then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
+    { name: 'erase', label: 'Wipe the checkers board for a new game', when: [{ field: 'text', not: '' }],
       then: [{ op: 'set', field: 'text', value: '' }, { op: 'set', field: 'textBy', value: '' }, { op: 'set', field: 'players', value: '' }] },
   ] as NonNullable<DefInput['actions']> } as DefInput;
 
@@ -231,4 +292,4 @@ const wantedBoard: DefInput = {
     { name: 'take-on', label: 'Take on a note on the wanted/offered board ("I\'ll do it")', params: { note: { type: 'string', max: 40, doc: 'words of the note, or its author\'s name' } }, when: [{ field: 'text', not: '' }], then: naive },
   ] as NonNullable<DefInput['actions']> } as DefInput;
 
-export const WRITABLE_BOARDS: DefInput[] = [whiteboard, noticeBoard, pinBoard, chalkboard, signupSheet, pollBoard, tictactoe, posterWall, wantedBoard];
+export const WRITABLE_BOARDS: DefInput[] = [whiteboard, noticeBoard, pinBoard, chalkboard, signupSheet, pollBoard, tictactoe, posterWall, wantedBoard, checkers, guestbook];

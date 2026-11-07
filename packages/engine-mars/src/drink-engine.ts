@@ -1,5 +1,5 @@
 // Explicit fresh-world drink profile, never an old-history/default switch.
-import {hashOf,type EngineFactory,type EngineSnapshot} from '@sim/engine-contract';
+import {hashOf,type EngineFactory,type EngineSnapshot} from '@souls/engine-contract';
 import {loadMars} from './load.ts';
 import {MarsEngine,type MarsWorldConfig,type MarsPhysicalBinding} from './engine.ts';
 import {decodeSnapshot} from '../../../mars/viewer/engine/runtime/snapshot.ts';
