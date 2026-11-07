@@ -124,7 +124,7 @@ export function createPeople({ world = null } = {}) {
     /** By key, which nothing can spoof. By anything else a world chose (an id, a name), only when one row fits: a Soul here with
      *  a friend's name, or named a friend's id, is refused with the keys, not guessed. */
     find(target) {
-      if (rows.has(target) && String(target).includes("/")) return rows.get(target);
+      if (String(target).includes("/")) return rows.get(target) ?? null;
       const lower = String(target).toLowerCase(), all = [...rows.values()], here = rows.get(local(target));
       const fits = new Set([...(here ? [here] : all.filter((r) => r.id === target)), ...all.filter((r) => r.name.toLowerCase() === lower)]);
       if (fits.size > 1) throw new Error(`Several Souls fit that: ${[...fits].sort((x, y) => y.beliefs.length + y.commitments.size - x.beliefs.length - x.commitments.size).slice(0, 12).map((r) => r.key).join(", ")}. Use one of these.`);
